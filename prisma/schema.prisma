@@ -1,0 +1,53 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Reservation {
+  id        String  @id @default(dbgenerated("gen_random_uuid()::text"))
+  date      String
+  slot      String
+  name      String
+  plate     String
+  price     Int
+
+  qrToken   String  @unique @default(dbgenerated("gen_random_uuid()::text"))
+
+  // DBにある createdAt をPrismaにも合わせる
+  createdAt DateTime @default(now())
+
+  // 予約者通知用（任意）
+  email     String?
+
+  // 4桁コード：DB側のdefault生成に合わせる（←ここが重要）
+  pin       String   @default(dbgenerated("lpad((floor(random()*10000))::int::text, 4, '0')"))
+
+  // 任意：PINを生で持ちたくない場合の保険
+  pinHash   String?
+
+  // チェックイン状態
+  checkedIn Boolean @default(false)
+
+  // 入出庫時刻
+  checkedInAt  DateTime?
+  checkedOutAt DateTime?
+
+  // 支払い状態
+  paid       Boolean @default(false)
+  paidAt      DateTime?
+  paymentRef  String?
+
+  @@unique([date, slot])
+}
+
+model PricingCalendar {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  targetDate DateTime @unique @db.Timestamptz(6)
+  priceYen   Int
+  label      String   @default("NORMAL")
+  createdAt  DateTime @default(now()) @db.Timestamptz(6)
+}
