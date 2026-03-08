@@ -1,10 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 
 function normalizeSlot(input: string) {
   const m = (input || "").match(/^S(\d{1,2})$/i);
-  if (!m) return input;
+  if (!m) return input || "";
   return `S${String(Number(m[1])).padStart(2, "0")}`;
 }
 
@@ -15,23 +15,28 @@ function ymdTodayJst() {
 }
 
 export default function CheckinPage() {
-  const params = useMemo(() => new URLSearchParams(window.location.search), []);
-  const slot = normalizeSlot(params.get("slot") ?? "");
-  const dateDefault = params.get("date") ?? ymdTodayJst();
-
-  const [date, setDate] = useState(dateDefault);
+  const [slot, setSlot] = useState("");
+  const [date, setDate] = useState("");
   const [pin, setPin] = useState("");
   const [loading, setLoading] = useState(false);
-  const [msg, setMsg] = useState<string>("");
-  const [err, setErr] = useState<string>("");
+  const [msg, setMsg] = useState("");
+  const [err, setErr] = useState("");
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    setSlot(normalizeSlot(params.get("slot") ?? ""));
+    setDate(params.get("date") ?? ymdTodayJst());
+  }, []);
 
   async function submit() {
     setErr("");
     setMsg("");
+
     if (!slot) {
       setErr("slot が見つかりません（QRが不正です）");
       return;
     }
+
     if (!/^\d{4}$/.test(pin)) {
       setErr("4桁のコードを入力してください");
       return;
@@ -42,8 +47,9 @@ export default function CheckinPage() {
       const res = await fetch("/api/checkin", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ date, slot, pin }),
+        body: JSON.stringify({ date, slot, pin, action: "in" }),
       });
+
       const json = await res.json();
 
       if (json.ok) {
@@ -53,15 +59,11 @@ export default function CheckinPage() {
           setMsg("処理が完了しました。");
         }
       } else {
-        // 予約なし → 支払い導線
-        if (json.error === "no_reservation") {
-          setErr("予約がありません。支払い入庫へ進んでください。");
-          // 必要ならここで /pay などへ遷移
-          return;
+        if (json.error === "invalid_pin") {
+          setErr("コードが違います。もう一度入力してください。");
+        } else {
+          setErr(json.message ?? json.error ?? "エラーが発生しました");
         }
-        if (json.error === "invalid_pin") setErr("コードが違います。もう一度入力してください。");
-        else if (json.error === "unpaid") setErr("未決済です。支払いを完了してください。");
-        else setErr(json.message ?? "エラーが発生しました");
       }
     } catch (e: any) {
       setErr(String(e?.message ?? e));
@@ -77,7 +79,7 @@ export default function CheckinPage() {
       <div style={{ marginTop: 10, padding: 12, border: "1px solid #eee", borderRadius: 12 }}>
         <div style={{ fontWeight: 700 }}>区画: {slot || "（不明）"}</div>
         <div style={{ marginTop: 6, fontSize: 12, color: "#666" }}>
-          ※本日は {date} として扱います（必要なら変更できます）
+          ※本日は {date || "読込中"} として扱います
         </div>
         <div style={{ marginTop: 10 }}>
           <label style={{ fontSize: 12, color: "#666" }}>日付</label>
@@ -122,12 +124,8 @@ export default function CheckinPage() {
           {loading ? "確認中..." : "チェックインする"}
         </button>
 
-        {msg && <div style={{ marginTop: 12, color: "green", fontWeight: 700 }}>{msg}</div>}
-        {err && <div style={{ marginTop: 12, color: "crimson", fontWeight: 700 }}>{err}</div>}
-      </div>
-
-      <div style={{ marginTop: 14, fontSize: 12, color: "#666" }}>
-        予約がない場合は、支払い入庫（現地決済）へ進みます。
+        {msg ? <div style={{ marginTop: 12, color: "green", fontWeight: 700 }}>{msg}</div> : null}
+        {err ? <div style={{ marginTop: 12, color: "crimson", fontWeight: 700 }}>{err}</div> : null}
       </div>
     </div>
   );
