@@ -2,10 +2,14 @@
 
 import { useEffect, useMemo, useState } from "react";
 
-const TOTAL_SLOTS = 20;
-const SLOTS = Array.from({ length: TOTAL_SLOTS }).map(
-  (_, i) => `S${String(i + 1).padStart(2, "0")}`
-);
+const PLACE_ID = "e24a57f5-787f-4c2e-9394-e5f54053a955";
+
+type SpotItem = {
+  id: string;
+  code: string;
+  label: string | null;
+  isReserved: boolean;
+};
 
 function pad2(n: number) {
   return String(n).padStart(2, "0");
@@ -31,43 +35,48 @@ function daysInMonth(d: Date) {
 }
 
 export default function ReservePage() {
-  // カレンダー表示の月
   const [month, setMonth] = useState<Date>(() => startOfMonth(new Date()));
-  // 選択日（YYYY-MM-DD）
   const [date, setDate] = useState<string>(() => ymd(new Date()));
 
-  // 予約フォーム
-  const [slot, setSlot] = useState<string>("S01");
+  const [placeName, setPlaceName] = useState<string>("駐車場");
+  const [placeAddress, setPlaceAddress] = useState<string>("");
+
+  const [spots, setSpots] = useState<SpotItem[]>([]);
+  const [spotId, setSpotId] = useState<string>("");
+  const [spotCode, setSpotCode] = useState<string>("");
+
   const [name, setName] = useState("");
   const [plate, setPlate] = useState("");
   const [email, setEmail] = useState("");
 
-  // 予約状況
-  const [reserved, setReserved] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState<string>("");
 
-  // 成功モーダル（PIN大表示）
   const [success, setSuccess] = useState<null | {
     pin: string;
     price: number;
-    slot: string;
+    spotCode: string;
     date: string;
   }>(null);
 
-  const remaining = TOTAL_SLOTS - reserved.size;
+  const reservedCount = spots.filter((s) => s.isReserved).length;
+  const remaining = spots.length - reservedCount;
 
-  // 選択日が変わったら予約済みslotを取得
   useEffect(() => {
     let cancelled = false;
 
     async function run() {
       setLoading(true);
       setMsg("");
+
       try {
-        const res = await fetch(`/api/reservations?date=${encodeURIComponent(date)}`, {
-          cache: "no-store",
-        });
+        const res = await fetch(
+          `/api/reservations?date=${encodeURIComponent(date)}&placeId=${encodeURIComponent(
+            PLACE_ID
+          )}`,
+          { cache: "no-store" }
+        );
+
         const json = await res.json();
 
         if (!json.ok) {
@@ -75,15 +84,23 @@ export default function ReservePage() {
           return;
         }
 
-        const set = new Set<string>((json.reservedSlots ?? []).map((s: string) => String(s)));
+        const fetchedSpots: SpotItem[] = (json.spots ?? []).map((s: any) => ({
+          id: String(s.id),
+          code: String(s.code),
+          label: s.label ? String(s.label) : null,
+          isReserved: Boolean(s.isReserved),
+        }));
 
         if (!cancelled) {
-          setReserved(set);
+          setPlaceName(String(json.place?.name ?? "駐車場"));
+          setPlaceAddress(String(json.place?.address ?? ""));
+          setSpots(fetchedSpots);
 
-          // 選択中slotが予約済なら先頭の空きに自動調整
-          if (set.has(slot)) {
-            const firstFree = SLOTS.find((s) => !set.has(s));
-            if (firstFree) setSlot(firstFree);
+          const currentSelected = fetchedSpots.find((s) => s.id === spotId);
+          if (!currentSelected || currentSelected.isReserved) {
+            const firstFree = fetchedSpots.find((s) => !s.isReserved);
+            setSpotId(firstFree?.id ?? "");
+            setSpotCode(firstFree?.code ?? "");
           }
         }
       } catch (e: any) {
@@ -94,38 +111,54 @@ export default function ReservePage() {
     }
 
     run();
+
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [date]);
+  }, [date, spotId]);
 
-  // カレンダーの表示用（その月のマスを作る）
   const calendarCells = useMemo(() => {
     const first = startOfMonth(month);
-    const firstWeekday = first.getDay(); // 0=日
+    const firstWeekday = first.getDay();
     const dim = daysInMonth(month);
 
     const cells: Array<{ label: string; value: string | null }> = [];
-    // 前の空白
+
     for (let i = 0; i < firstWeekday; i++) cells.push({ label: "", value: null });
-    // 当月日付
     for (let day = 1; day <= dim; day++) {
       const d = new Date(month.getFullYear(), month.getMonth(), day);
       cells.push({ label: String(day), value: ymd(d) });
     }
-    // 週の端を揃える
     while (cells.length % 7 !== 0) cells.push({ label: "", value: null });
+
     return cells;
   }, [month]);
 
-  async function refreshReserved(ymdStr: string) {
-    const res = await fetch(`/api/reservations?date=${encodeURIComponent(ymdStr)}`, {
-      cache: "no-store",
-    });
+  async function refreshSpots(ymdStr: string) {
+    const res = await fetch(
+      `/api/reservations?date=${encodeURIComponent(ymdStr)}&placeId=${encodeURIComponent(
+        PLACE_ID
+      )}`,
+      { cache: "no-store" }
+    );
     const json = await res.json();
+
     if (json.ok) {
-      setReserved(new Set((json.reservedSlots ?? []).map((s: string) => String(s))));
+      const fetchedSpots: SpotItem[] = (json.spots ?? []).map((s: any) => ({
+        id: String(s.id),
+        code: String(s.code),
+        label: s.label ? String(s.label) : null,
+        isReserved: Boolean(s.isReserved),
+      }));
+
+      setSpots(fetchedSpots);
+
+      const selected = fetchedSpots.find((s) => s.id === spotId);
+      if (!selected || selected.isReserved) {
+        const firstFree = fetchedSpots.find((s) => !s.isReserved);
+        setSpotId(firstFree?.id ?? "");
+        setSpotCode(firstFree?.code ?? "");
+      }
     }
   }
 
@@ -133,11 +166,13 @@ export default function ReservePage() {
     setMsg("");
 
     if (!date) return setMsg("日付を選んでください");
-    if (!slot) return setMsg("区画を選んでください");
+    if (!spotId) return setMsg("区画を選んでください");
     if (!name.trim()) return setMsg("名前を入力してください");
     if (!plate.trim()) return setMsg("車両ナンバーを入力してください");
 
-    if (reserved.has(slot)) {
+    const selectedSpot = spots.find((s) => s.id === spotId);
+    if (!selectedSpot) return setMsg("区画を選び直してください");
+    if (selectedSpot.isReserved) {
       return setMsg("その区画は予約済みです。別の区画を選んでください。");
     }
 
@@ -148,7 +183,9 @@ export default function ReservePage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           date,
-          slot,
+          slot: selectedSpot.code,
+          placeId: PLACE_ID,
+          spotId: selectedSpot.id,
           name: name.trim(),
           plate: plate.trim(),
           email: email?.trim() ? email.trim() : null,
@@ -162,16 +199,14 @@ export default function ReservePage() {
         return;
       }
 
-      // 成功モーダルへ（PINを大表示）
       setSuccess({
         pin: String(json.pin),
         price: Number(json.price),
-        slot,
+        spotCode: selectedSpot.code,
         date,
       });
 
-      // 予約状況を再取得
-      await refreshReserved(date);
+      await refreshSpots(date);
     } catch (e: any) {
       setMsg(`予約失敗: ${String(e?.message ?? e)}`);
     } finally {
@@ -183,7 +218,6 @@ export default function ReservePage() {
 
   return (
     <div style={{ maxWidth: 560, margin: "24px auto", padding: 16, fontFamily: "system-ui" }}>
-      {/* 成功モーダル */}
       {success && (
         <div
           style={{
@@ -242,13 +276,13 @@ export default function ReservePage() {
             </div>
 
             <div style={{ marginTop: 12, fontSize: 12, color: "#666" }}>
-              区画：{success.slot}　/　日付：{success.date}　/　料金：{success.price}円
+              区画：{success.spotCode}　/　日付：{success.date}　/　料金：{success.price}円
             </div>
 
             <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
               <button
                 onClick={() => {
-                  window.location.href = `/gate?slot=${encodeURIComponent(success.slot)}`;
+                  window.location.href = `/gate?slot=${encodeURIComponent(success.spotCode)}`;
                 }}
                 style={{
                   flex: 1,
@@ -284,7 +318,6 @@ export default function ReservePage() {
 
       <h1 style={{ fontSize: 22, fontWeight: 900, marginBottom: 10 }}>駐車場予約</h1>
 
-      {/* 残り表示 */}
       <div
         style={{
           border: "1px solid #eee",
@@ -294,14 +327,15 @@ export default function ReservePage() {
           marginBottom: 14,
         }}
       >
-        <div style={{ fontWeight: 900, fontSize: 18 }}>
-          残り {remaining} / {TOTAL_SLOTS}
+        <div style={{ fontWeight: 900, fontSize: 18 }}>{placeName}</div>
+        <div style={{ fontSize: 12, color: "#666", marginTop: 4 }}>{placeAddress}</div>
+        <div style={{ fontWeight: 900, fontSize: 18, marginTop: 8 }}>
+          残り {remaining} / {spots.length || 0}
           {loading ? "（更新中）" : ""}
         </div>
         <div style={{ fontSize: 12, color: "#666", marginTop: 4 }}>選択日：{date}</div>
       </div>
 
-      {/* カレンダー */}
       <div style={{ border: "1px solid #eee", borderRadius: 14, padding: 12 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <button
@@ -378,7 +412,6 @@ export default function ReservePage() {
         </div>
       </div>
 
-      {/* 予約フォーム */}
       <div style={{ marginTop: 14, border: "1px solid #eee", borderRadius: 14, padding: 12 }}>
         <div style={{ fontWeight: 900, marginBottom: 10 }}>予約内容</div>
 
@@ -393,27 +426,29 @@ export default function ReservePage() {
                 marginTop: 6,
               }}
             >
-              {SLOTS.map((s) => {
-                const isReserved = reserved.has(s);
-                const isSelected = slot === s;
+              {spots.map((s) => {
+                const isSelected = spotId === s.id;
 
                 return (
                   <button
-                    key={s}
-                    disabled={isReserved}
-                    onClick={() => setSlot(s)}
+                    key={s.id}
+                    disabled={s.isReserved}
+                    onClick={() => {
+                      setSpotId(s.id);
+                      setSpotCode(s.code);
+                    }}
                     style={{
                       padding: "10px 0",
                       borderRadius: 12,
                       border: isSelected ? "2px solid #1976d2" : "1px solid #ddd",
-                      background: isReserved ? "#f2f2f2" : isSelected ? "#e8f2ff" : "#fff",
-                      color: isReserved ? "#999" : "#111",
+                      background: s.isReserved ? "#f2f2f2" : isSelected ? "#e8f2ff" : "#fff",
+                      color: s.isReserved ? "#999" : "#111",
                       fontWeight: 900,
-                      cursor: isReserved ? "not-allowed" : "pointer",
+                      cursor: s.isReserved ? "not-allowed" : "pointer",
                     }}
-                    title={isReserved ? "予約済み" : "選択"}
+                    title={s.isReserved ? "予約済み" : "選択"}
                   >
-                    {s}
+                    {s.label || s.code}
                   </button>
                 );
               })}
@@ -452,7 +487,7 @@ export default function ReservePage() {
 
           <button
             onClick={submit}
-            disabled={loading || !date || !slot || reserved.has(slot)}
+            disabled={loading || !date || !spotId}
             style={{
               padding: "14px 12px",
               borderRadius: 14,

@@ -3,58 +3,110 @@
 import { useState } from "react";
 
 export default function AdminLoginPage() {
-  const [token, setToken] = useState("");
-  const [msg, setMsg] = useState("");
+  const [email, setEmail] = useState("admin@parktech.local");
+  const [password, setPassword] = useState("ChangeMe123!");
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState("");
 
-  async function onLogin() {
-    setMsg("");
-    const res = await fetch("/api/admin/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token }),
-    });
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setErr("");
+    setLoading(true);
 
-    if (res.ok) {
-      location.href = "/admin";
-    } else {
-      setMsg("トークンが違います");
+    try {
+      const res = await fetch("/api/admin/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+
+      const json = await res.json();
+
+      if (!json.ok) {
+        setErr("ログインに失敗しました");
+        return;
+      }
+
+      window.location.href = "/admin";
+    } catch (e: any) {
+      setErr(String(e?.message ?? e));
+    } finally {
+      setLoading(false);
     }
   }
 
   return (
-    <div style={{ maxWidth: 520, margin: "80px auto", padding: 24 }}>
-      <h1 style={{ fontSize: 20, fontWeight: 700 }}>管理者ログイン</h1>
+    <div style={{ maxWidth: 420, margin: "48px auto", padding: 24 }}>
+      <h1 style={{ fontSize: 24, fontWeight: 900, marginBottom: 16 }}>
+        管理者ログイン
+      </h1>
 
-      <input
-        value={token}
-        onChange={(e) => setToken(e.target.value)}
-        placeholder="トークン"
+      <form
+        onSubmit={submit}
         style={{
-          width: "100%",
-          padding: "12px 14px",
-          borderRadius: 10,
-          border: "1px solid #ccc",
-          marginTop: 12,
-        }}
-      />
-
-      <button
-        onClick={onLogin}
-        style={{
-          marginTop: 14,
-          padding: "12px 16px",
-          borderRadius: 10,
-          border: "1px solid #111",
-          background: "#111",
-          color: "#fff",
-          fontWeight: 700,
-          width: "100%",
+          border: "1px solid #eee",
+          borderRadius: 16,
+          padding: 16,
+          background: "#fff",
         }}
       >
-        ログイン
-      </button>
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ fontSize: 12, color: "#666", marginBottom: 6 }}>
+            メールアドレス
+          </div>
+          <input
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            style={{
+              width: "100%",
+              padding: 12,
+              borderRadius: 12,
+              border: "1px solid #ddd",
+            }}
+          />
+        </div>
 
-      {msg && <p style={{ marginTop: 10 }}>{msg}</p>}
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ fontSize: 12, color: "#666", marginBottom: 6 }}>
+            パスワード
+          </div>
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            style={{
+              width: "100%",
+              padding: 12,
+              borderRadius: 12,
+              border: "1px solid #ddd",
+            }}
+          />
+        </div>
+
+        <button
+          type="submit"
+          disabled={loading}
+          style={{
+            width: "100%",
+            padding: 12,
+            borderRadius: 12,
+            border: "1px solid #111",
+            background: "#111",
+            color: "#fff",
+            fontWeight: 800,
+            cursor: "pointer",
+            opacity: loading ? 0.7 : 1,
+          }}
+        >
+          {loading ? "ログイン中..." : "ログイン"}
+        </button>
+
+        {err ? (
+          <div style={{ marginTop: 12, color: "crimson", fontWeight: 700 }}>
+            {err}
+          </div>
+        ) : null}
+      </form>
     </div>
   );
 }

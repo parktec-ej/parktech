@@ -7,47 +7,208 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model Place {
+  id            String        @id @default(uuid())
+  slug          String        @unique
+  name          String
+  address       String?
+  ownerId       String?
+  operationMode OperationMode @default(RESERVATION_ONLY)
+  isActive      Boolean       @default(true)
+  createdAt     DateTime      @default(now())
+
+  owner         Owner?        @relation(fields: [ownerId], references: [id])
+
+  spots         Spot[]
+  reservations  Reservation[]
+  sessions      ParkingSession[]
+  pricingRules  PricingRule[]
+  eventDays     EventDay[]
+
+  @@index([ownerId])
+  @@index([operationMode])
+}
+
+model Spot {
+  id                    String         @id @default(uuid())
+  placeId               String
+  code                  String
+  label                 String?
+  operationModeOverride OperationMode?
+  isActive              Boolean        @default(true)
+  createdAt             DateTime       @default(now())
+
+  place        Place             @relation(fields: [placeId], references: [id])
+  reservations Reservation[]
+  sessions     ParkingSession[]
+
+  @@unique([placeId, code])
+  @@index([placeId])
+  @@index([operationModeOverride])
+}
+
 model Reservation {
-  id        String  @id @default(dbgenerated("gen_random_uuid()::text"))
+  id        String   @id @default(uuid())
   date      String
   slot      String
   name      String
   plate     String
   price     Int
 
-  qrToken   String  @unique @default(dbgenerated("gen_random_uuid()::text"))
-
-  // DBにある createdAt をPrismaにも合わせる
+  qrToken   String   @unique @default(uuid())
   createdAt DateTime @default(now())
 
-  // 予約者通知用（任意）
   email     String?
 
-  // 4桁コード：DB側のdefault生成に合わせる（←ここが重要）
-  pin       String   @default(dbgenerated("lpad((floor(random()*10000))::int::text, 4, '0')"))
-
-  // 任意：PINを生で持ちたくない場合の保険
+  pin       String
   pinHash   String?
 
-  // チェックイン状態
-  checkedIn Boolean @default(false)
+  checkedIn Boolean  @default(false)
 
-  // 入出庫時刻
   checkedInAt  DateTime?
   checkedOutAt DateTime?
 
-  // 支払い状態
-  paid       Boolean @default(false)
-  paidAt      DateTime?
-  paymentRef  String?
+  paid       Boolean  @default(false)
+  paidAt     DateTime?
+  paymentRef String?
 
-  @@unique([date, slot])
+  placeId String?
+  spotId  String?
+
+  place Place? @relation(fields: [placeId], references: [id])
+  spot  Spot?  @relation(fields: [spotId], references: [id])
+
+  sessions ParkingSession[]
+
+  @@index([placeId])
+  @@index([spotId])
+  @@index([date, slot])
+  @@unique([date, slot, spotId])
+}
+
+model ParkingSession {
+  id            String        @id @default(uuid())
+  placeId       String
+  spotId        String
+  reservationId String?
+
+  sessionType   SessionType
+
+  plate         String?
+
+  checkInAt     DateTime      @default(now())
+  checkOutAt    DateTime?
+
+  totalMinutes  Int?
+  totalYen      Int?
+
+  paid          Boolean       @default(false)
+  paidAt        DateTime?
+  paymentRef    String?
+
+  status        SessionStatus @default(IN)
+
+  createdAt     DateTime      @default(now())
+
+  place        Place        @relation(fields: [placeId], references: [id])
+  spot         Spot         @relation(fields: [spotId], references: [id])
+  reservation  Reservation? @relation(fields: [reservationId], references: [id])
+
+  @@index([placeId])
+  @@index([spotId])
+  @@index([reservationId])
+  @@index([status])
+}
+
+model AdminUser {
+  id               String   @id @default(uuid())
+  email            String   @unique
+  passwordHash     String
+  name             String?
+  sessionToken     String?  @unique
+  sessionExpiresAt DateTime?
+  createdAt        DateTime @default(now())
+
+  @@index([sessionExpiresAt])
+}
+
+model Owner {
+  id           String   @id @default(uuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  createdAt    DateTime @default(now())
+
+  places       Place[]
 }
 
 model PricingCalendar {
-  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  targetDate DateTime @unique @db.Timestamptz(6)
+  id         String   @id @default(uuid())
+  targetDate DateTime @unique
   priceYen   Int
   label      String   @default("NORMAL")
-  createdAt  DateTime @default(now()) @db.Timestamptz(6)
+  createdAt  DateTime @default(now())
+
+  @@index([targetDate])
+}
+
+model PricingRule {
+  id           String       @id @default(uuid())
+  placeId      String
+  pricingType  PricingType
+  hourlyYen    Int?
+  fixedYen     Int?
+  roundingType RoundingType @default(CEIL_HOUR)
+  isActive     Boolean      @default(true)
+  createdAt    DateTime     @default(now())
+
+  place        Place        @relation(fields: [placeId], references: [id])
+
+  @@index([placeId])
+  @@index([pricingType])
+  @@index([isActive])
+}
+
+model EventDay {
+  id                String   @id @default(uuid())
+  placeId           String
+  date              DateTime
+  label             String?
+  hourlyYenOverride Int?
+  fixedYenOverride  Int?
+  isActive          Boolean  @default(true)
+  createdAt         DateTime @default(now())
+
+  place             Place    @relation(fields: [placeId], references: [id])
+
+  @@unique([placeId, date])
+  @@index([placeId])
+  @@index([date])
+  @@index([isActive])
+}
+
+enum SessionType {
+  RESERVATION
+  HOURLY
+}
+
+enum SessionStatus {
+  IN
+  OUT
+}
+
+enum OperationMode {
+  RESERVATION_ONLY
+  HOURLY_ONLY
+  RESERVATION_THEN_HOURLY
+  CLOSED
+}
+
+enum PricingType {
+  RESERVATION_FIXED
+  HOURLY
+}
+
+enum RoundingType {
+  CEIL_HOUR
 }

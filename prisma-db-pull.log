@@ -1,0 +1,64 @@
+prisma:cli:bin Failed to initialize the command state: Error: ENOENT: no such file or directory, open '/Users/tatsunoriabe/Library/Preferences/prisma-nodejs/commands.json' +167ms
+prisma:config:loadConfigFromFile Config file loaded in 20.43ms +147ms
+prisma:config:loadConfigFromFile No config file found in the current working directory /Users/tatsunoriabe/parking-test +1ms
+prisma:getSchema prismaConfig null +21ms
+prisma:getSchema Checking existence of /Users/tatsunoriabe/parking-test/schema.prisma +0ms
+prisma:getSchema Reading schema from single file /Users/tatsunoriabe/parking-test/schema.prisma +0ms
+prisma:getSchema Checking existence of /Users/tatsunoriabe/parking-test/prisma/schema.prisma +0ms
+prisma:getSchema Reading schema from single file /Users/tatsunoriabe/parking-test/prisma/schema.prisma +0ms
+prisma:getConfig Using getConfig Wasm +1ms
+prisma:cli Failed to read schema information. Using default values: '{\n  "name": "GetConfigError"\n}' +5ms
+prisma:engines binaries to download schema-engine, libquery-engine +194ms
+prisma:getSchema prismaConfig null +1ms
+prisma:getSchema Checking existence of /Users/tatsunoriabe/parking-test/schema.prisma +0ms
+prisma:getSchema Reading schema from single file /Users/tatsunoriabe/parking-test/schema.prisma +0ms
+prisma:getSchema prismaConfig null +0ms
+prisma:getSchema Checking existence of /Users/tatsunoriabe/parking-test/schema.prisma +0ms
+prisma:getSchema Reading schema from single file /Users/tatsunoriabe/parking-test/schema.prisma +0ms
+prisma:getSchema Checking existence of /Users/tatsunoriabe/parking-test/prisma/schema.prisma +0ms
+prisma:getSchema Reading schema from single file /Users/tatsunoriabe/parking-test/prisma/schema.prisma +0ms
+prisma:getSchema Checking existence of /Users/tatsunoriabe/parking-test/prisma/schema.prisma +0ms
+prisma:getSchema Reading schema from single file /Users/tatsunoriabe/parking-test/prisma/schema.prisma +1ms
+prisma:getConfig Using getConfig Wasm +0ms
+prisma:getConfig config data retrieved without errors in getConfig Wasm +1ms
+prisma:cli:checkpoint runCheckpointClientCheck(): Execution time for getting info: 2.658999999999992 ms +0ms
+prisma:cli:checkpoint runCheckpointClientCheck(): Execution time for "await checkpoint.check(data)": 13.995332999999988 ms +14ms
+prisma:loadEnv project root found at /Users/tatsunoriabe/parking-test/package.json +31ms
+prisma:getSchema prismaConfig null +0ms
+prisma:tryLoadEnv Environment variables loaded from /Users/tatsunoriabe/parking-test/.env +0ms
+Environment variables loaded from .env
+prisma:getSchema prismaConfig null +1ms
+prisma:getSchema Checking existence of /Users/tatsunoriabe/parking-test/schema.prisma +0ms
+prisma:getSchema Reading schema from single file /Users/tatsunoriabe/parking-test/schema.prisma +0ms
+prisma:getSchema Checking existence of /Users/tatsunoriabe/parking-test/prisma/schema.prisma +0ms
+prisma:getSchema Reading schema from single file /Users/tatsunoriabe/parking-test/prisma/schema.prisma +0ms
+prisma:getConfig Using getConfig Wasm +0ms
+prisma:getConfig config data retrieved without errors in getConfig Wasm +1ms
+Prisma schema loaded from prisma/schema.prisma
+Datasource "db": PostgreSQL database "postgres", schema "public" at "aws-1-ap-southeast-1.pooler.supabase.com:6543"
+prisma:getConfig Using getConfig Wasm +0ms
+prisma:getConfig config data retrieved without errors in getConfig Wasm +1ms
+
+- Introspecting based on datasource defined in prisma/schema.prisma
+prisma:schemaEngine:rpc starting Schema engine with binary: /Users/tatsunoriabe/parking-test/node_modules/@prisma/engines/schema-engine-darwin-arm64 +0ms
+prisma:schemaEngine:rpc SENDING RPC CALL {"id":1,"jsonrpc":"2.0","method":"introspect","params":{"schema":{"files":[{"path":"/Users/tatsunoriabe/parking-test/prisma/schema.prisma","content":"generator client {\n  provider = \"prisma-client-js\"\n}\n\ndatasource db {\n  provider = \"postgresql\"\n  url      = env(\"DATABASE_URL\")\n}\n\nmodel Place {\n  id        String   @id @default(uuid())\n  slug      String   @unique\n  name      String\n  address   String?\n  isActive  Boolean  @default(true)\n  createdAt DateTime @default(now())\n\n  spots        Spot[]\n  reservations Reservation[]\n  sessions     ParkingSession[]\n}\n\nmodel Spot {\n  id        String   @id @default(uuid())\n  placeId   String\n  code      String\n  label     String?\n  isActive  Boolean  @default(true)\n  createdAt DateTime @default(now())\n\n  place        Place   @relation(fields: [placeId], references: [id])\n  reservations Reservation[]\n  sessions     ParkingSession[]\n\n  @@unique([placeId, code])\n}\n\nmodel Reservation {\n  id        String  @id @default(uuid())\n\n  date      String\n  slot      String\n  name      String\n  plate     String\n  price     Int\n\n  qrToken   String  @unique @default(uuid())\n  createdAt DateTime @default(now())\n\n  email     String?\n\n  pin       String\n  pinHash   String?\n\n  checkedIn Boolean @default(false)\n\n  checkedInAt  DateTime?\n  checkedOutAt DateTime?\n\n  paid       Boolean @default(false)\n  paidAt     DateTime?\n  paymentRef String?\n\n  placeId String?\n  spotId  String?\n\n  place Place? @relation(fields: [placeId], references: [id])\n  spot  Spot?  @relation(fields: [spotId], references: [id])\n\n  sessions ParkingSession[]\n\n  @@unique([date, slot])\n}\n\nmodel ParkingSession {\n  id            String   @id @default(uuid())\n  placeId       String\n  spotId        String\n  reservationId String?\n\n  sessionType   SessionType\n\n  plate         String?\n\n  checkInAt     DateTime @default(now())\n  checkOutAt    DateTime?\n\n  totalMinutes  Int?\n  totalYen      Int?\n\n  paid          Boolean  @default(false)\n  paidAt        DateTime?\n  paymentRef    String?\n\n  status        SessionStatus @default(IN)\n\n  createdAt     DateTime @default(now())\n\n  place        Place        @relation(fields: [placeId], references: [id])\n  spot         Spot         @relation(fields: [spotId], references: [id])\n  reservation  Reservation? @relation(fields: [reservationId], references: [id])\n}\n\nmodel AdminUser {\n  id           String   @id @default(uuid())\n  email        String   @unique\n  passwordHash String\n  name         String?\n  createdAt    DateTime @default(now())\n}\n\nmodel Owner {\n  id           String   @id @default(uuid())\n  name         String\n  email        String   @unique\n  passwordHash String\n  createdAt    DateTime @default(now())\n}\n\nmodel PricingCalendar {\n  id         String   @id @default(uuid())\n  targetDate DateTime @unique\n  priceYen   Int\n  label      String   @default(\"NORMAL\")\n  createdAt  DateTime @default(now())\n}\n\nenum SessionType {\n  RESERVATION\n  HOURLY\n}\n\nenum SessionStatus {\n  IN\n  OUT\n}"}]},"force":false,"compositeTypeDepth":-1,"baseDirectoryPath":"/Users/tatsunoriabe/parking-test/prisma"}} +1ms
+prisma:schemaEngine:stderr {"timestamp":"2026-03-09T00:59:05.563859Z","level":"INFO","fields":{"message":"Starting schema engine RPC server","git_hash":"c2990dca591cba766e3b7ef5d9e8a84796e47ab7"},"target":"schema_engine"} +4ms
+prisma:schemaEngine:stderr {"timestamp":"2026-03-09T00:59:05.564348Z","level":"INFO","fields":{"message":"SchemasContainer { files: [SchemaContainer { content: \"generator client {\\n  provider = \\\"prisma-client-js\\\"\\n}\\n\\ndatasource db {\\n  provider = \\\"postgresql\\\"\\n  url      = env(\\\"DATABASE_URL\\\")\\n}\\n\\nmodel Place {\\n  id        String   @id @default(uuid())\\n  slug      String   @unique\\n  name      String\\n  address   String?\\n  isActive  Boolean  @default(true)\\n  createdAt DateTime @default(now())\\n\\n  spots        Spot[]\\n  reservations Reservation[]\\n  sessions     ParkingSession[]\\n}\\n\\nmodel Spot {\\n  id        String   @id @default(uuid())\\n  placeId   String\\n  code      String\\n  label     String?\\n  isActive  Boolean  @default(true)\\n  createdAt DateTime @default(now())\\n\\n  place        Place   @relation(fields: [placeId], references: [id])\\n  reservations Reservation[]\\n  sessions     ParkingSession[]\\n\\n  @@unique([placeId, code])\\n}\\n\\nmodel Reservation {\\n  id        String  @id @default(uuid())\\n\\n  date      String\\n  slot      String\\n  name      String\\n  plate     String\\n  price     Int\\n\\n  qrToken   String  @unique @default(uuid())\\n  createdAt DateTime @default(now())\\n\\n  email     String?\\n\\n  pin       String\\n  pinHash   String?\\n\\n  checkedIn Boolean @default(false)\\n\\n  checkedInAt  DateTime?\\n  checkedOutAt DateTime?\\n\\n  paid       Boolean @default(false)\\n  paidAt     DateTime?\\n  paymentRef String?\\n\\n  placeId String?\\n  spotId  String?\\n\\n  place Place? @relation(fields: [placeId], references: [id])\\n  spot  Spot?  @relation(fields: [spotId], references: [id])\\n\\n  sessions ParkingSession[]\\n\\n  @@unique([date, slot])\\n}\\n\\nmodel ParkingSession {\\n  id            String   @id @default(uuid())\\n  placeId       String\\n  spotId        String\\n  reservationId String?\\n\\n  sessionType   SessionType\\n\\n  plate         String?\\n\\n  checkInAt     DateTime @default(now())\\n  checkOutAt    DateTime?\\n\\n  totalMinutes  Int?\\n  totalYen      Int?\\n\\n  paid          Boolean  @default(false)\\n  paidAt        DateTime?\\n  paymentRef    String?\\n\\n  status        SessionStatus @default(IN)\\n\\n  createdAt     DateTime @default(now())\\n\\n  place        Place        @relation(fields: [placeId], references: [id])\\n  spot         Spot         @relation(fields: [spotId], references: [id])\\n  reservation  Reservation? @relation(fields: [reservationId], references: [id])\\n}\\n\\nmodel AdminUser {\\n  id           String   @id @default(uuid())\\n  email        String   @unique\\n  passwordHash String\\n  name         String?\\n  createdAt    DateTime @default(now())\\n}\\n\\nmodel Owner {\\n  id           String   @id @default(uuid())\\n  name         String\\n  email        String   @unique\\n  passwordHash String\\n  createdAt    DateTime @default(now())\\n}\\n\\nmodel PricingCalendar {\\n  id         String   @id @default(uuid())\\n  targetDate DateTime @unique\\n  priceYen   Int\\n  label      String   @default(\\\"NORMAL\\\")\\n  createdAt  DateTime @default(now())\\n}\\n\\nenum SessionType {\\n  RESERVATION\\n  HOURLY\\n}\\n\\nenum SessionStatus {\\n  IN\\n  OUT\\n}\", path: \"/Users/tatsunoriabe/parking-test/prisma/schema.prisma\" }] }"},"target":"schema_core::state"} +0ms
+prisma:schemaEngine:rpc {
+  "jsonrpc": "2.0",
+  "error": {
+    "code": 4466,
+    "message": "An error happened. Check the data field for details.",
+    "data": {
+      "is_panic": false,
+      "message": "ERROR: prepared statement \"s1\" already exists\n",
+      "backtrace": null
+    }
+  },
+  "id": 1
+} +1125ms
+✖ Introspecting based on datasource defined in prisma/schema.prisma
+
+Error: ERROR: prepared statement "s1" already exists
+
+

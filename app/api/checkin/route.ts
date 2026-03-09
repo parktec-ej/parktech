@@ -1,4 +1,3 @@
-// app/api/checkin/route.ts
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 
@@ -7,6 +6,7 @@ function ymdTodayJst() {
   const jst = new Date(now.getTime() + 9 * 60 * 60 * 1000);
   return jst.toISOString().slice(0, 10);
 }
+
 function normalizeDate(input: string): string {
   if (!input) return input;
   if (/^\d{8}$/.test(input)) {
@@ -14,12 +14,27 @@ function normalizeDate(input: string): string {
   }
   return input;
 }
+
 function normalizeSlot(input: string): string {
-  if (!input) return input;
-  const m = input.match(/^S(\d{1,2})$/i);
-  if (!m) return input;
-  return `S${String(Number(m[1])).padStart(2, "0")}`;
+  if (!input) return input.trim();
+
+  const v = input.trim().toUpperCase();
+
+  // 旧形式 S1 -> S01
+  const s = v.match(/^S(\d{1,2})$/i);
+  if (s) {
+    return `S${String(Number(s[1])).padStart(2, "0")}`;
+  }
+
+  // 新形式 A1 / A01 / A-1 -> A-01
+  const a = v.match(/^([A-Z])[- ]?(\d{1,2})$/i);
+  if (a) {
+    return `${a[1].toUpperCase()}-${String(Number(a[2])).padStart(2, "0")}`;
+  }
+
+  return v;
 }
+
 function jsonError(message: string, status = 400, extra?: any) {
   return NextResponse.json(
     { ok: false, error: message, ...(extra ? { extra } : {}) },
@@ -46,26 +61,37 @@ export async function POST(req: Request) {
         paid: true,
         checkedIn: true,
         checkedInAt: true,
+        placeId: true,
+        spotId: true,
       },
     });
 
-    // 予約なし → 支払い導線へ
     if (!r) {
       return NextResponse.json(
-        { ok: false, error: "no_reservation", message: "予約がありません。支払い入庫へ進んでください。", date, slot },
+        {
+          ok: false,
+          error: "no_reservation",
+          message: "予約がありません。支払い入庫へ進んでください。",
+          date,
+          slot,
+        },
         { status: 404 }
       );
     }
 
-    // 事前支払い必須ならここでチェック
     if (!r.paid) {
       return NextResponse.json(
-        { ok: false, error: "unpaid", message: "未決済です。支払いを完了してください。", date, slot },
+        {
+          ok: false,
+          error: "unpaid",
+          message: "未決済です。支払いを完了してください。",
+          date,
+          slot,
+        },
         { status: 402 }
       );
     }
 
-    // すでにチェックイン済み
     if (r.checkedIn) {
       return NextResponse.json({
         ok: true,
@@ -74,25 +100,51 @@ export async function POST(req: Request) {
         checkedInAt: r.checkedInAt,
         date,
         slot,
+        placeId: r.placeId,
+        spotId: r.spotId,
       });
     }
 
     if (!pin) return jsonError("PIN（4桁コード）を入力してください", 400);
 
-    // PIN照合
     if (pin !== r.pin) {
       return NextResponse.json(
-        { ok: false, error: "invalid_pin", message: "コードが違います", date, slot },
+        {
+          ok: false,
+          error: "invalid_pin",
+          message: "コードが違います",
+          date,
+          slot,
+        },
         { status: 401 }
       );
     }
 
-    // チェックイン確定
+    const now = new Date();
+
     const updated = await prisma.reservation.update({
       where: { id: r.id },
-      data: { checkedIn: true, checkedInAt: new Date() },
-      select: { id: true, checkedInAt: true },
+      data: { checkedIn: true, checkedInAt: now },
+      select: {
+        id: true,
+        checkedInAt: true,
+        placeId: true,
+        spotId: true,
+      },
     });
+
+    if (updated.placeId && updated.spotId) {
+      await prisma.parkingSession.create({
+        data: {
+          placeId: updated.placeId,
+          spotId: updated.spotId,
+          reservationId: updated.id,
+          sessionType: "RESERVATION",
+          checkInAt: now,
+          status: "IN",
+        },
+      });
+    }
 
     return NextResponse.json({
       ok: true,
@@ -101,6 +153,8 @@ export async function POST(req: Request) {
       checkedInAt: updated.checkedInAt,
       date,
       slot,
+      placeId: updated.placeId,
+      spotId: updated.spotId,
     });
   } catch (e: any) {
     return NextResponse.json(
@@ -114,7 +168,7 @@ export async function GET(req: Request) {
   const url = new URL(req.url);
   return NextResponse.json({
     ok: true,
-    hint: 'POST {"slot":"S01","date":"YYYY-MM-DD","pin":"1234"}',
+    hint: 'POST {"slot":"A-01","date":"YYYY-MM-DD","pin":"1234"}',
     receivedUrl: url.toString(),
   });
 }
