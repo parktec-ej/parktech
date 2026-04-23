@@ -120,6 +120,7 @@ export default async function AdminHomePage({
     slug: true,
     address: true,
     operationMode: true,
+    ownerId: true,
   },
 });
 
