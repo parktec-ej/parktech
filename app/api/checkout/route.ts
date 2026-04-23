@@ -1,32 +1,41 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { sendCheckoutThanksMail } from "@/lib/mail";
 
 function ymdTodayJst() {
-  const now = new Date();
-  const jst = new Date(now.getTime() + 9 * 60 * 60 * 1000);
-  return jst.toISOString().slice(0, 10);
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Tokyo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+}
+
+function formatJst(d: Date | null | undefined) {
+  if (!d) return "";
+  return d.toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" });
 }
 
 function normalizeDate(input: string) {
-  if (!input) return input;
-  if (/^\d{8}$/.test(input)) {
-    return `${input.slice(0, 4)}-${input.slice(4, 6)}-${input.slice(6, 8)}`;
+  const v = String(input ?? "").trim();
+  if (!v) return "";
+  if (/^\d{8}$/.test(v)) {
+    return `${v.slice(0, 4)}-${v.slice(4, 6)}-${v.slice(6, 8)}`;
   }
-  return input;
+  return v;
 }
 
 function normalizeSlot(input: string): string {
-  if (!input) return input.trim();
+  const raw = String(input ?? "");
+  if (!raw) return "";
 
-  const v = input.trim().toUpperCase();
+  const v = raw.trim().toUpperCase();
 
-  // 旧形式 S1 -> S01
   const s = v.match(/^S(\d{1,2})$/i);
   if (s) {
     return `S${String(Number(s[1])).padStart(2, "0")}`;
   }
 
-  // 新形式 A1 / A01 / A-1 -> A-01
   const a = v.match(/^([A-Z])[- ]?(\d{1,2})$/i);
   if (a) {
     return `${a[1].toUpperCase()}-${String(Number(a[2])).padStart(2, "0")}`;
@@ -35,142 +44,396 @@ function normalizeSlot(input: string): string {
   return v;
 }
 
-function jsonError(message: string, status = 400, extra?: any) {
+function jsonError(
+  error: string,
+  message: string,
+  status = 400,
+  extra?: unknown
+) {
   return NextResponse.json(
-    { ok: false, error: message, ...(extra ? { extra } : {}) },
+    { ok: false, error, message, ...(extra ? { extra } : {}) },
     { status }
   );
 }
 
-// 出庫処理
 export async function POST(req: Request) {
   try {
     const body = await req.json().catch(() => null);
-    if (!body) return jsonError("JSONが壊れてます", 400);
+    if (!body) {
+      return jsonError("invalid_json", "JSONが壊れています", 400);
+    }
 
+    const placeKey = String(body.placeId ?? "").trim();
     const date = normalizeDate(String(body.date ?? ymdTodayJst()));
     const slot = normalizeSlot(String(body.slot ?? ""));
-    if (!slot) return jsonError("slot は必須です", 400);
+    const pin = String(body.pin ?? "").trim();
 
-    const r = await prisma.reservation.findFirst({
-      where: { date, slot },
-      select: {
-        id: true,
-        checkedIn: true,
-        checkedInAt: true,
-        checkedOutAt: true,
-        paid: true,
-        placeId: true,
-        spotId: true,
-      },
-    });
+    if (!placeKey) {
+      return jsonError("missing_place_id", "placeId は必須です", 400);
+    }
 
-    if (!r) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error: "no_reservation",
-          message: "予約がありません。精算（現地決済）へ進んでください。",
-          date,
-          slot,
-        },
-        { status: 404 }
+    if (!slot) {
+      return jsonError("missing_slot", "slot は必須です", 400);
+    }
+
+    if (!pin) {
+      return jsonError("missing_pin", "pin は必須です", 400);
+    }
+
+    if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      return jsonError(
+        "invalid_date",
+        "date は YYYY-MM-DD 形式で指定してください",
+        400
       );
     }
 
-    if (!r.checkedIn) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error: "not_checked_in",
-          message: "チェックインが完了していません。",
-          date,
-          slot,
-        },
-        { status: 409 }
-      );
-    }
-
-    if (r.checkedOutAt) {
-      return NextResponse.json({
-        ok: true,
-        status: "already_checked_out",
-        reservationId: r.id,
-        checkedOutAt: r.checkedOutAt,
-        date,
-        slot,
-        placeId: r.placeId,
-        spotId: r.spotId,
-      });
-    }
-
-    const now = new Date();
-
-    const updated = await prisma.reservation.update({
-      where: { id: r.id },
-      data: { checkedOutAt: now },
+    const place = await prisma.place.findFirst({
+      where: {
+        OR: [{ id: placeKey }, { slug: placeKey }],
+      },
       select: {
         id: true,
-        checkedOutAt: true,
-        placeId: true,
-        spotId: true,
+        slug: true,
+        name: true,
+        isActive: true,
       },
     });
 
-    if (updated.placeId && updated.spotId) {
-      const openSession = await prisma.parkingSession.findFirst({
+    if (!place || !place.isActive) {
+      return jsonError("place_not_found", "駐車場が見つかりません", 404);
+    }
+
+    const resolvedPlaceId = place.id;
+
+    const spot = await prisma.spot.findFirst({
+      where: {
+        placeId: resolvedPlaceId,
+        code: slot,
+        isActive: true,
+      },
+      select: {
+        id: true,
+        code: true,
+        label: true,
+      },
+    });
+
+    if (!spot) {
+      return jsonError("spot_not_found", "区画が見つかりません", 404);
+    }
+
+    const result = await prisma.$transaction(async (tx) => {
+      const openSession = await tx.parkingSession.findFirst({
         where: {
-          reservationId: updated.id,
-          placeId: updated.placeId,
-          spotId: updated.spotId,
+          placeId: resolvedPlaceId,
+          spotId: spot.id,
+          sessionType: "RESERVATION",
           status: "IN",
           checkOutAt: null,
         },
-        orderBy: { checkInAt: "desc" },
-        select: { id: true, checkInAt: true },
+        orderBy: {
+          checkInAt: "desc",
+        },
+        select: {
+          id: true,
+          reservationId: true,
+          checkInAt: true,
+        },
       });
 
-      if (openSession) {
-        const totalMinutes = Math.max(
+      let reservation =
+        openSession?.reservationId
+          ? await tx.reservation.findUnique({
+              where: { id: openSession.reservationId },
+              include: {
+                place: {
+                  select: {
+                    name: true,
+                  },
+                },
+                spot: {
+                  select: {
+                    code: true,
+                    label: true,
+                  },
+                },
+              },
+            })
+          : null;
+
+      if (!reservation) {
+        reservation = await tx.reservation.findFirst({
+          where: {
+            placeId: resolvedPlaceId,
+            date,
+            slot,
+            pin,
+          },
+          orderBy: {
+            createdAt: "desc",
+          },
+          include: {
+            place: {
+              select: {
+                name: true,
+              },
+            },
+            spot: {
+              select: {
+                code: true,
+                label: true,
+              },
+            },
+          },
+        });
+      }
+
+      if (!reservation) {
+        return {
+          kind: "error" as const,
+          response: NextResponse.json(
+            {
+              ok: false,
+              error: "no_reservation",
+              message: "予約が見つかりません。",
+              date,
+              slot,
+              placeId: resolvedPlaceId,
+            },
+            { status: 404 }
+          ),
+        };
+      }
+
+      if (!reservation.paid) {
+        return {
+          kind: "error" as const,
+          response: NextResponse.json(
+            {
+              ok: false,
+              error: "not_paid",
+              message: "この予約は未決済です。",
+              date,
+              slot,
+              placeId: resolvedPlaceId,
+              reservationId: reservation.id,
+            },
+            { status: 409 }
+          ),
+        };
+      }
+
+      if (!reservation.checkedIn) {
+        return {
+          kind: "error" as const,
+          response: NextResponse.json(
+            {
+              ok: false,
+              error: "not_checked_in",
+              message: "チェックインが完了していません。",
+              date,
+              slot,
+              placeId: resolvedPlaceId,
+              reservationId: reservation.id,
+            },
+            { status: 409 }
+          ),
+        };
+      }
+
+      const now = new Date();
+
+      if (reservation.checkedOutAt) {
+        const totalMinutes =
+          reservation.checkedInAt
+            ? Math.max(
+                0,
+                Math.round(
+                  (reservation.checkedOutAt.getTime() -
+                    reservation.checkedInAt.getTime()) /
+                    60000
+                )
+              )
+            : 0;
+
+        return {
+          kind: "success" as const,
+          response: NextResponse.json({
+            ok: true,
+            status: "already_checked_out",
+            reservationId: reservation.id,
+            placeName: reservation.place?.name ?? place.name,
+            spotLabel: reservation.spot?.label ?? reservation.spot?.code ?? slot,
+            useDate: reservation.date,
+            checkInAt: formatJst(reservation.checkedInAt),
+            checkedOutAt: formatJst(reservation.checkedOutAt),
+            totalMinutes,
+            totalYen: reservation.price,
+            paid: true,
+          }),
+        };
+      }
+
+      const updatedReservation = await tx.reservation.update({
+        where: { id: reservation.id },
+        data: {
+          checkedOutAt: now,
+        },
+        include: {
+          place: {
+            select: {
+              name: true,
+            },
+          },
+          spot: {
+            select: {
+              code: true,
+              label: true,
+            },
+          },
+        },
+      });
+
+      const sessionToClose =
+        openSession ??
+        (await tx.parkingSession.findFirst({
+          where: {
+            reservationId: updatedReservation.id,
+            placeId: updatedReservation.placeId ?? resolvedPlaceId,
+            spotId: updatedReservation.spotId ?? spot.id,
+            sessionType: "RESERVATION",
+            status: "IN",
+            checkOutAt: null,
+          },
+          orderBy: {
+            checkInAt: "desc",
+          },
+          select: {
+            id: true,
+            checkInAt: true,
+          },
+        }));
+
+      let totalMinutes = 0;
+
+      if (sessionToClose) {
+        totalMinutes = Math.max(
           0,
-          Math.round((now.getTime() - openSession.checkInAt.getTime()) / 60000)
+          Math.round((now.getTime() - sessionToClose.checkInAt.getTime()) / 60000)
         );
 
-        await prisma.parkingSession.update({
-          where: { id: openSession.id },
+        await tx.parkingSession.update({
+          where: { id: sessionToClose.id },
           data: {
             checkOutAt: now,
             totalMinutes,
+            totalYen: updatedReservation.price,
+            paid: true,
+            paidAt: updatedReservation.paidAt ?? now,
+            paymentRef: updatedReservation.paymentRef,
             status: "OUT",
           },
+        });
+      } else if (updatedReservation.checkedInAt) {
+        totalMinutes = Math.max(
+          0,
+          Math.round((now.getTime() - updatedReservation.checkedInAt.getTime()) / 60000)
+        );
+      }
+
+      return {
+        kind: "success" as const,
+        reservation: updatedReservation,
+        totalMinutes,
+        response: NextResponse.json({
+          ok: true,
+          status: "checked_out",
+          reservationId: updatedReservation.id,
+          placeName: updatedReservation.place?.name ?? place.name,
+          spotLabel:
+            updatedReservation.spot?.label ??
+            updatedReservation.spot?.code ??
+            slot,
+          useDate: updatedReservation.date,
+          checkInAt: formatJst(updatedReservation.checkedInAt),
+          checkedOutAt: formatJst(updatedReservation.checkedOutAt ?? now),
+          totalMinutes,
+          totalYen: updatedReservation.price,
+          paid: true,
+          message: "出庫が完了しました",
+        }),
+      };
+    });
+
+    if (result.kind === "error") {
+      return result.response;
+    }
+
+    if ("reservation" in result) {
+      console.log("reservation checkout mail check:", {
+        reservationId: result.reservation.id,
+        email: result.reservation.email,
+        paymentRef: result.reservation.paymentRef,
+        placeName: result.reservation.place?.name ?? "",
+        spotLabel:
+          result.reservation.spot?.label ??
+          result.reservation.spot?.code ??
+          slot,
+        totalYen: result.reservation.price,
+      });
+
+      if (result.reservation.email && result.reservation.paymentRef) {
+        try {
+          await sendCheckoutThanksMail({
+            to: result.reservation.email,
+            placeName: result.reservation.place?.name ?? "",
+            spotLabel:
+              result.reservation.spot?.label ??
+              result.reservation.spot?.code ??
+              slot,
+            useDate: result.reservation.date,
+            checkIn: formatJst(result.reservation.checkedInAt),
+            checkOut: formatJst(result.reservation.checkedOutAt),
+            minutes: result.totalMinutes,
+            totalYen: result.reservation.price,
+            paymentRef: result.reservation.paymentRef,
+            flowLabel: "予約利用",
+          });
+
+          console.log("reservation checkout thanks mail sent");
+        } catch (mailErr) {
+          console.error("reservation checkout thanks mail error:", mailErr);
+        }
+      } else {
+        console.log("reservation checkout thanks mail skipped:", {
+          hasEmail: !!result.reservation.email,
+          hasPaymentRef: !!result.reservation.paymentRef,
+          email: result.reservation.email ?? null,
+          paymentRef: result.reservation.paymentRef ?? null,
         });
       }
     }
 
-    return NextResponse.json({
-      ok: true,
-      status: "checked_out",
-      reservationId: updated.id,
-      checkedOutAt: updated.checkedOutAt,
-      date,
-      slot,
-      placeId: updated.placeId,
-      spotId: updated.spotId,
-    });
+    return result.response;
   } catch (e: any) {
+    console.error("checkout error:", e);
     return NextResponse.json(
-      { ok: false, error: "server_error", message: String(e?.message ?? e) },
+      {
+        ok: false,
+        error: "server_error",
+        message: String(e?.message ?? e),
+      },
       { status: 500 }
     );
   }
 }
 
-// 疎通確認
 export async function GET(req: Request) {
   const url = new URL(req.url);
   return NextResponse.json({
     ok: true,
-    hint: 'POST {"slot":"A-01","date":"YYYY-MM-DD"}',
+    hint: 'POST {"placeId":"...","slot":"A-01","date":"YYYY-MM-DD","pin":"1234"}',
     receivedUrl: url.toString(),
   });
 }

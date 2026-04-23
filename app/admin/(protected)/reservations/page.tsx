@@ -1,8 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-
-const PLACE_ID = "e24a57f5-787f-4c2e-9394-e5f54053a955";
+import { useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 
 function ymdTodayJst() {
   const now = new Date();
@@ -61,6 +60,27 @@ type ApiResponse = {
   message?: string;
 };
 
+type PlaceOption = {
+  id: string;
+  slug: string;
+  name: string;
+  address: string | null;
+  isActive: boolean;
+};
+
+type PlacesResponse = {
+  ok: boolean;
+  places?: Array<{
+    id: string;
+    slug: string;
+    name: string;
+    address: string | null;
+    isActive: boolean;
+  }>;
+  error?: string;
+  message?: string;
+};
+
 function statusLabel(status: ReservationItem["status"]) {
   switch (status) {
     case "UNPAID":
@@ -76,12 +96,47 @@ function statusLabel(status: ReservationItem["status"]) {
   }
 }
 
+function updateUrl(
+  router: ReturnType<typeof useRouter>,
+  current: URLSearchParams,
+  patch: Record<string, string>
+) {
+  const next = new URLSearchParams(current.toString());
+
+  Object.entries(patch).forEach(([key, value]) => {
+    if (value === "") {
+      next.delete(key);
+    } else {
+      next.set(key, value);
+    }
+  });
+
+  const qs = next.toString();
+  router.replace(qs ? `/admin/reservations?${qs}` : "/admin/reservations", {
+    scroll: false,
+  });
+}
+
 export default function AdminReservationsPage() {
-  const [date, setDate] = useState(ymdTodayJst());
-  const [status, setStatus] = useState("ALL");
-  const [sort, setSort] = useState("slot_asc");
-  const [qInput, setQInput] = useState("");
-  const [qApplied, setQApplied] = useState("");
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
+  const initialDate = searchParams.get("date") || ymdTodayJst();
+  const initialStatus = searchParams.get("status") || "ALL";
+  const initialSort = searchParams.get("sort") || "slot_asc";
+  const initialQ = searchParams.get("q") || "";
+  const initialPlaceId = searchParams.get("placeId") || "";
+
+  const [placeId, setPlaceId] = useState(initialPlaceId);
+  const [date, setDate] = useState(initialDate);
+  const [status, setStatus] = useState(initialStatus);
+  const [sort, setSort] = useState(initialSort);
+  const [qInput, setQInput] = useState(initialQ);
+  const [qApplied, setQApplied] = useState(initialQ);
+
+  const [placesLoading, setPlacesLoading] = useState(true);
+  const [placesErr, setPlacesErr] = useState("");
+  const [places, setPlaces] = useState<PlaceOption[]>([]);
 
   const [loading, setLoading] = useState(true);
   const [actionBusyId, setActionBusyId] = useState<string | null>(null);
@@ -89,18 +144,79 @@ export default function AdminReservationsPage() {
   const [msg, setMsg] = useState("");
   const [data, setData] = useState<ApiResponse | null>(null);
 
+  const currentSearchParams = useMemo(
+    () => new URLSearchParams(searchParams.toString()),
+    [searchParams]
+  );
+
+  async function loadPlaces() {
+    setPlacesLoading(true);
+    setPlacesErr("");
+
+    try {
+      const res = await fetch("/api/admin/places", {
+        cache: "no-store",
+      });
+
+      const text = await res.text();
+      let json: PlacesResponse | null = null;
+
+      try {
+        json = text ? JSON.parse(text) : null;
+      } catch {
+        setPlacesErr(`Place APIがJSONを返していません (${res.status})`);
+        setPlaces([]);
+        return;
+      }
+
+      if (!json?.ok || !json.places) {
+        setPlacesErr(json?.message ?? json?.error ?? "Place一覧の取得に失敗しました");
+        setPlaces([]);
+        return;
+      }
+
+      const activePlaces = json.places.filter((p) => p.isActive !== false);
+      setPlaces(activePlaces);
+
+      if (!placeId && activePlaces.length > 0) {
+        const nextPlaceId = activePlaces[0].id;
+        setPlaceId(nextPlaceId);
+        updateUrl(router, currentSearchParams, {
+          placeId: nextPlaceId,
+          date,
+          status,
+          sort,
+          q: qApplied,
+        });
+      }
+    } catch (e: any) {
+      setPlacesErr(String(e?.message ?? e));
+      setPlaces([]);
+    } finally {
+      setPlacesLoading(false);
+    }
+  }
+
   async function loadReservations(target: {
+    placeId: string;
     date: string;
     status: string;
     sort: string;
     q: string;
   }) {
+    if (!target.placeId) {
+      setLoading(false);
+      setData(null);
+      setErr("placeId が未選択です");
+      return;
+    }
+
     setLoading(true);
     setErr("");
 
     try {
       const params = new URLSearchParams({
-        placeId: PLACE_ID,
+        placeId: target.placeId,
         date: target.date,
         status: target.status,
         sort: target.sort,
@@ -141,8 +257,30 @@ export default function AdminReservationsPage() {
   }
 
   useEffect(() => {
-    loadReservations({ date, status, sort, q: qApplied });
-  }, [date, status, sort, qApplied]);
+    loadPlaces();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (!placeId) return;
+
+    updateUrl(router, currentSearchParams, {
+      placeId,
+      date,
+      status,
+      sort,
+      q: qApplied,
+    });
+
+    loadReservations({
+      placeId,
+      date,
+      status,
+      sort,
+      q: qApplied,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [placeId, date, status, sort, qApplied]);
 
   async function doCancel(reservationId: string) {
     if (!confirm("この予約をキャンセルしますか？")) return;
@@ -174,7 +312,7 @@ export default function AdminReservationsPage() {
       }
 
       setMsg("予約をキャンセルしました");
-      await loadReservations({ date, status, sort, q: qApplied });
+      await loadReservations({ placeId, date, status, sort, q: qApplied });
     } catch (e: any) {
       setErr(String(e?.message ?? e));
     } finally {
@@ -212,7 +350,7 @@ export default function AdminReservationsPage() {
       }
 
       setMsg("強制出庫を実行しました");
-      await loadReservations({ date, status, sort, q: qApplied });
+      await loadReservations({ placeId, date, status, sort, q: qApplied });
     } catch (e: any) {
       setErr(String(e?.message ?? e));
     } finally {
@@ -227,7 +365,7 @@ export default function AdminReservationsPage() {
       </h1>
 
       <div style={{ color: "#666", marginBottom: 16 }}>
-        対象 Place: {data?.place?.name ?? PLACE_ID}
+        対象 Place: {data?.place?.name ?? (placeId ? placeId : "未選択")}
       </div>
 
       <div
@@ -242,11 +380,36 @@ export default function AdminReservationsPage() {
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "180px 180px 180px 1fr auto",
+            gridTemplateColumns: "220px 180px 180px 180px 1fr auto",
             gap: 12,
             alignItems: "end",
           }}
         >
+          <div>
+            <div style={{ fontSize: 12, color: "#666", marginBottom: 6 }}>
+              Place
+            </div>
+            <select
+              value={placeId}
+              onChange={(e) => setPlaceId(e.target.value)}
+              disabled={placesLoading || places.length === 0}
+              style={{
+                width: "100%",
+                padding: 10,
+                borderRadius: 10,
+                border: "1px solid #d1d5db",
+                background: "#fff",
+              }}
+            >
+              {!placeId && <option value="">選択してください</option>}
+              {places.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name} ({p.slug})
+                </option>
+              ))}
+            </select>
+          </div>
+
           <div>
             <div style={{ fontSize: 12, color: "#666", marginBottom: 6 }}>日付</div>
             <input
@@ -346,7 +509,14 @@ export default function AdminReservationsPage() {
               onClick={() => {
                 setQInput("");
                 setQApplied("");
-                loadReservations({ date, status, sort, q: "" });
+                loadReservations({ placeId, date, status, sort, q: "" });
+                updateUrl(router, currentSearchParams, {
+                  placeId,
+                  date,
+                  status,
+                  sort,
+                  q: "",
+                });
               }}
               style={{
                 padding: "10px 14px",
@@ -361,6 +531,12 @@ export default function AdminReservationsPage() {
             </button>
           </div>
         </div>
+
+        {placesErr ? (
+          <div style={{ marginTop: 12, color: "crimson", fontWeight: 700 }}>
+            {placesErr}
+          </div>
+        ) : null}
 
         {data?.summary ? (
           <div
@@ -439,6 +615,17 @@ export default function AdminReservationsPage() {
 
       {loading ? (
         <div>読み込み中...</div>
+      ) : !placeId ? (
+        <div
+          style={{
+            border: "1px solid #e5e7eb",
+            borderRadius: 16,
+            background: "#fff",
+            padding: 20,
+          }}
+        >
+          Place を選択してください。
+        </div>
       ) : !data?.reservations || data.reservations.length === 0 ? (
         <div
           style={{

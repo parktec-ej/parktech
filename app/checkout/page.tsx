@@ -1,257 +1,336 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 
-const PLACE_ID = "e24a57f5-787f-4c2e-9394-e5f54053a955";
-
-function normalizeSlot(input: string): string {
-  if (!input) return input.trim();
-
-  const v = input.trim().toUpperCase();
-
-  const s = v.match(/^S(\d{1,2})$/i);
-  if (s) {
-    return `S${String(Number(s[1])).padStart(2, "0")}`;
-  }
-
-  const a = v.match(/^([A-Z])[- ]?(\d{1,2})$/i);
-  if (a) {
-    return `${a[1].toUpperCase()}-${String(Number(a[2])).padStart(2, "0")}`;
-  }
-
-  return v;
-}
+type CheckoutResponse = {
+  ok?: boolean;
+  error?: string;
+  message?: string;
+  placeId?: string;
+  placeName?: string;
+  spotId?: string;
+  spotLabel?: string;
+  slot?: string;
+  date?: string;
+  checkedInAt?: string | null;
+  checkedOutAt?: string | null;
+  checkedInAtJst?: string | null;
+  checkedOutAtJst?: string | null;
+  minutes?: number | null;
+  totalYen?: number | null;
+  paid?: boolean;
+};
 
 function ymdTodayJst() {
-  const now = new Date();
-  const jst = new Date(now.getTime() + 9 * 60 * 60 * 1000);
-  return jst.toISOString().slice(0, 10);
+  return new Date().toLocaleDateString("sv-SE", {
+    timeZone: "Asia/Tokyo",
+  });
+}
+
+function fmtYen(value?: number | null) {
+  return `${Number(value ?? 0).toLocaleString("ja-JP")} 円`;
 }
 
 export default function CheckoutPage() {
-  const [slot, setSlot] = useState("");
-  const [date, setDate] = useState("");
-  const [mode, setMode] = useState<string>("");
+  const router = useRouter();
+  const search = useSearchParams();
+
+  const placeId = useMemo(
+    () => String(search.get("placeId") ?? "").trim(),
+    [search]
+  );
+  const slot = useMemo(
+    () => String(search.get("slot") ?? "").trim(),
+    [search]
+  );
+  const date = useMemo(
+    () => String(search.get("date") ?? ymdTodayJst()).trim(),
+    [search]
+  );
+
+  const [pin, setPin] = useState("");
   const [loading, setLoading] = useState(false);
-  const [checking, setChecking] = useState(true);
-  const [msg, setMsg] = useState("");
-  const [err, setErr] = useState("");
-  const [result, setResult] = useState<any>(null);
+  const [completed, setCompleted] = useState(false);
+  const [error, setError] = useState("");
+  const [result, setResult] = useState<CheckoutResponse | null>(null);
 
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    setSlot(normalizeSlot(params.get("slot") ?? ""));
-    setDate(params.get("date") ?? ymdTodayJst());
-  }, []);
+  const missingParams = !placeId || !slot || !date;
 
-  useEffect(() => {
-    if (!slot || !date) return;
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
 
-    let cancelled = false;
-
-    async function run() {
-      setChecking(true);
-      setErr("");
-      try {
-        const res = await fetch(
-          `/api/gate-status?placeId=${encodeURIComponent(
-            PLACE_ID
-          )}&slot=${encodeURIComponent(slot)}&date=${encodeURIComponent(date)}`,
-          { cache: "no-store" }
-        );
-        const json = await res.json();
-        if (!cancelled) {
-          setMode(json.mode ?? "");
-        }
-      } catch (e: any) {
-        if (!cancelled) setErr(String(e?.message ?? e));
-      } finally {
-        if (!cancelled) setChecking(false);
-      }
+    if (missingParams) {
+      setError("QRコードが正しくありません。placeId / slot / date を確認してください。");
+      return;
     }
 
-    run();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [slot, date]);
-
-  async function submitReservationCheckout() {
-    setErr("");
-    setMsg("");
-    setResult(null);
-
-    if (!slot) {
-      setErr("slot が見つかりません");
+    if (!pin.trim()) {
+      setError("PINコードを入力してください。");
       return;
     }
 
     setLoading(true);
+    setError("");
+
     try {
       const res = await fetch("/api/checkout", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ date, slot }),
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          placeId,
+          slot,
+          date,
+          pin: pin.trim(),
+        }),
       });
-      const json = await res.json();
-      setResult(json);
 
-      if (json.ok) {
-        setMsg("予約出庫が完了しました。");
-      } else {
-        setErr(json.message ?? json.error ?? "エラーが発生しました");
+      const json = await res.json().catch(() => null);
+
+      if (!json) {
+        setError("出庫処理に失敗しました。");
+        return;
       }
+
+      if (!res.ok || json.ok === false) {
+        setError(String(json.message ?? json.error ?? "出庫処理に失敗しました。"));
+        setResult(json);
+        return;
+      }
+
+      setResult(json);
+      setCompleted(true);
+      setPin("");
     } catch (e: any) {
-      setErr(String(e?.message ?? e));
+      setError(String(e?.message ?? "通信エラーが発生しました。"));
     } finally {
       setLoading(false);
     }
   }
 
-  async function submitHourlyCheckout() {
-    setErr("");
-    setMsg("");
-    setResult(null);
-
-    if (!slot) {
-      setErr("slot が見つかりません");
-      return;
-    }
-
-    setLoading(true);
-    try {
-      const res = await fetch("/api/hourly-checkout", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ placeId: PLACE_ID, slot, date }),
-      });
-      const json = await res.json();
-      setResult(json);
-
-      if (json.ok) {
-        setMsg(
-          `時間貸し出庫が完了しました。料金は ${json.totalYen ?? "-"} 円です。`
-        );
-      } else {
-        setErr(json.message ?? json.error ?? "エラーが発生しました");
-      }
-    } catch (e: any) {
-      setErr(String(e?.message ?? e));
-    } finally {
-      setLoading(false);
-    }
-  }
+  const placeName = result?.placeName ?? placeId;
+  const spotLabel = result?.spotLabel ?? slot;
+  const checkedInAt = result?.checkedInAtJst ?? result?.checkedInAt ?? "-";
+  const checkedOutAt = result?.checkedOutAtJst ?? result?.checkedOutAt ?? "-";
+  const minutes = result?.minutes ?? 0;
+  const totalYen = result?.totalYen ?? 0;
+  const paid = result?.paid ?? false;
 
   return (
-    <div style={{ maxWidth: 520, margin: "0 auto", padding: 24 }}>
-      <h1 style={{ fontSize: 22, fontWeight: 800 }}>チェックアウト</h1>
+    <main style={pageStyle}>
+      <h1 style={titleStyle}>出庫</h1>
 
-      <div
-        style={{
-          marginTop: 10,
-          padding: 12,
-          border: "1px solid #eee",
-          borderRadius: 12,
-          background: "#fafafa",
-        }}
-      >
-        <div style={{ fontWeight: 700 }}>区画: {slot || "（不明）"}</div>
-        <div style={{ marginTop: 6, fontSize: 12, color: "#666" }}>
-          日付: {date || "読込中"}
-        </div>
-        <div style={{ marginTop: 6, fontSize: 12, color: "#666" }}>
-          判定: {checking ? "確認中..." : mode || "不明"}
-        </div>
+      <div style={heroCardStyle}>
+        <div style={heroPlaceStyle}>駐車場ID: {placeId || "-"}</div>
+        <div style={heroInfoStyle}>車室: {slot || "-"}</div>
+        <div style={heroInfoStyle}>日付: {date || "-"}</div>
       </div>
 
-      {!checking && mode === "can_checkout" && (
-        <button
-          onClick={submitReservationCheckout}
-          disabled={loading}
-          style={{
-            width: "100%",
-            marginTop: 16,
-            padding: 12,
-            borderRadius: 12,
-            border: "1px solid #111",
-            background: "#111",
-            color: "#fff",
-            cursor: "pointer",
-            fontWeight: 800,
-            opacity: loading ? 0.7 : 1,
-          }}
-        >
-          {loading ? "処理中..." : "予約出庫する"}
-        </button>
-      )}
+      {completed ? (
+        <>
+          <div style={cardStyle}>
+            <div style={successMessageStyle}>
+              出庫が完了しました。ありがとうございました。
+            </div>
 
-      {!checking && mode === "can_checkout_hourly" && (
-        <button
-          onClick={submitHourlyCheckout}
-          disabled={loading}
-          style={{
-            width: "100%",
-            marginTop: 16,
-            padding: 12,
-            borderRadius: 12,
-            border: "1px solid #111",
-            background: "#111",
-            color: "#fff",
-            cursor: "pointer",
-            fontWeight: 800,
-            opacity: loading ? 0.7 : 1,
-          }}
-        >
-          {loading ? "処理中..." : "時間貸しを精算して出庫する"}
-        </button>
-      )}
-
-      {!checking &&
-        mode !== "can_checkout" &&
-        mode !== "can_checkout_hourly" && (
-          <div
-            style={{
-              marginTop: 16,
-              padding: 12,
-              border: "1px solid #eee",
-              borderRadius: 12,
-              background: "#fff",
-              color: "#444",
-            }}
-          >
-            現在この区画は出庫可能状態ではありません。
+            <div style={normalTextStyle}>
+              コーンを元の位置に戻してお帰りください。
+            </div>
           </div>
-        )}
 
-      {msg ? (
-        <div style={{ marginTop: 12, color: "green", fontWeight: 700 }}>
-          {msg}
-        </div>
-      ) : null}
+          <div style={cardStyle}>
+            <div style={infoRowStyle}>
+              <strong>駐車場:</strong> {placeName || "-"}
+            </div>
+            <div style={infoRowStyle}>
+              <strong>区画:</strong> {spotLabel || "-"}
+            </div>
+            <div style={infoRowStyle}>
+              <strong>利用日:</strong> {date || "-"}
+            </div>
+            <div style={infoRowStyle}>
+              <strong>入庫時間:</strong> {checkedInAt}
+            </div>
+            <div style={infoRowStyle}>
+              <strong>出庫時間:</strong> {checkedOutAt}
+            </div>
+            <div style={infoRowStyle}>
+              <strong>利用時間:</strong> {minutes} 分
+            </div>
+            <div style={infoRowStyle}>
+              <strong>お支払い金額:</strong> {fmtYen(totalYen)}
+            </div>
+            <div
+              style={{
+                ...infoRowStyle,
+                color: paid ? "#16a34a" : "#b45309",
+                fontWeight: 800,
+              }}
+            >
+              {paid ? "決済済みです" : "未決済です"}
+            </div>
+          </div>
 
-      {err ? (
-        <div style={{ marginTop: 12, color: "crimson", fontWeight: 700 }}>
-          {err}
-        </div>
-      ) : null}
+          <button
+            type="button"
+            style={secondaryButtonStyle}
+            onClick={() => router.push("/")}
+          >
+            完了（画面を閉じる）
+          </button>
+        </>
+      ) : (
+        <>
+          <div style={cardStyle}>
+            <form onSubmit={handleSubmit} style={{ display: "grid", gap: 16 }}>
+              <label style={labelStyle}>
+                PINコード
+                <input
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  placeholder="4桁のPIN"
+                  value={pin}
+                  onChange={(e) => setPin(e.target.value)}
+                  style={inputStyle}
+                  maxLength={8}
+                  disabled={loading}
+                />
+              </label>
 
-      {result ? (
-        <div
-          style={{
-            marginTop: 16,
-            padding: 12,
-            border: "1px solid #eee",
-            borderRadius: 12,
-            background: "#f6f8fa",
-          }}
-        >
-          <div style={{ fontWeight: 800, marginBottom: 8 }}>結果</div>
-          <pre style={{ margin: 0, whiteSpace: "pre-wrap", overflowX: "auto" }}>
-            {JSON.stringify(result, null, 2)}
-          </pre>
-        </div>
-      ) : null}
-    </div>
+              {error ? <div style={errorStyle}>{error}</div> : null}
+
+              <div style={descriptionStyle}>
+                出庫する場合は PIN を入力して、下のボタンを押してください。
+              </div>
+
+              <button
+                type="submit"
+                style={primaryButtonStyle}
+                disabled={loading || missingParams}
+              >
+                {loading ? "出庫処理中..." : "出庫する"}
+              </button>
+            </form>
+          </div>
+        </>
+      )}
+    </main>
   );
 }
+
+const pageStyle: React.CSSProperties = {
+  maxWidth: 620,
+  margin: "0 auto",
+  padding: "24px 16px 56px",
+  fontFamily:
+    'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+};
+
+const titleStyle: React.CSSProperties = {
+  fontSize: 30,
+  fontWeight: 900,
+  marginBottom: 16,
+};
+
+const heroCardStyle: React.CSSProperties = {
+  background: "#f7f7f7",
+  border: "1px solid #ececec",
+  borderRadius: 18,
+  padding: 20,
+  marginBottom: 16,
+};
+
+const heroPlaceStyle: React.CSSProperties = {
+  fontSize: 18,
+  fontWeight: 700,
+  marginBottom: 8,
+  color: "#222",
+};
+
+const heroInfoStyle: React.CSSProperties = {
+  fontSize: 16,
+  color: "#222",
+  marginBottom: 6,
+};
+
+const cardStyle: React.CSSProperties = {
+  background: "#fff",
+  border: "1px solid #e5e5e5",
+  borderRadius: 16,
+  padding: 16,
+  marginBottom: 16,
+};
+
+const labelStyle: React.CSSProperties = {
+  display: "grid",
+  gap: 8,
+  fontWeight: 700,
+  color: "#666",
+};
+
+const inputStyle: React.CSSProperties = {
+  width: "100%",
+  padding: "14px 16px",
+  borderRadius: 14,
+  border: "1px solid #d1d5db",
+  fontSize: 20,
+};
+
+const descriptionStyle: React.CSSProperties = {
+  lineHeight: 1.8,
+  color: "#333",
+  fontSize: 16,
+};
+
+const primaryButtonStyle: React.CSSProperties = {
+  width: "100%",
+  padding: "14px 18px",
+  borderRadius: 14,
+  border: "none",
+  background: "#111",
+  color: "#fff",
+  fontWeight: 800,
+  fontSize: 16,
+  cursor: "pointer",
+};
+
+const secondaryButtonStyle: React.CSSProperties = {
+  width: "100%",
+  padding: "14px 18px",
+  borderRadius: 14,
+  border: "1px solid #111827",
+  background: "#fff",
+  color: "#111",
+  fontWeight: 800,
+  fontSize: 16,
+  cursor: "pointer",
+};
+
+const errorStyle: React.CSSProperties = {
+  padding: 12,
+  borderRadius: 12,
+  background: "#fef2f2",
+  color: "#b91c1c",
+  fontSize: 14,
+};
+
+const successMessageStyle: React.CSSProperties = {
+  fontSize: 18,
+  fontWeight: 700,
+  marginBottom: 8,
+  color: "#333",
+};
+
+const normalTextStyle: React.CSSProperties = {
+  fontSize: 16,
+  color: "#333",
+  lineHeight: 1.8,
+};
+
+const infoRowStyle: React.CSSProperties = {
+  lineHeight: 1.9,
+  fontSize: 15,
+  color: "#333",
+};

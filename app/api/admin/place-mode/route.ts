@@ -22,9 +22,13 @@ export async function POST(req: Request) {
     }
 
     if (
-      !["RESERVATION_ONLY", "HOURLY_ONLY", "RESERVATION_THEN_HOURLY", "CLOSED"].includes(
-        operationMode
-      )
+      ![
+        "RESERVATION_ONLY",
+        "HOURLY_ONLY",
+        "RESERVATION_THEN_HOURLY",
+        "EVENT_ONLY",
+        "CLOSED",
+      ].includes(operationMode)
     ) {
       return NextResponse.json(
         { ok: false, error: "operation_mode_invalid" },
@@ -39,6 +43,7 @@ export async function POST(req: Request) {
           | "RESERVATION_ONLY"
           | "HOURLY_ONLY"
           | "RESERVATION_THEN_HOURLY"
+          | "EVENT_ONLY"
           | "CLOSED",
       },
       select: {

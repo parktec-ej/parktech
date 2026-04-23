@@ -1,69 +1,318 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { getAdminSession } from "@/lib/admin-auth";
+import { stripe } from "@/lib/stripe";
+import { sendReservationCanceledMail } from "@/lib/mail";
 
-export async function POST(req: Request) {
-  const admin = await getAdminSession();
-  if (!admin) {
-    return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
+export const runtime = "nodejs";
+
+function formatJst(date: Date) {
+  return date.toLocaleString("ja-JP", {
+    timeZone: "Asia/Tokyo",
+  });
+}
+
+function parseYmdAsJstDate(ymd: string) {
+  const [y, m, d] = ymd.split("-").map(Number);
+  return new Date(y, m - 1, d);
+}
+
+function startOfTodayJst() {
+  const now = new Date();
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate());
+}
+
+function calcCancellationPolicy(price: number, useDate: string) {
+  const refundFee = 300;
+
+  const today = startOfTodayJst();
+  const useDateObj = parseYmdAsJstDate(useDate);
+
+  const diffMs = useDateObj.getTime() - today.getTime();
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+  // 2日前まで
+  if (diffDays >= 2) {
+    const cancelFee = Math.floor(price * 0.5);
+    const refundAmount = Math.max(0, price - cancelFee - refundFee);
+
+    return {
+      rule: "until_2_days_before",
+      cancelFee,
+      refundFee,
+      refundAmount,
+    };
   }
 
+  // 前日〜当日
+  return {
+    rule: "day_before_or_same_day",
+    cancelFee: price,
+    refundFee: 0,
+    refundAmount: 0,
+  };
+}
+
+function calcDeltaAmounts(
+  refundAmount: number,
+  ownerRateBps: number,
+  agentRateBps: number,
+  platformRateBps: number
+) {
+  const ownerDeltaAmount = -Math.round(
+    (refundAmount * ownerRateBps) / 10000
+  );
+
+  const agentDeltaAmount = -Math.round(
+    (refundAmount * agentRateBps) / 10000
+  );
+
+  const platformDeltaAmount =
+    -refundAmount - ownerDeltaAmount - agentDeltaAmount;
+
+  return {
+    ownerDeltaAmount,
+    agentDeltaAmount,
+    platformDeltaAmount,
+  };
+}
+
+export async function POST(req: NextRequest) {
   try {
     const body = await req.json().catch(() => null);
-    if (!body) {
-      return NextResponse.json({ ok: false, error: "invalid_json" }, { status: 400 });
+    const token = String(body?.token ?? "").trim();
+
+    if (!token) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "missing_token",
+          message: "token が必要です",
+        },
+        { status: 400 }
+      );
     }
 
-    const reservationId = String(body.reservationId ?? "").trim();
-    if (!reservationId) {
-      return NextResponse.json({ ok: false, error: "reservation_id_required" }, { status: 400 });
-    }
-
-    const reservation = await prisma.reservation.findUnique({
-      where: { id: reservationId },
-      select: {
-        id: true,
-        checkedIn: true,
-        checkedOutAt: true,
+    const reservation = await prisma.reservation.findFirst({
+      where: {
+        cancelToken: token,
+      },
+      include: {
+        place: true,
+        spot: true,
       },
     });
 
     if (!reservation) {
-      return NextResponse.json({ ok: false, error: "reservation_not_found" }, { status: 404 });
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "not_found",
+          message: "予約が見つかりません",
+        },
+        { status: 404 }
+      );
     }
 
-    if (reservation.checkedOutAt) {
-      return NextResponse.json({ ok: false, error: "already_checked_out" }, { status: 409 });
+    if (reservation.status === "CANCELED") {
+      return NextResponse.json({
+        ok: true,
+        alreadyCanceled: true,
+        message: "すでにキャンセル済みです",
+      });
     }
 
     if (reservation.checkedIn) {
       return NextResponse.json(
-        { ok: false, error: "checked_in_cannot_cancel" },
+        {
+          ok: false,
+          error: "already_checked_in",
+          message: "チェックイン済みのためキャンセル不可",
+        },
         { status: 409 }
       );
     }
 
-    await prisma.$transaction(async (tx) => {
-      await tx.parkingSession.deleteMany({
-        where: { reservationId },
+    const policy = calcCancellationPolicy(
+      reservation.price,
+      reservation.date
+    );
+
+    const canceledAt = new Date();
+
+    const payment = await prisma.payment.findFirst({
+      where: {
+        reservationId: reservation.id,
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+    });
+
+    let refundStatus:
+      | "NONE"
+      | "PENDING"
+      | "SUCCEEDED"
+      | "FAILED"
+      | "NOT_REQUIRED" = "NOT_REQUIRED";
+
+    let stripeRefundId: string | null = null;
+
+    /**
+     * Stripe返金
+     */
+    if (policy.refundAmount > 0 && payment?.paymentIntentId) {
+      try {
+        const refund = await stripe.refunds.create({
+          payment_intent: payment.paymentIntentId,
+          amount: policy.refundAmount,
+          reason: "requested_by_customer",
+          metadata: {
+            reservationId: reservation.id,
+            useDate: reservation.date,
+            slot: reservation.slot,
+          },
+        });
+
+        stripeRefundId = refund.id;
+        refundStatus = "SUCCEEDED";
+      } catch (e) {
+        console.error(e);
+        refundStatus = "FAILED";
+      }
+    }
+
+    /**
+     * Reservation更新
+     */
+    await prisma.reservation.update({
+      where: {
+        id: reservation.id,
+      },
+      data: {
+        status: "CANCELED",
+        canceledAt,
+        cancelRequestedAt: canceledAt,
+        refundStatus,
+        refundAmount: policy.refundAmount,
+      },
+    });
+
+    /**
+     * Payment更新
+     */
+    if (payment?.id && refundStatus === "SUCCEEDED") {
+      await prisma.payment.update({
+        where: {
+          id: payment.id,
+        },
+        data: {
+          refunded: true,
+          memo: [
+            "AUTO_REFUND",
+            `refundAmount=${policy.refundAmount}`,
+            stripeRefundId
+              ? `stripeRefundId=${stripeRefundId}`
+              : null,
+          ]
+            .filter(Boolean)
+            .join("\n"),
+        },
       });
 
-      await tx.reservation.delete({
-        where: { id: reservationId },
+      /**
+       * Adjustment作成
+       */
+      const {
+        ownerDeltaAmount,
+        agentDeltaAmount,
+        platformDeltaAmount,
+      } = calcDeltaAmounts(
+        policy.refundAmount,
+        payment.ownerRateBps,
+        payment.agentRateBps,
+        payment.platformRateBps
+      );
+
+      const recognizedDate = new Date();
+
+      const recognizedMonth = recognizedDate
+        .toLocaleDateString("sv-SE", {
+          timeZone: "Asia/Tokyo",
+        })
+        .slice(0, 7);
+
+      await prisma.adjustment.create({
+        data: {
+          paymentId: payment.id,
+
+          kind:
+            policy.refundAmount === payment.grossAmount
+              ? "REFUND_FULL"
+              : "REFUND_PARTIAL",
+
+          status: "CONFIRMED",
+
+          recognizedDate,
+          recognizedMonth,
+
+          grossDeltaAmount: -policy.refundAmount,
+
+          ownerDeltaAmount,
+          agentDeltaAmount,
+          platformDeltaAmount,
+
+          reason: "customer_cancel",
+
+          note: [
+            `reservationId=${reservation.id}`,
+            `cancelRule=${policy.rule}`,
+            `refundAmount=${policy.refundAmount}`,
+          ].join("\n"),
+
+          createdBy: "system",
+        },
       });
-    });
+    }
+
+    /**
+     * メール送信
+     */
+    if (reservation.email) {
+      try {
+        await sendReservationCanceledMail({
+          to: reservation.email,
+          placeName: reservation.place?.name ?? "-",
+          spotLabel:
+            reservation.spot?.label ??
+            reservation.spot?.code ??
+            reservation.slot,
+          date: reservation.date,
+          slot: reservation.slot,
+          name: reservation.name,
+          plate: reservation.plate,
+          canceledAt: formatJst(canceledAt),
+          refundAmount: policy.refundAmount,
+          cancelFee: policy.cancelFee,
+          refundFee: policy.refundFee,
+        });
+      } catch (e) {
+        console.error(e);
+      }
+    }
 
     return NextResponse.json({
       ok: true,
-      status: "canceled",
-      reservationId,
+      message: "キャンセル完了",
+      refundStatus,
+      refundAmount: policy.refundAmount,
     });
-  } catch (e: any) {
+  } catch (error) {
+    console.error(error);
+
     return NextResponse.json(
       {
         ok: false,
         error: "server_error",
-        message: String(e?.message ?? e),
       },
       { status: 500 }
     );

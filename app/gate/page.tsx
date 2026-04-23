@@ -1,556 +1,559 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 
-const PLACE_ID = "e24a57f5-787f-4c2e-9394-e5f54053a955";
+type GateMode =
+  | "need_pin_checkin"
+  | "can_checkout"
+  | "already_checked_out"
+  | "no_reservation"
+  | "unpaid"
+  | "can_start_hourly"
+  | "can_checkout_hourly"
+  | "closed"
+  | "unknown";
 
-function ymdTodayJst() {
-  const now = new Date();
-  const jst = new Date(now.getTime() + 9 * 60 * 60 * 1000);
-  return jst.toISOString().slice(0, 10);
-}
+type OperationMode =
+  | "RESERVATION_ONLY"
+  | "HOURLY_ONLY"
+  | "RESERVATION_THEN_HOURLY"
+  | "EVENT_ONLY"
+  | "CLOSED";
 
-function normalizeSlot(input: string): string {
-  if (!input) return input.trim();
-
-  const v = input.trim().toUpperCase();
-
-  const s = v.match(/^S(\d{1,2})$/i);
-  if (s) {
-    return `S${String(Number(s[1])).padStart(2, "0")}`;
-  }
-
-  const a = v.match(/^([A-Z])[- ]?(\d{1,2})$/i);
-  if (a) {
-    return `${a[1].toUpperCase()}-${String(Number(a[2])).padStart(2, "0")}`;
-  }
-
-  return v;
-}
-
-type GateStatusResponse = {
-  ok: boolean;
-  mode?:
-    | "no_reservation"
-    | "unpaid"
-    | "need_pin_checkin"
-    | "can_checkout"
-    | "already_checked_out"
-    | "can_start_hourly"
-    | "can_checkout_hourly";
-  effectiveOperationMode?:
-    | "RESERVATION_ONLY"
-    | "HOURLY_ONLY"
-    | "RESERVATION_THEN_HOURLY";
-  placeOperationMode?:
-    | "RESERVATION_ONLY"
-    | "HOURLY_ONLY"
-    | "RESERVATION_THEN_HOURLY";
-  spotOperationModeOverride?:
-    | "RESERVATION_ONLY"
-    | "HOURLY_ONLY"
-    | "RESERVATION_THEN_HOURLY"
-    | null;
-  slot?: string;
-  date?: string;
-  placeId?: string;
-  spotId?: string;
-  reservationId?: string;
-  sessionId?: string;
-  checkedInAt?: string;
+type GateResponse = {
+  ok?: boolean;
+  mode?: GateMode;
   error?: string;
   message?: string;
+  placeId?: string;
+  placeSlug?: string;
+  placeName?: string;
+  spotId?: string;
+  spotLabel?: string;
+  slot?: string;
+  date?: string;
+  reservationId?: string;
+  reservationPriority?: boolean;
+  sessionId?: string;
+  checkedInAt?: string | null;
+  effectiveOperationMode?: OperationMode;
+  dayOperationMode?: OperationMode | null;
+  spotOperationModeOverride?: OperationMode | null;
+  placeOperationMode?: OperationMode | null;
 };
 
+function ymdTodayJst() {
+  return new Date().toLocaleDateString("sv-SE", {
+    timeZone: "Asia/Tokyo",
+  });
+}
+
+function modeLabel(mode?: string | null) {
+  if (!mode) return "-";
+  if (mode === "RESERVATION_ONLY") return "予約専用";
+  if (mode === "HOURLY_ONLY") return "時間貸し専用";
+  if (mode === "RESERVATION_THEN_HOURLY") return "予約優先 → 空きは時間貸し";
+  if (mode === "EVENT_ONLY") return "イベント時のみ時間貸し";
+  if (mode === "CLOSED") return "利用停止";
+  return mode;
+}
+
 export default function GatePage() {
-  const params = useSearchParams();
+  const router = useRouter();
+  const search = useSearchParams();
 
-  const slot = useMemo(
-    () => normalizeSlot(params.get("slot") ?? "A-01"),
-    [params]
+  const placeId = useMemo(
+    () => String(search.get("placeId") ?? "").trim(),
+    [search]
   );
-  const date = useMemo(() => params.get("date") ?? ymdTodayJst(), [params]);
+  const slot = useMemo(
+    () => String(search.get("slot") ?? "").trim(),
+    [search]
+  );
+  const date = useMemo(
+    () => String(search.get("date") ?? ymdTodayJst()).trim(),
+    [search]
+  );
 
-  const [status, setStatus] = useState<GateStatusResponse | null>(null);
   const [loading, setLoading] = useState(true);
-  const [msg, setMsg] = useState("");
-  const [pin, setPin] = useState("");
-  const [plate, setPlate] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState<any>(null);
+  const [reloading, setReloading] = useState(false);
+  const [data, setData] = useState<GateResponse | null>(null);
+  const [error, setError] = useState("");
 
-  async function loadStatus() {
-    setLoading(true);
-    setMsg("");
+  const missingParams = !placeId || !slot;
+
+  async function loadStatus(withReloadState = false) {
+    if (missingParams) {
+      setLoading(false);
+      setError("QRコードが正しくありません。placeId または slot が不足しています。");
+      return;
+    }
+
+    if (withReloadState) setReloading(true);
+    else setLoading(true);
+
+    setError("");
 
     try {
-      const res = await fetch(
-        `/api/gate-status?placeId=${encodeURIComponent(
-          PLACE_ID
-        )}&slot=${encodeURIComponent(slot)}&date=${encodeURIComponent(date)}`,
-        { cache: "no-store" }
-      );
-      const json = await res.json();
-      setStatus(json);
+      const qs = new URLSearchParams({
+        placeId,
+        slot,
+        date,
+      });
+
+      const res = await fetch(`/api/gate-status?${qs.toString()}`, {
+        cache: "no-store",
+      });
+
+      const json = await res.json().catch(() => null);
+
+      if (!json) {
+        setError("状態取得に失敗しました");
+        setData(null);
+        return;
+      }
+
+      if (!res.ok || json.ok === false) {
+        setError(String(json.message ?? json.error ?? "状態取得に失敗しました"));
+        setData(json);
+        return;
+      }
+
+      setData(json);
     } catch (e: any) {
-      setMsg(`取得エラー: ${String(e?.message ?? e)}`);
+      setError(String(e?.message ?? "通信エラーが発生しました"));
+      setData(null);
     } finally {
       setLoading(false);
+      setReloading(false);
     }
   }
 
   useEffect(() => {
-    loadStatus();
-  }, [slot, date]);
+    void loadStatus(false);
+  }, [placeId, slot, date]);
 
-  async function doCheckin() {
-    setBusy(true);
-    setMsg("");
-    setResult(null);
+  const resolvedPlaceId = data?.placeSlug ?? data?.placeId ?? placeId;
+  const resolvedDate = data?.date ?? date;
+  const resolvedSlot = data?.slot ?? slot;
+  const placeName = data?.placeName ?? resolvedPlaceId;
+  const spotLabel = data?.spotLabel ?? resolvedSlot;
+  const mode = data?.mode ?? "unknown";
 
-    try {
-      const res = await fetch("/api/checkin", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ slot, date, pin }),
-      });
-      const json = await res.json();
+  const checkinUrl = `/checkin?placeId=${encodeURIComponent(
+    resolvedPlaceId
+  )}&slot=${encodeURIComponent(resolvedSlot)}&date=${encodeURIComponent(
+    resolvedDate
+  )}`;
 
-      if (!json.ok) {
-        setMsg(json.message ?? json.error ?? "チェックイン失敗");
-        return;
-      }
+  const checkoutUrl = `/checkout?placeId=${encodeURIComponent(
+    resolvedPlaceId
+  )}&slot=${encodeURIComponent(resolvedSlot)}&date=${encodeURIComponent(
+    resolvedDate
+  )}`;
 
-      setResult(json);
-      setPin("");
-      await loadStatus();
-    } catch (e: any) {
-      setMsg(`チェックイン失敗: ${String(e?.message ?? e)}`);
-    } finally {
-      setBusy(false);
+  const hourlyStartUrl = `/hourly-start?placeId=${encodeURIComponent(
+    resolvedPlaceId
+  )}&slot=${encodeURIComponent(resolvedSlot)}&date=${encodeURIComponent(
+    resolvedDate
+  )}`;
+
+  const hourlyCheckoutUrl = `/hourly-checkout?placeId=${encodeURIComponent(
+    resolvedPlaceId
+  )}&slot=${encodeURIComponent(resolvedSlot)}&date=${encodeURIComponent(
+    resolvedDate
+  )}`;
+
+  const statusTitle = (() => {
+    switch (mode) {
+      case "need_pin_checkin":
+        return "この区画は予約済みです";
+      case "can_checkout":
+        return "現在ご利用中です";
+      case "already_checked_out":
+        return "このご利用は出庫済みです";
+      case "unpaid":
+        return "未決済の予約があります";
+      case "can_start_hourly":
+        return "今すぐ利用できます";
+      case "can_checkout_hourly":
+        return "現在ご利用中です";
+      case "closed":
+        return "現在ご利用いただけません";
+      case "no_reservation":
+        return "ご利用方法を選んでください";
+      default:
+        return "状態を確認しています";
     }
+  })();
+
+  const statusMessage = (() => {
+    if (error) return error;
+
+    switch (mode) {
+      case "need_pin_checkin":
+        return "予約者の方は PINコードを入力して入庫してください。";
+      case "can_checkout":
+        return "予約車両が利用中です。出庫される方は下のボタンからお進みください。";
+      case "already_checked_out":
+        return "この予約はすでに出庫済みです。";
+      case "unpaid":
+        return "未決済の予約があります。管理者へご確認ください。";
+      case "can_start_hourly":
+        return "この区画は現在空いています。時間貸し利用を開始できます。";
+      case "can_checkout_hourly":
+        return "時間貸し利用中です。精算して出庫してください。";
+      case "closed":
+        return "この区画は現在停止中です。別の区画をご利用ください。";
+      case "no_reservation":
+        if (data?.effectiveOperationMode === "RESERVATION_ONLY") {
+          return "この区画は予約専用です。予約者の方のみご利用いただけます。";
+        }
+        return "予約利用、時間貸し、出庫のいずれかを選んでください。";
+      default:
+        return "状態を確認してから操作してください。";
+    }
+  })();
+
+  const recommendation = (() => {
+    switch (mode) {
+      case "need_pin_checkin":
+        return "予約者の方はこちらから入庫してください";
+      case "can_checkout":
+        return "出庫される方はこちらからお進みください";
+      case "can_checkout_hourly":
+        return "精算して出庫してください";
+      case "can_start_hourly":
+        return "時間貸しを開始できます";
+      default:
+        return null;
+    }
+  })();
+
+  const disableAll =
+    !!error ||
+    data?.error === "spot_not_found" ||
+    data?.error === "place_not_found" ||
+    mode === "closed";
+
+  const canUseReservation =
+    !disableAll &&
+    (mode === "need_pin_checkin" ||
+      mode === "unpaid" ||
+      mode === "no_reservation");
+
+  const canUseHourly =
+    !disableAll &&
+    mode === "can_start_hourly";
+
+  const canUseCheckout =
+    !disableAll &&
+    (mode === "can_checkout" || mode === "can_checkout_hourly");
+
+  function handleCheckin() {
+    if (!canUseReservation) return;
+    router.push(checkinUrl);
   }
 
-  async function doReservationCheckout() {
-    setBusy(true);
-    setMsg("");
-    setResult(null);
-
-    try {
-      const res = await fetch("/api/checkout", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ slot, date }),
-      });
-      const json = await res.json();
-
-      if (!json.ok) {
-        setMsg(json.message ?? json.error ?? "出庫失敗");
-        return;
-      }
-
-      setResult(json);
-      await loadStatus();
-    } catch (e: any) {
-      setMsg(`出庫失敗: ${String(e?.message ?? e)}`);
-    } finally {
-      setBusy(false);
-    }
+  function handleHourlyStart() {
+    if (!canUseHourly) return;
+    router.push(hourlyStartUrl);
   }
 
-  async function doHourlyStart() {
-    setBusy(true);
-    setMsg("");
-    setResult(null);
+  function handleCheckout() {
+    if (!canUseCheckout) return;
 
-    try {
-      const res = await fetch("/api/hourly-start", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          placeId: PLACE_ID,
-          slot,
-          date,
-          plate: plate.trim() || null,
-        }),
-      });
-      const json = await res.json();
-
-      if (!json.ok) {
-        setMsg(json.message ?? json.error ?? "時間貸し入庫失敗");
-        return;
-      }
-
-      setResult(json);
-      setPlate("");
-      await loadStatus();
-    } catch (e: any) {
-      setMsg(`時間貸し入庫失敗: ${String(e?.message ?? e)}`);
-    } finally {
-      setBusy(false);
+    if (mode === "can_checkout_hourly") {
+      router.push(hourlyCheckoutUrl);
+      return;
     }
+
+    router.push(checkoutUrl);
   }
 
-  async function doHourlyCheckout() {
-    setBusy(true);
-    setMsg("");
-    setResult(null);
-
-    try {
-      const res = await fetch("/api/hourly-checkout", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          placeId: PLACE_ID,
-          slot,
-          date,
-        }),
-      });
-      const json = await res.json();
-
-      if (!json.ok) {
-        setMsg(json.message ?? json.error ?? "時間貸し出庫失敗");
-        return;
-      }
-
-      setResult(json);
-      await loadStatus();
-    } catch (e: any) {
-      setMsg(`時間貸し出庫失敗: ${String(e?.message ?? e)}`);
-    } finally {
-      setBusy(false);
-    }
+  if (loading) {
+    return (
+      <main style={pageStyle}>
+        <h1 style={titleStyle}>ParkTech ゲート</h1>
+        <div style={cardStyle}>状態を確認しています...</div>
+      </main>
+    );
   }
 
   return (
-    <div
-      style={{
-        maxWidth: 560,
-        margin: "24px auto",
-        padding: 16,
-        fontFamily: "system-ui",
-      }}
-    >
-      <h1 style={{ fontSize: 24, fontWeight: 900, marginBottom: 8 }}>
-        ゲート案内
-      </h1>
+    <main style={pageStyle}>
+      <h1 style={titleStyle}>ParkTech ゲート</h1>
 
-      <div
-        style={{
-          border: "1px solid #eee",
-          borderRadius: 14,
-          padding: 12,
-          background: "#fafafa",
-          marginBottom: 14,
-        }}
-      >
-        <div style={{ fontWeight: 900 }}>区画：{slot}</div>
-        <div style={{ fontSize: 13, color: "#666", marginTop: 4 }}>
-          日付：{date}
+      <div style={heroCardStyle}>
+        <div style={heroPlaceStyle}>{placeName || "-"}</div>
+        <div style={heroSlotStyle}>{spotLabel}</div>
+        <div style={heroDateStyle}>利用日: {resolvedDate || "-"}</div>
+      </div>
+
+      <div style={cardStyle}>
+        <div style={statusTitleStyle}>{statusTitle}</div>
+        <div style={statusMessageStyle}>{statusMessage}</div>
+
+        {recommendation ? (
+          <div style={recommendStyle}>
+            <strong>{recommendation}</strong>
+          </div>
+        ) : null}
+
+        {data?.effectiveOperationMode === "RESERVATION_ONLY" &&
+        mode !== "need_pin_checkin" ? (
+          <div style={noticeStyle}>
+            この区画は予約専用です。時間貸しは利用できません。
+          </div>
+        ) : null}
+
+        {data?.reservationPriority ? (
+          <div style={priorityStyle}>既存予約を優先して案内しています</div>
+        ) : null}
+      </div>
+
+      <div style={buttonGridStyle}>
+        <button
+          type="button"
+          style={{
+            ...actionButtonStyle,
+            ...(mode === "need_pin_checkin" ? actionButtonPrimaryStyle : {}),
+            ...(!canUseReservation ? disabledButtonStyle : {}),
+          }}
+          onClick={handleCheckin}
+          disabled={!canUseReservation}
+        >
+          <div style={actionButtonTitleStyle}>予約利用</div>
+          <div style={actionButtonSubStyle}>
+            {canUseReservation
+              ? "PINコードを入力して入庫"
+              : "現在は利用できません"}
+          </div>
+        </button>
+
+        <button
+          type="button"
+          style={{
+            ...actionButtonStyle,
+            ...(mode === "can_start_hourly" ? actionButtonPrimaryStyle : {}),
+            ...(!canUseHourly ? disabledButtonStyle : {}),
+          }}
+          onClick={handleHourlyStart}
+          disabled={!canUseHourly}
+        >
+          <div style={actionButtonTitleStyle}>時間貸し</div>
+          <div style={actionButtonSubStyle}>
+            {canUseHourly ? "今から利用を開始" : "現在は利用できません"}
+          </div>
+        </button>
+
+        <button
+          type="button"
+          style={{
+            ...actionButtonStyle,
+            ...((mode === "can_checkout" || mode === "can_checkout_hourly")
+              ? actionButtonPrimaryStyle
+              : {}),
+            ...(!canUseCheckout ? disabledButtonStyle : {}),
+          }}
+          onClick={handleCheckout}
+          disabled={!canUseCheckout}
+        >
+          <div style={actionButtonTitleStyle}>出庫する</div>
+          <div style={actionButtonSubStyle}>
+            {canUseCheckout
+              ? mode === "can_checkout_hourly"
+                ? "時間貸し精算へ進む"
+                : "出庫手続きへ進む"
+              : "現在は出庫対象がありません"}
+          </div>
+        </button>
+      </div>
+
+      <div style={subInfoStyle}>
+        <div>
+          <strong>現在の営業モード:</strong>{" "}
+          {modeLabel(data?.effectiveOperationMode)}
         </div>
-        <div style={{ fontSize: 13, color: "#666", marginTop: 4 }}>
-          Place ID：{PLACE_ID}
+        <div>
+          <strong>日付別設定:</strong> {modeLabel(data?.dayOperationMode)}
         </div>
-        <div style={{ fontSize: 13, color: "#666", marginTop: 4 }}>
-          実効モード：
-          <b style={{ marginLeft: 4 }}>
-            {status?.effectiveOperationMode ?? "-"}
-          </b>
-        </div>
-        <div style={{ fontSize: 13, color: "#666", marginTop: 4 }}>
-          Place基本モード：
-          <b style={{ marginLeft: 4 }}>
-            {status?.placeOperationMode ?? "-"}
-          </b>
-        </div>
-        <div style={{ fontSize: 13, color: "#666", marginTop: 4 }}>
-          Spot上書き：
-          <b style={{ marginLeft: 4 }}>
-            {status?.spotOperationModeOverride ?? "継承"}
-          </b>
+        <div>
+          <strong>区画別上書き:</strong>{" "}
+          {modeLabel(data?.spotOperationModeOverride)}
         </div>
       </div>
 
-      {loading ? (
-        <div
-          style={{
-            border: "1px solid #eee",
-            borderRadius: 14,
-            padding: 16,
-            background: "#fff",
-          }}
+      <div style={{ display: "grid", gap: 12 }}>
+        <button
+          type="button"
+          style={secondaryButtonStyle}
+          onClick={() => loadStatus(true)}
+          disabled={reloading}
         >
-          読み込み中...
-        </div>
-      ) : (
-        <>
-          <div
-            style={{
-              border: "1px solid #eee",
-              borderRadius: 14,
-              padding: 16,
-              background: "#fff",
-            }}
-          >
-            <div style={{ fontWeight: 900, marginBottom: 10 }}>現在の判定</div>
+          {reloading ? "再確認中..." : "状態を再確認"}
+        </button>
 
-            <div
-              style={{
-                fontSize: 18,
-                fontWeight: 900,
-                color: "#111",
-                marginBottom: 8,
-              }}
-            >
-              {status?.mode ?? status?.error ?? "unknown"}
-            </div>
-
-            {status?.mode === "no_reservation" && (
-              <div style={{ color: "#444", lineHeight: 1.7 }}>
-                この区画に予約はありません。
-                <br />
-                予約専用モードなら利用できません。
-              </div>
-            )}
-
-            {status?.mode === "unpaid" && (
-              <div style={{ color: "#444", lineHeight: 1.7 }}>
-                予約はありますが、まだ未決済です。
-              </div>
-            )}
-
-            {status?.mode === "need_pin_checkin" && (
-              <div style={{ color: "#444", lineHeight: 1.7 }}>
-                予約があります。PINを入力してチェックインしてください。
-              </div>
-            )}
-
-            {status?.mode === "can_checkout" && (
-              <div style={{ color: "#444", lineHeight: 1.7 }}>
-                予約利用中です。出庫処理へ進めます。
-              </div>
-            )}
-
-            {status?.mode === "already_checked_out" && (
-              <div style={{ color: "#444", lineHeight: 1.7 }}>
-                この予約はすでに出庫済みです。
-              </div>
-            )}
-
-            {status?.mode === "can_start_hourly" && (
-              <div style={{ color: "#444", lineHeight: 1.7 }}>
-                この区画は時間貸しで利用可能です。
-              </div>
-            )}
-
-            {status?.mode === "can_checkout_hourly" && (
-              <div style={{ color: "#444", lineHeight: 1.7 }}>
-                この区画は時間貸し利用中です。精算して出庫できます。
-              </div>
-            )}
-          </div>
-
-          {status?.mode === "need_pin_checkin" && (
-            <div
-              style={{
-                marginTop: 14,
-                border: "1px solid #eee",
-                borderRadius: 14,
-                padding: 16,
-                background: "#fff",
-              }}
-            >
-              <div style={{ fontWeight: 900, marginBottom: 10 }}>
-                PINチェックイン
-              </div>
-
-              <input
-                value={pin}
-                onChange={(e) => setPin(e.target.value)}
-                placeholder="4桁PIN"
-                style={{
-                  width: "100%",
-                  padding: 12,
-                  borderRadius: 12,
-                  border: "1px solid #ddd",
-                  marginBottom: 10,
-                }}
-              />
-
-              <button
-                onClick={doCheckin}
-                disabled={busy || !pin.trim()}
-                style={{
-                  width: "100%",
-                  padding: "14px 12px",
-                  borderRadius: 14,
-                  border: "1px solid #111",
-                  background: "#111",
-                  color: "#fff",
-                  fontWeight: 900,
-                  cursor: busy ? "wait" : "pointer",
-                  opacity: busy ? 0.7 : 1,
-                }}
-              >
-                PINでチェックイン
-              </button>
-            </div>
-          )}
-
-          {status?.mode === "can_checkout" && (
-            <div
-              style={{
-                marginTop: 14,
-                border: "1px solid #eee",
-                borderRadius: 14,
-                padding: 16,
-                background: "#fff",
-              }}
-            >
-              <div style={{ fontWeight: 900, marginBottom: 10 }}>
-                予約出庫
-              </div>
-
-              <button
-                onClick={doReservationCheckout}
-                disabled={busy}
-                style={{
-                  width: "100%",
-                  padding: "14px 12px",
-                  borderRadius: 14,
-                  border: "1px solid #111",
-                  background: "#111",
-                  color: "#fff",
-                  fontWeight: 900,
-                  cursor: busy ? "wait" : "pointer",
-                  opacity: busy ? 0.7 : 1,
-                }}
-              >
-                出庫する
-              </button>
-            </div>
-          )}
-
-          {status?.mode === "can_start_hourly" && (
-            <div
-              style={{
-                marginTop: 14,
-                border: "1px solid #eee",
-                borderRadius: 14,
-                padding: 16,
-                background: "#fff",
-              }}
-            >
-              <div style={{ fontWeight: 900, marginBottom: 10 }}>
-                時間貸し入庫
-              </div>
-
-              <input
-                value={plate}
-                onChange={(e) => setPlate(e.target.value)}
-                placeholder="車両ナンバー（任意）"
-                style={{
-                  width: "100%",
-                  padding: 12,
-                  borderRadius: 12,
-                  border: "1px solid #ddd",
-                  marginBottom: 10,
-                }}
-              />
-
-              <button
-                onClick={doHourlyStart}
-                disabled={busy}
-                style={{
-                  width: "100%",
-                  padding: "14px 12px",
-                  borderRadius: 14,
-                  border: "1px solid #111",
-                  background: "#111",
-                  color: "#fff",
-                  fontWeight: 900,
-                  cursor: busy ? "wait" : "pointer",
-                  opacity: busy ? 0.7 : 1,
-                }}
-              >
-                時間貸しで入庫する
-              </button>
-            </div>
-          )}
-
-          {status?.mode === "can_checkout_hourly" && (
-            <div
-              style={{
-                marginTop: 14,
-                border: "1px solid #eee",
-                borderRadius: 14,
-                padding: 16,
-                background: "#fff",
-              }}
-            >
-              <div style={{ fontWeight: 900, marginBottom: 10 }}>
-                時間貸し出庫
-              </div>
-
-              <button
-                onClick={doHourlyCheckout}
-                disabled={busy}
-                style={{
-                  width: "100%",
-                  padding: "14px 12px",
-                  borderRadius: 14,
-                  border: "1px solid #111",
-                  background: "#111",
-                  color: "#fff",
-                  fontWeight: 900,
-                  cursor: busy ? "wait" : "pointer",
-                  opacity: busy ? 0.7 : 1,
-                }}
-              >
-                精算して出庫する
-              </button>
-            </div>
-          )}
-
-          {msg && (
-            <div
-              style={{
-                marginTop: 14,
-                whiteSpace: "pre-wrap",
-                fontSize: 13,
-                color: "#b00020",
-                padding: 10,
-                background: "#fff3f5",
-                borderRadius: 12,
-                border: "1px solid #ffd0d8",
-              }}
-            >
-              {msg}
-            </div>
-          )}
-
-          {result && (
-            <div
-              style={{
-                marginTop: 14,
-                whiteSpace: "pre-wrap",
-                fontSize: 13,
-                color: "#111",
-                padding: 12,
-                background: "#f6f8fa",
-                borderRadius: 12,
-                border: "1px solid #e5e7eb",
-              }}
-            >
-              <div style={{ fontWeight: 900, marginBottom: 8 }}>結果</div>
-              <pre style={{ margin: 0, overflowX: "auto" }}>
-                {JSON.stringify(result, null, 2)}
-              </pre>
-            </div>
-          )}
-        </>
-      )}
-    </div>
+        <button
+          type="button"
+          style={secondaryButtonStyle}
+          onClick={() => router.push("/")}
+        >
+          トップへ戻る
+        </button>
+      </div>
+    </main>
   );
 }
+
+const pageStyle: React.CSSProperties = {
+  maxWidth: 620,
+  margin: "0 auto",
+  padding: "24px 16px 56px",
+  fontFamily:
+    'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+};
+
+const titleStyle: React.CSSProperties = {
+  fontSize: 30,
+  fontWeight: 900,
+  marginBottom: 16,
+};
+
+const heroCardStyle: React.CSSProperties = {
+  background: "#0f172a",
+  color: "#fff",
+  borderRadius: 18,
+  padding: 20,
+  marginBottom: 16,
+};
+
+const heroPlaceStyle: React.CSSProperties = {
+  fontSize: 18,
+  fontWeight: 700,
+  marginBottom: 8,
+};
+
+const heroSlotStyle: React.CSSProperties = {
+  fontSize: 42,
+  fontWeight: 900,
+  lineHeight: 1.1,
+  marginBottom: 8,
+};
+
+const heroDateStyle: React.CSSProperties = {
+  fontSize: 14,
+  opacity: 0.9,
+};
+
+const cardStyle: React.CSSProperties = {
+  background: "#fff",
+  border: "1px solid #e5e5e5",
+  borderRadius: 16,
+  padding: 16,
+  marginBottom: 16,
+};
+
+const statusTitleStyle: React.CSSProperties = {
+  fontSize: 22,
+  fontWeight: 800,
+  marginBottom: 10,
+};
+
+const statusMessageStyle: React.CSSProperties = {
+  lineHeight: 1.8,
+  color: "#333",
+};
+
+const recommendStyle: React.CSSProperties = {
+  marginTop: 12,
+  padding: 10,
+  borderRadius: 10,
+  background: "#eff6ff",
+  color: "#1d4ed8",
+  fontSize: 14,
+};
+
+const noticeStyle: React.CSSProperties = {
+  marginTop: 12,
+  padding: 10,
+  borderRadius: 10,
+  background: "#fff7ed",
+  color: "#c2410c",
+  fontSize: 14,
+  fontWeight: 700,
+};
+
+const priorityStyle: React.CSSProperties = {
+  marginTop: 12,
+  padding: 10,
+  borderRadius: 10,
+  background: "#eef6ff",
+  color: "#1d4ed8",
+  fontWeight: 700,
+  fontSize: 13,
+};
+
+const buttonGridStyle: React.CSSProperties = {
+  display: "grid",
+  gap: 12,
+  marginBottom: 16,
+};
+
+const actionButtonStyle: React.CSSProperties = {
+  width: "100%",
+  padding: "18px 18px",
+  borderRadius: 16,
+  border: "1px solid #d1d5db",
+  background: "#fff",
+  color: "#111",
+  textAlign: "left",
+  cursor: "pointer",
+};
+
+const actionButtonPrimaryStyle: React.CSSProperties = {
+  border: "2px solid #111827",
+  background: "#111827",
+  color: "#fff",
+};
+
+const disabledButtonStyle: React.CSSProperties = {
+  background: "#f3f4f6",
+  color: "#9ca3af",
+  border: "1px solid #e5e7eb",
+  cursor: "not-allowed",
+};
+
+const actionButtonTitleStyle: React.CSSProperties = {
+  fontSize: 22,
+  fontWeight: 900,
+  marginBottom: 6,
+};
+
+const actionButtonSubStyle: React.CSSProperties = {
+  fontSize: 14,
+  opacity: 0.9,
+};
+
+const subInfoStyle: React.CSSProperties = {
+  background: "#fff",
+  border: "1px solid #e5e5e5",
+  borderRadius: 16,
+  padding: 16,
+  marginBottom: 16,
+  lineHeight: 1.9,
+  fontSize: 14,
+  color: "#555",
+};
+
+const secondaryButtonStyle: React.CSSProperties = {
+  width: "100%",
+  padding: "14px 18px",
+  borderRadius: 14,
+  border: "1px solid #ddd",
+  background: "#fff",
+  color: "#111",
+  fontWeight: 700,
+  cursor: "pointer",
+};

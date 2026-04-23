@@ -22,13 +22,19 @@ export async function POST(req: Request) {
     }
 
     const operationModeOverride =
-      raw === null || raw === "" || typeof raw === "undefined" ? null : String(raw).trim();
+      raw === null || raw === "" || typeof raw === "undefined"
+        ? null
+        : String(raw).trim();
 
     if (
       operationModeOverride !== null &&
-      !["RESERVATION_ONLY", "HOURLY_ONLY", "RESERVATION_THEN_HOURLY", "CLOSED"].includes(
-        operationModeOverride
-      )
+      ![
+        "RESERVATION_ONLY",
+        "HOURLY_ONLY",
+        "RESERVATION_THEN_HOURLY",
+        "EVENT_ONLY",
+        "CLOSED",
+      ].includes(operationModeOverride)
     ) {
       return NextResponse.json(
         { ok: false, error: "operation_mode_invalid" },
@@ -43,6 +49,7 @@ export async function POST(req: Request) {
           | "RESERVATION_ONLY"
           | "HOURLY_ONLY"
           | "RESERVATION_THEN_HOURLY"
+          | "EVENT_ONLY"
           | "CLOSED"
           | null,
       },

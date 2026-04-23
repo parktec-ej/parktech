@@ -1,209 +1,361 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 
-function normalizeSlot(input: string): string {
-  if (!input) return input.trim();
-
-  const v = input.trim().toUpperCase();
-
-  const s = v.match(/^S(\d{1,2})$/i);
-  if (s) {
-    return `S${String(Number(s[1])).padStart(2, "0")}`;
-  }
-
-  const a = v.match(/^([A-Z])[- ]?(\d{1,2})$/i);
-  if (a) {
-    return `${a[1].toUpperCase()}-${String(Number(a[2])).padStart(2, "0")}`;
-  }
-
-  return v;
-}
+type CheckinResponse = {
+  ok?: boolean;
+  error?: string;
+  message?: string;
+  placeId?: string;
+  placeName?: string;
+  spotId?: string;
+  spotLabel?: string;
+  slot?: string;
+  date?: string;
+  checkedInAt?: string | null;
+  checkedInAtJst?: string | null;
+};
 
 function ymdTodayJst() {
-  const now = new Date();
-  const jst = new Date(now.getTime() + 9 * 60 * 60 * 1000);
-  return jst.toISOString().slice(0, 10);
+  return new Date().toLocaleDateString("sv-SE", {
+    timeZone: "Asia/Tokyo",
+  });
 }
 
 export default function CheckinPage() {
-  const [slot, setSlot] = useState("");
-  const [date, setDate] = useState("");
+  const router = useRouter();
+  const search = useSearchParams();
+
+  const placeId = useMemo(
+    () => String(search.get("placeId") ?? "").trim(),
+    [search]
+  );
+  const slot = useMemo(
+    () => String(search.get("slot") ?? "").trim(),
+    [search]
+  );
+  const date = useMemo(
+    () => String(search.get("date") ?? ymdTodayJst()).trim(),
+    [search]
+  );
+
   const [pin, setPin] = useState("");
   const [loading, setLoading] = useState(false);
-  const [msg, setMsg] = useState("");
-  const [err, setErr] = useState("");
-  const [result, setResult] = useState<any>(null);
+  const [completed, setCompleted] = useState(false);
+  const [error, setError] = useState("");
+  const [result, setResult] = useState<CheckinResponse | null>(null);
 
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    setSlot(normalizeSlot(params.get("slot") ?? ""));
-    setDate(params.get("date") ?? ymdTodayJst());
-  }, []);
+  const missingParams = !placeId || !slot || !date;
 
-  async function submit() {
-    setErr("");
-    setMsg("");
-    setResult(null);
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
 
-    if (!slot) {
-      setErr("slot が見つかりません（QRが不正です）");
+    if (missingParams) {
+      setError("QRコードが正しくありません。placeId / slot / date を確認してください。");
       return;
     }
 
-    if (!/^\d{4}$/.test(pin)) {
-      setErr("4桁のコードを入力してください");
+    if (!pin.trim()) {
+      setError("PINコードを入力してください。");
       return;
     }
 
     setLoading(true);
+    setError("");
+
     try {
       const res = await fetch("/api/checkin", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ date, slot, pin }),
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          placeId,
+          slot,
+          date,
+          pin: pin.trim(),
+        }),
       });
 
-      const json = await res.json();
-      setResult(json);
+      const json = await res.json().catch(() => null);
 
-      if (json.ok) {
-        if (json.status === "checked_in") {
-          setMsg("チェックイン完了しました。駐車を完了してください。");
-        } else if (json.status === "already_checked_in") {
-          setMsg("すでにチェックイン済みです。");
-        } else {
-          setMsg("処理が完了しました。");
-        }
-      } else {
-        if (json.error === "invalid_pin") {
-          setErr("コードが違います。もう一度入力してください。");
-        } else {
-          setErr(json.message ?? json.error ?? "エラーが発生しました");
-        }
+      if (!json) {
+        setError("チェックイン処理に失敗しました。");
+        return;
       }
+
+      if (!res.ok || json.ok === false) {
+        setError(String(json.message ?? json.error ?? "チェックイン処理に失敗しました。"));
+        setResult(json);
+        return;
+      }
+
+      setResult(json);
+      setCompleted(true);
+      setPin("");
     } catch (e: any) {
-      setErr(String(e?.message ?? e));
+      setError(String(e?.message ?? "通信エラーが発生しました。"));
     } finally {
       setLoading(false);
     }
   }
 
+  const placeName = result?.placeName ?? placeId;
+  const spotLabel = result?.spotLabel ?? slot;
+  const checkedInAt = result?.checkedInAtJst ?? result?.checkedInAt ?? "-";
+
   return (
-    <div style={{ maxWidth: 520, margin: "0 auto", padding: 24 }}>
-      <h1 style={{ fontSize: 22, fontWeight: 800 }}>チェックイン</h1>
+    <main style={pageStyle}>
+      <h1 style={titleStyle}>ParkTech チェックイン</h1>
 
-      <div
-        style={{
-          marginTop: 10,
-          padding: 12,
-          border: "1px solid #eee",
-          borderRadius: 12,
-          background: "#fafafa",
-        }}
-      >
-        <div style={{ fontWeight: 700 }}>区画: {slot || "（不明）"}</div>
-        <div style={{ marginTop: 6, fontSize: 12, color: "#666" }}>
-          日付: {date || "読込中"}
-        </div>
-
-        <div style={{ marginTop: 10 }}>
-          <label style={{ fontSize: 12, color: "#666" }}>日付</label>
-          <input
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
-            style={{
-              width: "100%",
-              marginTop: 4,
-              padding: 10,
-              borderRadius: 10,
-              border: "1px solid #ddd",
-            }}
-            placeholder="YYYY-MM-DD"
-          />
-        </div>
+      <div style={heroCardStyle}>
+        <div style={heroPlaceStyle}>{placeName || "-"}</div>
+        <div style={heroSlotStyle}>{spotLabel || "-"}</div>
+        <div style={heroDateStyle}>利用日: {date || "-"}</div>
       </div>
 
-      <div
-        style={{
-          marginTop: 16,
-          padding: 12,
-          border: "1px solid #eee",
-          borderRadius: 12,
-          background: "#fff",
-        }}
-      >
-        <div style={{ fontWeight: 800, marginBottom: 6 }}>PINチェックイン</div>
-        <div style={{ fontSize: 13, color: "#444" }}>
-          予約者はメールで受け取った <b>4桁コード</b> を入力してください。
-        </div>
+      {completed ? (
+        <>
+          <div style={cardStyle}>
+            <div style={successTitleStyle}>チェックイン完了</div>
 
-        <div style={{ marginTop: 12 }}>
-          <input
-            value={pin}
-            onChange={(e) =>
-              setPin(e.target.value.replace(/[^\d]/g, "").slice(0, 4))
-            }
-            inputMode="numeric"
-            placeholder="4桁コード"
+            <div style={successMessageStyle}>
+              チェックイン完了しました。
+            </div>
+
+            <div style={normalTextStyle}>
+              駐車してコーンを戻してください。
+            </div>
+
+            <div style={normalTextStyle}>
+              このまま画面を閉じてください。
+            </div>
+
+            <div style={{ ...normalTextStyle, marginBottom: 0 }}>
+              出庫する際は再度QRコードを読み込んでください。
+            </div>
+          </div>
+
+          <div style={cardStyle}>
+            <div style={infoRowStyle}>
+              <strong>駐車場:</strong> {placeName || "-"}
+            </div>
+            <div style={infoRowStyle}>
+              <strong>区画:</strong> {spotLabel || "-"}
+            </div>
+            <div style={infoRowStyle}>
+              <strong>利用日:</strong> {date || "-"}
+            </div>
+            <div style={infoRowStyle}>
+              <strong>チェックイン時刻:</strong> {checkedInAt}
+            </div>
+          </div>
+
+          <div
             style={{
-              width: "100%",
-              padding: 12,
-              borderRadius: 12,
-              border: "1px solid #ddd",
-              fontSize: 18,
+              fontSize: 14,
+              color: "#6b7280",
+              textAlign: "center",
+              marginBottom: 10,
             }}
-          />
-        </div>
-
-        <button
-          onClick={submit}
-          disabled={loading}
-          style={{
-            width: "100%",
-            marginTop: 12,
-            padding: 12,
-            borderRadius: 12,
-            border: "1px solid #111",
-            background: "#111",
-            color: "#fff",
-            cursor: "pointer",
-            fontWeight: 800,
-            opacity: loading ? 0.7 : 1,
-          }}
-        >
-          {loading ? "確認中..." : "チェックインする"}
-        </button>
-
-        {msg ? (
-          <div style={{ marginTop: 12, color: "green", fontWeight: 700 }}>
-            {msg}
+          >
+            出庫時は再度QRコードを読み込んでください
           </div>
-        ) : null}
 
-        {err ? (
-          <div style={{ marginTop: 12, color: "crimson", fontWeight: 700 }}>
-            {err}
+          <button
+            type="button"
+            style={secondaryButtonStyle}
+            onClick={() => router.push("/")}
+          >
+            完了（画面を閉じる）
+          </button>
+        </>
+      ) : (
+        <>
+          <div style={cardStyle}>
+            <div style={descriptionStyle}>
+              予約者の方は、予約完了メールに記載されたPINコードを入力してください。
+            </div>
+
+            <form onSubmit={handleSubmit} style={{ display: "grid", gap: 12 }}>
+              <label style={labelStyle}>
+                PINコード
+                <input
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  placeholder="4桁のPINコード"
+                  value={pin}
+                  onChange={(e) => setPin(e.target.value)}
+                  style={inputStyle}
+                  maxLength={8}
+                  disabled={loading}
+                />
+              </label>
+
+              {error ? <div style={errorStyle}>{error}</div> : null}
+
+              <button
+                type="submit"
+                style={primaryButtonStyle}
+                disabled={loading || missingParams}
+              >
+                {loading ? "チェックイン中..." : "チェックインする"}
+              </button>
+            </form>
           </div>
-        ) : null}
-      </div>
 
-      {result ? (
-        <div
-          style={{
-            marginTop: 16,
-            padding: 12,
-            border: "1px solid #eee",
-            borderRadius: 12,
-            background: "#f6f8fa",
-          }}
-        >
-          <div style={{ fontWeight: 800, marginBottom: 8 }}>結果</div>
-          <pre style={{ margin: 0, whiteSpace: "pre-wrap", overflowX: "auto" }}>
-            {JSON.stringify(result, null, 2)}
-          </pre>
-        </div>
-      ) : null}
-    </div>
+          <div style={subInfoStyle}>
+            <div>
+              <strong>駐車場:</strong> {placeId || "-"}
+            </div>
+            <div>
+              <strong>区画:</strong> {slot || "-"}
+            </div>
+            <div>
+              <strong>利用日:</strong> {date || "-"}
+            </div>
+          </div>
+        </>
+      )}
+    </main>
   );
 }
+
+const pageStyle: React.CSSProperties = {
+  maxWidth: 620,
+  margin: "0 auto",
+  padding: "24px 16px 56px",
+  fontFamily:
+    'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+};
+
+const titleStyle: React.CSSProperties = {
+  fontSize: 30,
+  fontWeight: 900,
+  marginBottom: 16,
+};
+
+const heroCardStyle: React.CSSProperties = {
+  background: "#0f172a",
+  color: "#fff",
+  borderRadius: 18,
+  padding: 20,
+  marginBottom: 16,
+};
+
+const heroPlaceStyle: React.CSSProperties = {
+  fontSize: 18,
+  fontWeight: 700,
+  marginBottom: 8,
+};
+
+const heroSlotStyle: React.CSSProperties = {
+  fontSize: 42,
+  fontWeight: 900,
+  lineHeight: 1.1,
+  marginBottom: 8,
+};
+
+const heroDateStyle: React.CSSProperties = {
+  fontSize: 14,
+  opacity: 0.9,
+};
+
+const cardStyle: React.CSSProperties = {
+  background: "#fff",
+  border: "1px solid #e5e5e5",
+  borderRadius: 16,
+  padding: 16,
+  marginBottom: 16,
+};
+
+const descriptionStyle: React.CSSProperties = {
+  lineHeight: 1.8,
+  color: "#333",
+  marginBottom: 12,
+};
+
+const labelStyle: React.CSSProperties = {
+  display: "grid",
+  gap: 8,
+  fontWeight: 700,
+  color: "#222",
+};
+
+const inputStyle: React.CSSProperties = {
+  width: "100%",
+  padding: "14px 16px",
+  borderRadius: 14,
+  border: "1px solid #d1d5db",
+  fontSize: 20,
+  letterSpacing: "0.2em",
+};
+
+const primaryButtonStyle: React.CSSProperties = {
+  width: "100%",
+  padding: "14px 18px",
+  borderRadius: 14,
+  border: "none",
+  background: "#111827",
+  color: "#fff",
+  fontWeight: 800,
+  fontSize: 16,
+  cursor: "pointer",
+};
+
+const secondaryButtonStyle: React.CSSProperties = {
+  width: "100%",
+  padding: "14px 18px",
+  borderRadius: 14,
+  border: "1px solid #111827",
+  background: "#fff",
+  color: "#111",
+  fontWeight: 800,
+  fontSize: 16,
+  cursor: "pointer",
+};
+
+const errorStyle: React.CSSProperties = {
+  padding: 12,
+  borderRadius: 12,
+  background: "#fef2f2",
+  color: "#b91c1c",
+  fontSize: 14,
+};
+
+const subInfoStyle: React.CSSProperties = {
+  background: "#fff",
+  border: "1px solid #e5e5e5",
+  borderRadius: 16,
+  padding: 16,
+  lineHeight: 1.9,
+  fontSize: 14,
+  color: "#555",
+};
+
+const successTitleStyle: React.CSSProperties = {
+  fontSize: 28,
+  fontWeight: 900,
+  marginBottom: 12,
+};
+
+const successMessageStyle: React.CSSProperties = {
+  fontSize: 18,
+  fontWeight: 700,
+  marginBottom: 12,
+  color: "#166534",
+};
+
+const normalTextStyle: React.CSSProperties = {
+  fontSize: 16,
+  color: "#333",
+  marginBottom: 8,
+  lineHeight: 1.8,
+};
+
+const infoRowStyle: React.CSSProperties = {
+  lineHeight: 1.9,
+  fontSize: 15,
+  color: "#333",
+};

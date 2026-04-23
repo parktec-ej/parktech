@@ -1,62 +1,137 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { resolveActivePlace } from "@/lib/place-resolver";
+import { ymdToUtcDate } from "@/lib/pricing-core";
+
+export const runtime = "nodejs";
+
+type OperationMode =
+  | "RESERVATION_ONLY"
+  | "HOURLY_ONLY"
+  | "RESERVATION_THEN_HOURLY"
+  | "EVENT_ONLY"
+  | "CLOSED";
+
+function jsonError(message: string, status = 400, error?: string) {
+  return NextResponse.json(
+    {
+      ok: false,
+      error: error ?? "bad_request",
+      message,
+    },
+    { status }
+  );
+}
+
+function normalizeDate(input: string) {
+  const value = String(input ?? "").trim();
+
+  if (!value) return "";
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+
+  if (/^\d{8}$/.test(value)) {
+    return `${value.slice(0, 4)}-${value.slice(4, 6)}-${value.slice(6, 8)}`;
+  }
+
+  return value;
+}
+
+function normalizeSlot(input: string) {
+  const value = String(input ?? "").trim().toUpperCase();
+
+  if (!value) return "";
+
+  const s = value.match(/^S[- ]?(\d{1,2})$/i);
+  if (s) {
+    return `S${String(Number(s[1])).padStart(2, "0")}`;
+  }
+
+  const a = value.match(/^([A-Z])[- ]?(\d{1,2})$/i);
+  if (a) {
+    return `${a[1].toUpperCase()}-${String(Number(a[2])).padStart(2, "0")}`;
+  }
+
+  return value;
+}
 
 function ymdTodayJst() {
-  const now = new Date();
-  const jst = new Date(now.getTime() + 9 * 60 * 60 * 1000);
-  return jst.toISOString().slice(0, 10);
+  return new Date().toLocaleDateString("sv-SE", {
+    timeZone: "Asia/Tokyo",
+  });
 }
 
-function normalizeSlot(input: string): string {
-  if (!input) return input.trim();
+async function isActiveEventDay(placeId: string, date: string) {
+  const targetDate = ymdToUtcDate(date);
 
-  const v = input.trim().toUpperCase();
+  const row = await prisma.eventDay.findFirst({
+    where: {
+      placeId,
+      date: targetDate,
+      isActive: true,
+    },
+    select: {
+      id: true,
+    },
+  });
 
-  const s = v.match(/^S(\d{1,2})$/i);
-  if (s) return `S${String(Number(s[1])).padStart(2, "0")}`;
-
-  const a = v.match(/^([A-Z])[- ]?(\d{1,2})$/i);
-  if (a) return `${a[1].toUpperCase()}-${String(Number(a[2])).padStart(2, "0")}`;
-
-  return v;
+  return Boolean(row);
 }
 
-export async function GET(req: Request) {
+function isHourlyAllowed(
+  mode: string | null | undefined,
+  eventDayActive: boolean
+) {
+  if (mode === "HOURLY_ONLY") return true;
+  if (mode === "RESERVATION_THEN_HOURLY") return true;
+  if (mode === "EVENT_ONLY") return eventDayActive;
+  return false;
+}
+
+export async function GET(req: NextRequest) {
   try {
     const url = new URL(req.url);
 
-    const rawSlot = url.searchParams.get("slot");
-    const date = url.searchParams.get("date") ?? ymdTodayJst();
-    const placeId = url.searchParams.get("placeId");
+    const inputPlace = String(
+      url.searchParams.get("placeId") ??
+        url.searchParams.get("place") ??
+        url.searchParams.get("placeSlug") ??
+        ""
+    ).trim();
 
-    if (!rawSlot) {
-      return NextResponse.json({ ok: false, error: "slot_required" }, { status: 400 });
+    const inputSlot = String(url.searchParams.get("slot") ?? "").trim();
+    const date = normalizeDate(url.searchParams.get("date") || ymdTodayJst());
+
+    if (!inputPlace) {
+      return jsonError("placeId または place が必要です", 400, "missing_place");
     }
 
-    if (!placeId) {
-      return NextResponse.json({ ok: false, error: "placeId_required" }, { status: 400 });
+    if (!inputSlot) {
+      return jsonError("slot が必要です", 400, "missing_slot");
     }
 
-    const slot = normalizeSlot(rawSlot);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      return jsonError(
+        "date は YYYY-MM-DD 形式で指定してください",
+        400,
+        "invalid_date"
+      );
+    }
 
-    const place = await prisma.place.findUnique({
-      where: { id: placeId },
-      select: {
-        id: true,
-        name: true,
-        operationMode: true,
-        isActive: true,
-      },
+    const normalizedSlot = normalizeSlot(inputSlot);
+
+    const place = await resolveActivePlace({
+      placeId: inputPlace,
+      placeSlug: inputPlace,
     });
 
-    if (!place || !place.isActive) {
-      return NextResponse.json({ ok: false, error: "place_not_found" }, { status: 404 });
+    if (!place) {
+      return jsonError("place が見つかりません", 404, "place_not_found");
     }
 
-    const spot = await prisma.spot.findFirst({
+    const spots = await prisma.spot.findMany({
       where: {
-        placeId,
-        code: slot,
+        placeId: place.id,
         isActive: true,
       },
       select: {
@@ -65,23 +140,66 @@ export async function GET(req: Request) {
         label: true,
         operationModeOverride: true,
       },
+      orderBy: [{ code: "asc" }],
     });
 
+    const spot =
+      spots.find((s) => normalizeSlot(s.code) === normalizedSlot) ??
+      spots.find((s) => normalizeSlot(s.label ?? "") === normalizedSlot);
+
     if (!spot) {
-      return NextResponse.json(
-        { ok: false, error: "spot_not_found", slot, date, placeId },
-        { status: 404 }
-      );
+      return jsonError("slot に対応する区画が見つかりません", 404, "spot_not_found");
     }
 
-    const effectiveOperationMode =
-      spot.operationModeOverride ?? place.operationMode;
+    const dayMode = await prisma.spotModeCalendar.findUnique({
+      where: {
+        spotId_date: {
+          spotId: spot.id,
+          date,
+        },
+      },
+      select: {
+        operationMode: true,
+      },
+    });
 
+    const eventDayActive = await isActiveEventDay(place.id, date);
+
+    const effectiveMode =
+      (dayMode?.operationMode as OperationMode | undefined) ??
+      (spot.operationModeOverride as OperationMode | null) ??
+      (place.operationMode as OperationMode | null) ??
+      "RESERVATION_ONLY";
+
+    if (effectiveMode === "CLOSED") {
+      return NextResponse.json({
+        ok: true,
+        mode: "closed",
+        placeId: place.id,
+        placeSlug: place.slug,
+        placeName: place.name,
+        spotId: spot.id,
+        spotLabel: spot.label ?? spot.code,
+        slot: spot.code,
+        date,
+        effectiveOperationMode: effectiveMode,
+        dayOperationMode: dayMode?.operationMode ?? null,
+        spotOperationModeOverride: spot.operationModeOverride ?? null,
+        placeOperationMode: place.operationMode,
+        message: "現在この区画は利用停止中です。",
+      });
+    }
+
+    // 有効予約は CONFIRMED のみ
     const reservation = await prisma.reservation.findFirst({
       where: {
-        date,
-        placeId,
+        placeId: place.id,
         spotId: spot.id,
+        date,
+        status: "CONFIRMED",
+      },
+      orderBy: {
+        createdAt: "desc",
       },
       select: {
         id: true,
@@ -89,198 +207,175 @@ export async function GET(req: Request) {
         checkedIn: true,
         checkedInAt: true,
         checkedOutAt: true,
-        placeId: true,
-        spotId: true,
+        status: true,
       },
     });
 
-    const basePayload = {
-      ok: true,
-      effectiveOperationMode,
-      placeOperationMode: place.operationMode,
-      spotOperationModeOverride: spot.operationModeOverride,
-      slot,
-      date,
-      placeId,
-      spotId: spot.id,
-    };
-
-    if (effectiveOperationMode === "CLOSED") {
-      const openHourly = await prisma.parkingSession.findFirst({
-        where: {
-          placeId,
-          spotId: spot.id,
-          sessionType: "HOURLY",
-          status: "IN",
-          checkOutAt: null,
-        },
-        orderBy: { checkInAt: "desc" },
-        select: {
-          id: true,
-          checkInAt: true,
-        },
-      });
-
-      if (reservation && reservation.checkedIn && !reservation.checkedOutAt) {
-        return NextResponse.json({
-          ...basePayload,
-          mode: "can_checkout",
-          reservationId: reservation.id,
-          checkedInAt: reservation.checkedInAt,
-        });
-      }
-
-      if (openHourly) {
-        return NextResponse.json({
-          ...basePayload,
-          mode: "can_checkout_hourly",
-          sessionId: openHourly.id,
-          checkedInAt: openHourly.checkInAt,
-        });
-      }
-
-      return NextResponse.json({
-        ...basePayload,
-        mode: "closed",
-      });
-    }
-
-    if (effectiveOperationMode === "RESERVATION_ONLY") {
-      if (!reservation) {
-        return NextResponse.json({
-          ...basePayload,
-          mode: "no_reservation",
-        });
-      }
-
-      if (!reservation.paid) {
-        return NextResponse.json({
-          ...basePayload,
-          mode: "unpaid",
-          reservationId: reservation.id,
-        });
-      }
-
-      if (!reservation.checkedIn) {
-        return NextResponse.json({
-          ...basePayload,
-          mode: "need_pin_checkin",
-          reservationId: reservation.id,
-        });
-      }
-
-      if (!reservation.checkedOutAt) {
-        return NextResponse.json({
-          ...basePayload,
-          mode: "can_checkout",
-          reservationId: reservation.id,
-          checkedInAt: reservation.checkedInAt,
-        });
-      }
-
-      return NextResponse.json({
-        ...basePayload,
-        mode: "already_checked_out",
-        reservationId: reservation.id,
-      });
-    }
-
-    if (effectiveOperationMode === "HOURLY_ONLY") {
-      const openHourly = await prisma.parkingSession.findFirst({
-        where: {
-          placeId,
-          spotId: spot.id,
-          sessionType: "HOURLY",
-          status: "IN",
-          checkOutAt: null,
-        },
-        orderBy: { checkInAt: "desc" },
-        select: {
-          id: true,
-          checkInAt: true,
-        },
-      });
-
-      if (openHourly) {
-        return NextResponse.json({
-          ...basePayload,
-          mode: "can_checkout_hourly",
-          sessionId: openHourly.id,
-          checkedInAt: openHourly.checkInAt,
-        });
-      }
-
-      return NextResponse.json({
-        ...basePayload,
-        mode: "can_start_hourly",
-      });
-    }
-
+    // 予約がある場合は予約優先
     if (reservation) {
       if (!reservation.paid) {
         return NextResponse.json({
-          ...basePayload,
+          ok: true,
           mode: "unpaid",
+          placeId: place.id,
+          placeSlug: place.slug,
+          placeName: place.name,
+          spotId: spot.id,
+          spotLabel: spot.label ?? spot.code,
+          slot: spot.code,
+          date,
           reservationId: reservation.id,
+          reservationPriority: true,
+          checkedInAt: reservation.checkedInAt?.toISOString() ?? null,
+          effectiveOperationMode: effectiveMode,
+          dayOperationMode: dayMode?.operationMode ?? null,
+          spotOperationModeOverride: spot.operationModeOverride ?? null,
+          placeOperationMode: place.operationMode,
+          message: "未決済の予約があります。管理者へご確認ください。",
         });
       }
 
-      if (!reservation.checkedIn) {
+      if (reservation.checkedOutAt) {
         return NextResponse.json({
-          ...basePayload,
-          mode: "need_pin_checkin",
+          ok: true,
+          mode: "already_checked_out",
+          placeId: place.id,
+          placeSlug: place.slug,
+          placeName: place.name,
+          spotId: spot.id,
+          spotLabel: spot.label ?? spot.code,
+          slot: spot.code,
+          date,
           reservationId: reservation.id,
+          reservationPriority: true,
+          checkedInAt: reservation.checkedInAt?.toISOString() ?? null,
+          effectiveOperationMode: effectiveMode,
+          dayOperationMode: dayMode?.operationMode ?? null,
+          spotOperationModeOverride: spot.operationModeOverride ?? null,
+          placeOperationMode: place.operationMode,
+          message: "この予約はすでに出庫済みです。",
         });
       }
 
-      if (!reservation.checkedOutAt) {
+      if (reservation.checkedIn) {
         return NextResponse.json({
-          ...basePayload,
+          ok: true,
           mode: "can_checkout",
+          placeId: place.id,
+          placeSlug: place.slug,
+          placeName: place.name,
+          spotId: spot.id,
+          spotLabel: spot.label ?? spot.code,
+          slot: spot.code,
+          date,
           reservationId: reservation.id,
-          checkedInAt: reservation.checkedInAt,
+          reservationPriority: true,
+          checkedInAt: reservation.checkedInAt?.toISOString() ?? null,
+          effectiveOperationMode: effectiveMode,
+          dayOperationMode: dayMode?.operationMode ?? null,
+          spotOperationModeOverride: spot.operationModeOverride ?? null,
+          placeOperationMode: place.operationMode,
+          message: "予約利用中です。出庫手続きを進めてください。",
         });
       }
 
       return NextResponse.json({
-        ...basePayload,
-        mode: "already_checked_out",
+        ok: true,
+        mode: "need_pin_checkin",
+        placeId: place.id,
+        placeSlug: place.slug,
+        placeName: place.name,
+        spotId: spot.id,
+        spotLabel: spot.label ?? spot.code,
+        slot: spot.code,
+        date,
         reservationId: reservation.id,
+        reservationPriority: true,
+        checkedInAt: reservation.checkedInAt?.toISOString() ?? null,
+        effectiveOperationMode: effectiveMode,
+        dayOperationMode: dayMode?.operationMode ?? null,
+        spotOperationModeOverride: spot.operationModeOverride ?? null,
+        placeOperationMode: place.operationMode,
+        message: "予約済みの方は PIN を入力して入庫してください。",
       });
     }
 
-    const openHourly = await prisma.parkingSession.findFirst({
+    // 時間貸しの利用中セッション確認
+    const activeSession = await prisma.parkingSession.findFirst({
       where: {
-        placeId,
+        placeId: place.id,
         spotId: spot.id,
-        sessionType: "HOURLY",
-        status: "IN",
         checkOutAt: null,
+        status: "IN",
       },
-      orderBy: { checkInAt: "desc" },
+      orderBy: {
+        checkInAt: "desc",
+      },
       select: {
         id: true,
+        paid: true,
         checkInAt: true,
       },
     });
 
-    if (openHourly) {
+    if (activeSession) {
       return NextResponse.json({
-        ...basePayload,
+        ok: true,
         mode: "can_checkout_hourly",
-        sessionId: openHourly.id,
-        checkedInAt: openHourly.checkInAt,
+        placeId: place.id,
+        placeSlug: place.slug,
+        placeName: place.name,
+        spotId: spot.id,
+        spotLabel: spot.label ?? spot.code,
+        slot: spot.code,
+        date,
+        sessionId: activeSession.id,
+        checkedInAt: activeSession.checkInAt.toISOString(),
+        effectiveOperationMode: effectiveMode,
+        dayOperationMode: dayMode?.operationMode ?? null,
+        spotOperationModeOverride: spot.operationModeOverride ?? null,
+        placeOperationMode: place.operationMode,
+        message: "時間貸し利用中です。精算して出庫してください。",
+      });
+    }
+
+    if (isHourlyAllowed(effectiveMode, eventDayActive)) {
+      return NextResponse.json({
+        ok: true,
+        mode: "can_start_hourly",
+        placeId: place.id,
+        placeSlug: place.slug,
+        placeName: place.name,
+        spotId: spot.id,
+        spotLabel: spot.label ?? spot.code,
+        slot: spot.code,
+        date,
+        effectiveOperationMode: effectiveMode,
+        dayOperationMode: dayMode?.operationMode ?? null,
+        spotOperationModeOverride: spot.operationModeOverride ?? null,
+        placeOperationMode: place.operationMode,
+        message: "時間貸し利用が可能です。",
       });
     }
 
     return NextResponse.json({
-      ...basePayload,
-      mode: "can_start_hourly",
+      ok: true,
+      mode: "no_reservation",
+      placeId: place.id,
+      placeSlug: place.slug,
+      placeName: place.name,
+      spotId: spot.id,
+      spotLabel: spot.label ?? spot.code,
+      slot: spot.code,
+      date,
+      effectiveOperationMode: effectiveMode,
+      dayOperationMode: dayMode?.operationMode ?? null,
+      spotOperationModeOverride: spot.operationModeOverride ?? null,
+      placeOperationMode: place.operationMode,
+      message: "ご利用方法を選んでください。",
     });
-  } catch (e: any) {
-    return NextResponse.json(
-      { ok: false, error: "server_error", message: String(e?.message ?? e) },
-      { status: 500 }
-    );
+  } catch (error) {
+    console.error("gate-status error:", error);
+    return jsonError("ゲート状態の取得に失敗しました", 500, "server_error");
   }
 }

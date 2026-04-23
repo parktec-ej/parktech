@@ -1,524 +1,717 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 
-const PLACE_ID = "e24a57f5-787f-4c2e-9394-e5f54053a955";
-
-type SpotItem = {
+type Spot = {
   id: string;
   code: string;
   label: string | null;
-  isReserved: boolean;
+  mode: string | null;
+  isAvailable: boolean;
 };
 
-function pad2(n: number) {
-  return String(n).padStart(2, "0");
+type Place = {
+  id: string;
+  slug: string;
+  name: string;
+  address: string | null;
+  operationMode?: string | null;
+};
+
+type ReservationSummary = {
+  id: string;
+  slot: string | null;
+  spotId: string | null;
+  name: string;
+  plate: string;
+  email: string | null;
+  price: number;
+  createdAt: string;
+};
+
+type ReservationsApiResponse = {
+  ok: boolean;
+  place?: Place;
+  date?: string;
+  spots?: Spot[];
+  reservations?: ReservationSummary[];
+  error?: string;
+  message?: string;
+};
+
+type PlacesApiResponse = {
+  ok: boolean;
+  places?: Place[];
+  error?: string;
+  message?: string;
+};
+
+function ymdTodayJst() {
+  return new Date().toLocaleDateString("sv-SE", {
+    timeZone: "Asia/Tokyo",
+  });
 }
 
-function ymd(d: Date) {
-  const y = d.getFullYear();
-  const m = pad2(d.getMonth() + 1);
-  const day = pad2(d.getDate());
-  return `${y}-${m}-${day}`;
+async function fetchJson(input: RequestInfo | URL, init?: RequestInit) {
+  const res = await fetch(input, init);
+  const json = await res.json().catch(() => null);
+  return { res, json };
 }
 
-function startOfMonth(d: Date) {
-  return new Date(d.getFullYear(), d.getMonth(), 1);
+function modeLabel(mode?: string | null) {
+  switch (mode) {
+    case "RESERVATION_ONLY":
+      return "予約専用";
+    case "HOURLY_ONLY":
+      return "時間貸し専用";
+    case "RESERVATION_THEN_HOURLY":
+      return "予約＋時間貸し";
+    case "EVENT_ONLY":
+      return "イベント日のみ予約営業";
+    case "CLOSED":
+      return "休止中";
+    default:
+      return mode ?? "-";
+  }
 }
 
-function addMonths(d: Date, delta: number) {
-  return new Date(d.getFullYear(), d.getMonth() + delta, 1);
-}
-
-function daysInMonth(d: Date) {
-  return new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+function canReserve(mode?: string | null) {
+  return (
+    mode === "RESERVATION_ONLY" ||
+    mode === "RESERVATION_THEN_HOURLY" ||
+    mode === "EVENT_ONLY"
+  );
 }
 
 export default function ReservePage() {
-  const [month, setMonth] = useState<Date>(() => startOfMonth(new Date()));
-  const [date, setDate] = useState<string>(() => ymd(new Date()));
+  const router = useRouter();
+  const searchParams = useSearchParams();
 
-  const [placeName, setPlaceName] = useState<string>("駐車場");
-  const [placeAddress, setPlaceAddress] = useState<string>("");
+  const queryPlaceId = useMemo(
+    () => String(searchParams.get("placeId") ?? "").trim(),
+    [searchParams]
+  );
 
-  const [spots, setSpots] = useState<SpotItem[]>([]);
-  const [spotId, setSpotId] = useState<string>("");
-  const [spotCode, setSpotCode] = useState<string>("");
+  const queryPlaceSlug = useMemo(
+    () => String(searchParams.get("placeSlug") ?? "").trim(),
+    [searchParams]
+  );
 
+  const hasPlaceQuery = Boolean(queryPlaceId || queryPlaceSlug);
+
+  const [places, setPlaces] = useState<Place[]>([]);
+  const [placesLoading, setPlacesLoading] = useState(true);
+  const [placesErr, setPlacesErr] = useState("");
+
+  const [date, setDate] = useState(ymdTodayJst());
+  const [place, setPlace] = useState<Place | null>(null);
+  const [spots, setSpots] = useState<Spot[]>([]);
+  const [selectedSpotId, setSelectedSpotId] = useState("");
   const [name, setName] = useState("");
   const [plate, setPlate] = useState("");
   const [email, setEmail] = useState("");
-
-  const [loading, setLoading] = useState(false);
-  const [msg, setMsg] = useState<string>("");
-
-  const [success, setSuccess] = useState<null | {
-    pin: string;
-    price: number;
-    spotCode: string;
-    date: string;
-  }>(null);
-
-  const reservedCount = spots.filter((s) => s.isReserved).length;
-  const remaining = spots.length - reservedCount;
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [err, setErr] = useState("");
 
   useEffect(() => {
     let cancelled = false;
 
-    async function run() {
-      setLoading(true);
-      setMsg("");
+    async function loadPlaces() {
+      setPlacesLoading(true);
+      setPlacesErr("");
 
       try {
-        const res = await fetch(
-          `/api/reservations?date=${encodeURIComponent(date)}&placeId=${encodeURIComponent(
-            PLACE_ID
-          )}`,
-          { cache: "no-store" }
-        );
+        const { res, json } = await fetchJson("/api/public/places", {
+          cache: "no-store",
+        });
 
-        const json = await res.json();
+        if (cancelled) return;
 
-        if (!json.ok) {
-          if (!cancelled) setMsg(`取得エラー: ${json.error ?? "unknown"}`);
+        if (!res.ok || !json?.ok) {
+          setPlaces([]);
+          setPlacesErr(json?.message || json?.error || "PLACE一覧の取得に失敗しました");
           return;
         }
 
-        const fetchedSpots: SpotItem[] = (json.spots ?? []).map((s: any) => ({
-          id: String(s.id),
-          code: String(s.code),
-          label: s.label ? String(s.label) : null,
-          isReserved: Boolean(s.isReserved),
-        }));
-
+        const data = json as PlacesApiResponse;
+        setPlaces(Array.isArray(data.places) ? data.places : []);
+      } catch (e) {
         if (!cancelled) {
-          setPlaceName(String(json.place?.name ?? "駐車場"));
-          setPlaceAddress(String(json.place?.address ?? ""));
-          setSpots(fetchedSpots);
-
-          const currentSelected = fetchedSpots.find((s) => s.id === spotId);
-          if (!currentSelected || currentSelected.isReserved) {
-            const firstFree = fetchedSpots.find((s) => !s.isReserved);
-            setSpotId(firstFree?.id ?? "");
-            setSpotCode(firstFree?.code ?? "");
-          }
+          setPlaces([]);
+          setPlacesErr("PLACE一覧の取得に失敗しました");
         }
-      } catch (e: any) {
-        if (!cancelled) setMsg(`取得エラー: ${String(e?.message ?? e)}`);
+      } finally {
+        if (!cancelled) setPlacesLoading(false);
+      }
+    }
+
+    loadPlaces();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!hasPlaceQuery) {
+      setLoading(false);
+      setErr("");
+      setPlace(null);
+      setSpots([]);
+      setSelectedSpotId("");
+      return;
+    }
+
+    let cancelled = false;
+
+    async function loadReserveTarget() {
+      setLoading(true);
+      setErr("");
+
+      try {
+        const params = new URLSearchParams();
+        params.set("date", date);
+        if (queryPlaceId) params.set("placeId", queryPlaceId);
+        if (queryPlaceSlug) params.set("placeSlug", queryPlaceSlug);
+
+        const { res, json } = await fetchJson(
+          `/api/reservations?${params.toString()}`,
+          { cache: "no-store" }
+        );
+
+        if (cancelled) return;
+
+        if (!res.ok || !json?.ok) {
+          setPlace(null);
+          setSpots([]);
+          setSelectedSpotId("");
+          setErr(json?.message || json?.error || "予約情報の取得に失敗しました");
+          return;
+        }
+
+        const data = json as ReservationsApiResponse;
+        const fetchedPlace = data.place ?? null;
+        const fetchedSpots = Array.isArray(data.spots) ? data.spots : [];
+
+        setPlace(fetchedPlace);
+        setSpots(fetchedSpots);
+
+        setSelectedSpotId((prev) => {
+          const prevStillUsable = fetchedSpots.some(
+            (s) => s.id === prev && s.isAvailable
+          );
+          if (prevStillUsable) return prev;
+
+          const firstAvailable = fetchedSpots.find((s) => s.isAvailable);
+          return firstAvailable?.id ?? "";
+        });
+      } catch (e) {
+        if (!cancelled) {
+          setPlace(null);
+          setSpots([]);
+          setSelectedSpotId("");
+          setErr("通信エラーが発生しました");
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
     }
 
-    run();
+    loadReserveTarget();
 
     return () => {
       cancelled = true;
     };
-  }, [date, spotId]);
-
-  const calendarCells = useMemo(() => {
-    const first = startOfMonth(month);
-    const firstWeekday = first.getDay();
-    const dim = daysInMonth(month);
-
-    const cells: Array<{ label: string; value: string | null }> = [];
-
-    for (let i = 0; i < firstWeekday; i++) cells.push({ label: "", value: null });
-    for (let day = 1; day <= dim; day++) {
-      const d = new Date(month.getFullYear(), month.getMonth(), day);
-      cells.push({ label: String(day), value: ymd(d) });
-    }
-    while (cells.length % 7 !== 0) cells.push({ label: "", value: null });
-
-    return cells;
-  }, [month]);
-
-  async function refreshSpots(ymdStr: string) {
-    const res = await fetch(
-      `/api/reservations?date=${encodeURIComponent(ymdStr)}&placeId=${encodeURIComponent(
-        PLACE_ID
-      )}`,
-      { cache: "no-store" }
-    );
-    const json = await res.json();
-
-    if (json.ok) {
-      const fetchedSpots: SpotItem[] = (json.spots ?? []).map((s: any) => ({
-        id: String(s.id),
-        code: String(s.code),
-        label: s.label ? String(s.label) : null,
-        isReserved: Boolean(s.isReserved),
-      }));
-
-      setSpots(fetchedSpots);
-
-      const selected = fetchedSpots.find((s) => s.id === spotId);
-      if (!selected || selected.isReserved) {
-        const firstFree = fetchedSpots.find((s) => !s.isReserved);
-        setSpotId(firstFree?.id ?? "");
-        setSpotCode(firstFree?.code ?? "");
-      }
-    }
-  }
+  }, [date, queryPlaceId, queryPlaceSlug, hasPlaceQuery]);
 
   async function submit() {
-    setMsg("");
-
-    if (!date) return setMsg("日付を選んでください");
-    if (!spotId) return setMsg("区画を選んでください");
-    if (!name.trim()) return setMsg("名前を入力してください");
-    if (!plate.trim()) return setMsg("車両ナンバーを入力してください");
-
-    const selectedSpot = spots.find((s) => s.id === spotId);
-    if (!selectedSpot) return setMsg("区画を選び直してください");
-    if (selectedSpot.isReserved) {
-      return setMsg("その区画は予約済みです。別の区画を選んでください。");
+    if (!place?.id) {
+      setErr("place が取得できていません");
+      return;
     }
 
-    setLoading(true);
+    if (!selectedSpotId) {
+      setErr("空いている区画を選択してください");
+      return;
+    }
+
+    const selectedSpot = spots.find((s) => s.id === selectedSpotId);
+    if (!selectedSpot?.isAvailable) {
+      setErr("その区画は予約済みです");
+      return;
+    }
+
+    if (!name.trim()) {
+      setErr("氏名を入力してください");
+      return;
+    }
+
+    if (!plate.trim()) {
+      setErr("車両ナンバーを入力してください");
+      return;
+    }
+
+    if (!email.trim()) {
+      setErr("メールアドレスを入力してください");
+      return;
+    }
+
+    setSubmitting(true);
+    setErr("");
+
     try {
-      const res = await fetch("/api/reservations", {
+      const { res, json } = await fetchJson("/api/stripe/checkout/reservation", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+        },
         body: JSON.stringify({
+          placeId: place.id,
+          spotId: selectedSpotId,
           date,
-          slot: selectedSpot.code,
-          placeId: PLACE_ID,
-          spotId: selectedSpot.id,
           name: name.trim(),
           plate: plate.trim(),
-          email: email?.trim() ? email.trim() : null,
+          email: email.trim(),
         }),
       });
 
-      const json = await res.json();
-
-      if (!json.ok) {
-        setMsg(`予約失敗: ${json.error ?? "unknown"}`);
+      if (!res.ok || !json?.ok) {
+        setErr(json?.message || json?.error || "決済画面の作成に失敗しました");
         return;
       }
 
-      setSuccess({
-        pin: String(json.pin),
-        price: Number(json.price),
-        spotCode: selectedSpot.code,
-        date,
-      });
+      const url = String(json.url ?? "").trim();
+      if (!url) {
+        setErr("決済URLが取得できませんでした");
+        return;
+      }
 
-      await refreshSpots(date);
-    } catch (e: any) {
-      setMsg(`予約失敗: ${String(e?.message ?? e)}`);
+      router.push(url);
+    } catch (e) {
+      setErr("送信に失敗しました");
     } finally {
-      setLoading(false);
+      setSubmitting(false);
     }
   }
 
-  const title = `${month.getFullYear()}年${month.getMonth() + 1}月`;
-
-  return (
-    <div style={{ maxWidth: 560, margin: "24px auto", padding: 16, fontFamily: "system-ui" }}>
-      {success && (
-        <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0,0,0,0.45)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: 16,
-            zIndex: 9999,
-          }}
-          onClick={() => setSuccess(null)}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              width: "min(520px, 100%)",
-              background: "#fff",
-              borderRadius: 18,
-              padding: 18,
-              boxShadow: "0 10px 40px rgba(0,0,0,0.2)",
-            }}
-          >
-            <div style={{ fontWeight: 900, fontSize: 18, marginBottom: 8 }}>
-              予約手続き完了しました
-            </div>
-
-            <div style={{ color: "#333", fontSize: 13, lineHeight: 1.6 }}>
-              暗証番号を発行しましたので控えてください。<br />
-              メールにも送りましたのでご確認ください。
-            </div>
-
-            <div
-              style={{
-                marginTop: 14,
-                border: "2px solid #111",
-                borderRadius: 16,
-                padding: "18px 14px",
-                textAlign: "center",
-              }}
-            >
-              <div style={{ fontSize: 12, color: "#666", fontWeight: 800 }}>
-                暗証番号（4桁）
-              </div>
-              <div
-                style={{
-                  marginTop: 6,
-                  fontSize: 52,
-                  fontWeight: 900,
-                  letterSpacing: 8,
-                }}
-              >
-                {success.pin}
-              </div>
-            </div>
-
-            <div style={{ marginTop: 12, fontSize: 12, color: "#666" }}>
-              区画：{success.spotCode}　/　日付：{success.date}　/　料金：{success.price}円
-            </div>
-
-            <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
-              <button
-                onClick={() => {
-                  window.location.href = `/gate?slot=${encodeURIComponent(success.spotCode)}`;
-                }}
-                style={{
-                  flex: 1,
-                  padding: "12px 12px",
-                  borderRadius: 14,
-                  border: "1px solid #ddd",
-                  cursor: "pointer",
-                  fontWeight: 900,
-                }}
-              >
-                現地QR画面へ（テスト）
-              </button>
-
-              <button
-                onClick={() => setSuccess(null)}
-                style={{
-                  flex: 1,
-                  padding: "12px 12px",
-                  borderRadius: 14,
-                  border: "1px solid #111",
-                  background: "#111",
-                  color: "#fff",
-                  cursor: "pointer",
-                  fontWeight: 900,
-                }}
-              >
-                閉じる
-              </button>
+  if (!hasPlaceQuery) {
+    return (
+      <main style={styles.page}>
+        <div style={styles.card}>
+          <div style={styles.headerRow}>
+            <div>
+              <h1 style={styles.title}>駐車場予約</h1>
+              <div style={styles.placeText}>予約したい駐車場を選択してください</div>
             </div>
           </div>
-        </div>
-      )}
 
-      <h1 style={{ fontSize: 22, fontWeight: 900, marginBottom: 10 }}>駐車場予約</h1>
+          {placesErr ? <div style={styles.error}>{placesErr}</div> : null}
 
-      <div
-        style={{
-          border: "1px solid #eee",
-          borderRadius: 14,
-          padding: 12,
-          background: "#fafafa",
-          marginBottom: 14,
-        }}
-      >
-        <div style={{ fontWeight: 900, fontSize: 18 }}>{placeName}</div>
-        <div style={{ fontSize: 12, color: "#666", marginTop: 4 }}>{placeAddress}</div>
-        <div style={{ fontWeight: 900, fontSize: 18, marginTop: 8 }}>
-          残り {remaining} / {spots.length || 0}
-          {loading ? "（更新中）" : ""}
-        </div>
-        <div style={{ fontSize: 12, color: "#666", marginTop: 4 }}>選択日：{date}</div>
-      </div>
-
-      <div style={{ border: "1px solid #eee", borderRadius: 14, padding: 12 }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <button
-            onClick={() => setMonth(addMonths(month, -1))}
-            style={{
-              padding: "8px 10px",
-              borderRadius: 10,
-              border: "1px solid #ddd",
-              cursor: "pointer",
-            }}
-          >
-            ◀
-          </button>
-
-          <div style={{ fontWeight: 900 }}>{title}</div>
-
-          <button
-            onClick={() => setMonth(addMonths(month, 1))}
-            style={{
-              padding: "8px 10px",
-              borderRadius: 10,
-              border: "1px solid #ddd",
-              cursor: "pointer",
-            }}
-          >
-            ▶
-          </button>
-        </div>
-
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(7, 1fr)",
-            gap: 6,
-            marginTop: 10,
-          }}
-        >
-          {["日", "月", "火", "水", "木", "金", "土"].map((w) => (
-            <div
-              key={w}
-              style={{ textAlign: "center", fontSize: 12, color: "#666", fontWeight: 800 }}
-            >
-              {w}
-            </div>
-          ))}
-
-          {calendarCells.map((c, idx) => {
-            const isSelected = c.value === date;
-            const isEmpty = !c.value;
-
-            return (
-              <button
-                key={idx}
-                disabled={isEmpty}
-                onClick={() => c.value && setDate(c.value)}
-                style={{
-                  height: 44,
-                  borderRadius: 12,
-                  border: isSelected ? "2px solid #1976d2" : "1px solid #eee",
-                  background: isSelected ? "#e8f2ff" : isEmpty ? "transparent" : "#fff",
-                  cursor: isEmpty ? "default" : "pointer",
-                  fontWeight: isSelected ? 900 : 700,
-                  color: isEmpty ? "transparent" : "#111",
-                }}
-              >
-                {c.label || "0"}
-              </button>
-            );
-          })}
-        </div>
-
-        <div style={{ marginTop: 10, fontSize: 12, color: "#666" }}>
-          ※日付を選ぶと、その日の予約状況と残り台数が更新されます
-        </div>
-      </div>
-
-      <div style={{ marginTop: 14, border: "1px solid #eee", borderRadius: 14, padding: 12 }}>
-        <div style={{ fontWeight: 900, marginBottom: 10 }}>予約内容</div>
-
-        <div style={{ display: "grid", gap: 10 }}>
-          <div>
-            <div style={{ fontSize: 12, color: "#666" }}>区画</div>
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(5, 1fr)",
-                gap: 8,
-                marginTop: 6,
-              }}
-            >
-              {spots.map((s) => {
-                const isSelected = spotId === s.id;
-
+          {placesLoading ? (
+            <div style={styles.subtle}>PLACEを読み込み中...</div>
+          ) : places.length === 0 ? (
+            <div style={styles.subtle}>利用可能なPLACEがありません。</div>
+          ) : (
+            <div style={styles.placeGrid}>
+              {places.map((p) => {
+                const reservable = canReserve(p.operationMode);
                 return (
-                  <button
-                    key={s.id}
-                    disabled={s.isReserved}
-                    onClick={() => {
-                      setSpotId(s.id);
-                      setSpotCode(s.code);
-                    }}
+                  <Link
+                    key={p.id}
+                    href={`/reserve?placeSlug=${encodeURIComponent(p.slug)}`}
                     style={{
-                      padding: "10px 0",
-                      borderRadius: 12,
-                      border: isSelected ? "2px solid #1976d2" : "1px solid #ddd",
-                      background: s.isReserved ? "#f2f2f2" : isSelected ? "#e8f2ff" : "#fff",
-                      color: s.isReserved ? "#999" : "#111",
-                      fontWeight: 900,
-                      cursor: s.isReserved ? "not-allowed" : "pointer",
+                      ...styles.placeCard,
+                      opacity: reservable ? 1 : 0.65,
                     }}
-                    title={s.isReserved ? "予約済み" : "選択"}
                   >
-                    {s.label || s.code}
-                  </button>
+                    <div style={styles.placeCardTitle}>{p.name}</div>
+                    <div style={styles.placeCardSlug}>{p.slug}</div>
+                    {p.address ? <div style={styles.placeCardAddress}>{p.address}</div> : null}
+                    <div style={styles.placeCardMeta}>
+                      営業モード: {modeLabel(p.operationMode)}
+                    </div>
+                    <div
+                      style={{
+                        ...styles.placeCardBadge,
+                        background: reservable ? "#111827" : "#6b7280",
+                      }}
+                    >
+                      {reservable ? "予約へ進む" : "予約対象外"}
+                    </div>
+                  </Link>
                 );
               })}
             </div>
-          </div>
-
-          <div>
-            <div style={{ fontSize: 12, color: "#666" }}>名前（必須）</div>
-            <input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              style={{ width: "100%", padding: 12, borderRadius: 12, border: "1px solid #ddd" }}
-              placeholder="例：阿部 龍昇"
-            />
-          </div>
-
-          <div>
-            <div style={{ fontSize: 12, color: "#666" }}>車両ナンバー（必須）</div>
-            <input
-              value={plate}
-              onChange={(e) => setPlate(e.target.value)}
-              style={{ width: "100%", padding: 12, borderRadius: 12, border: "1px solid #ddd" }}
-              placeholder="例：宮城300 あ 1234"
-            />
-          </div>
-
-          <div>
-            <div style={{ fontSize: 12, color: "#666" }}>メール（任意：PIN送信先）</div>
-            <input
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              style={{ width: "100%", padding: 12, borderRadius: 12, border: "1px solid #ddd" }}
-              placeholder="例：test@example.com"
-            />
-          </div>
-
-          <button
-            onClick={submit}
-            disabled={loading || !date || !spotId}
-            style={{
-              padding: "14px 12px",
-              borderRadius: 14,
-              border: "1px solid #ddd",
-              fontWeight: 900,
-              cursor: loading ? "wait" : "pointer",
-              background: "#111",
-              color: "#fff",
-              opacity: loading ? 0.7 : 1,
-            }}
-          >
-            この内容で予約する
-          </button>
-
-          {msg && (
-            <div
-              style={{
-                whiteSpace: "pre-wrap",
-                fontSize: 13,
-                color: "#b00020",
-                padding: 10,
-                background: "#fff3f5",
-                borderRadius: 12,
-                border: "1px solid #ffd0d8",
-              }}
-            >
-              {msg}
-            </div>
           )}
         </div>
+      </main>
+    );
+  }
+
+  return (
+    <main style={styles.page}>
+      <div style={styles.card}>
+        <div style={styles.headerRow}>
+          <div>
+            <h1 style={styles.title}>駐車場予約</h1>
+            <div style={styles.placeText}>
+              対象Place:{" "}
+              {place ? `${place.name} (${place.slug})` : "読み込み中"}
+            </div>
+            {place?.address ? <div style={styles.subtle}>{place.address}</div> : null}
+            {place?.operationMode ? (
+              <div style={styles.subtle}>営業モード: {modeLabel(place.operationMode)}</div>
+            ) : null}
+          </div>
+
+          <Link href="/reserve" style={styles.backLink}>
+            ← PLACE一覧へ戻る
+          </Link>
+        </div>
+
+        <section style={styles.section}>
+          <label style={styles.label}>利用日</label>
+          <input
+            type="date"
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+            style={styles.input}
+          />
+        </section>
+
+        <section style={styles.section}>
+          <div style={styles.labelRow}>
+            <label style={styles.label}>区画</label>
+            <span style={styles.legend}>
+              黒: 選択中 / 白: 空き / グレー: 予約済み
+            </span>
+          </div>
+
+          <div style={styles.slotGrid}>
+            {spots.map((spot) => {
+              const selected = selectedSpotId === spot.id;
+              const disabled = !spot.isAvailable;
+
+              return (
+                <button
+                  key={spot.id}
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => setSelectedSpotId(spot.id)}
+                  style={{
+                    ...styles.slotButton,
+                    ...(selected ? styles.slotButtonSelected : {}),
+                    ...(disabled ? styles.slotButtonDisabled : {}),
+                  }}
+                >
+                  <div style={styles.slotCode}>{spot.label || spot.code}</div>
+                  <div style={styles.slotSub}>
+                    {disabled ? "予約済み" : selected ? "選択中" : "予約可能"}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </section>
+
+        <section style={styles.section}>
+          <label style={styles.label}>氏名</label>
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="例: ご利用者名"
+            style={styles.input}
+          />
+        </section>
+
+        <section style={styles.section}>
+          <label style={styles.label}>車両ナンバー</label>
+          <input
+            value={plate}
+            onChange={(e) => setPlate(e.target.value)}
+            placeholder="例: 宮城300 あ 1234"
+            style={styles.input}
+          />
+        </section>
+
+        <section style={styles.section}>
+          <label style={styles.label}>メールアドレス</label>
+          <input
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="example@example.com"
+            style={styles.input}
+          />
+        </section>
+
+        {err ? <div style={styles.error}>{err}</div> : null}
+        {loading ? <div style={styles.subtle}>読み込み中...</div> : null}
+
+        <button
+          type="button"
+          onClick={submit}
+          disabled={loading || submitting || !selectedSpotId}
+          style={{
+            ...styles.submitButton,
+            ...(loading || submitting || !selectedSpotId
+              ? styles.submitButtonDisabled
+              : {}),
+          }}
+        >
+          {submitting ? "処理中..." : "予約して決済へ進む"}
+        </button>
       </div>
-    </div>
+    </main>
   );
 }
+
+const styles: Record<string, React.CSSProperties> = {
+  page: {
+    minHeight: "100vh",
+    background: "#f6f6f7",
+    padding: "32px 16px",
+  },
+
+  card: {
+    maxWidth: 980,
+    margin: "0 auto",
+    background: "#ffffff",
+    borderWidth: 1,
+    borderStyle: "solid",
+    borderColor: "#e5e7eb",
+    borderRadius: 24,
+    padding: 28,
+    boxSizing: "border-box",
+  },
+
+  headerRow: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    gap: 16,
+    flexWrap: "wrap",
+    marginBottom: 24,
+  },
+
+  title: {
+    fontSize: 24,
+    fontWeight: 800,
+    margin: 0,
+    lineHeight: 1.3,
+    color: "#111827",
+  },
+
+  placeText: {
+    marginTop: 12,
+    fontSize: 16,
+    fontWeight: 700,
+    color: "#111827",
+  },
+
+  subtle: {
+    marginTop: 8,
+    color: "#6b7280",
+    fontSize: 14,
+    lineHeight: 1.5,
+  },
+
+  section: {
+    marginTop: 24,
+  },
+
+  labelRow: {
+    display: "flex",
+    justifyContent: "space-between",
+    gap: 12,
+    alignItems: "center",
+    flexWrap: "wrap",
+  },
+
+  label: {
+    display: "block",
+    fontSize: 14,
+    fontWeight: 700,
+    marginBottom: 10,
+    color: "#111827",
+  },
+
+  legend: {
+    fontSize: 13,
+    color: "#666",
+  },
+
+  input: {
+    width: "100%",
+    borderWidth: 1,
+    borderStyle: "solid",
+    borderColor: "#d1d5db",
+    borderRadius: 16,
+    padding: "16px 18px",
+    fontSize: 16,
+    outline: "none",
+    background: "#ffffff",
+    color: "#111827",
+    boxSizing: "border-box",
+  },
+
+  slotGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))",
+    gap: 14,
+  },
+
+  slotButton: {
+    borderWidth: 1,
+    borderStyle: "solid",
+    borderColor: "#111827",
+    background: "#ffffff",
+    color: "#111827",
+    borderRadius: 16,
+    minHeight: 86,
+    padding: 12,
+    cursor: "pointer",
+    transition: "all .15s ease",
+    boxSizing: "border-box",
+  },
+
+  slotButtonSelected: {
+    background: "#111827",
+    color: "#ffffff",
+    borderColor: "#111827",
+  },
+
+  slotButtonDisabled: {
+    background: "#d1d5db",
+    color: "#4b5563",
+    borderColor: "#d1d5db",
+    cursor: "not-allowed",
+  },
+
+  slotCode: {
+    fontSize: 20,
+    fontWeight: 800,
+    lineHeight: 1.2,
+  },
+
+  slotSub: {
+    marginTop: 8,
+    fontSize: 13,
+    fontWeight: 600,
+    lineHeight: 1.4,
+  },
+
+  error: {
+    marginTop: 20,
+    padding: "14px 16px",
+    borderWidth: 1,
+    borderStyle: "solid",
+    borderColor: "#fecaca",
+    borderRadius: 14,
+    background: "#fef2f2",
+    color: "#b91c1c",
+    fontWeight: 700,
+    lineHeight: 1.5,
+  },
+
+  submitButton: {
+    marginTop: 28,
+    width: "100%",
+    borderWidth: 0,
+    borderStyle: "solid",
+    borderColor: "transparent",
+    borderRadius: 16,
+    padding: "18px 20px",
+    fontSize: 16,
+    fontWeight: 800,
+    cursor: "pointer",
+    background: "#111827",
+    color: "#ffffff",
+    boxSizing: "border-box",
+  },
+
+  submitButtonDisabled: {
+    opacity: 0.6,
+    cursor: "not-allowed",
+  },
+
+  placeGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+    gap: 16,
+    marginTop: 8,
+  },
+
+  placeCard: {
+    display: "block",
+    textDecoration: "none",
+    color: "#111827",
+    background: "#ffffff",
+    borderWidth: 1,
+    borderStyle: "solid",
+    borderColor: "#e5e7eb",
+    borderRadius: 18,
+    padding: 18,
+    transition: "all .15s ease",
+    boxSizing: "border-box",
+  },
+
+  placeCardTitle: {
+    fontSize: 18,
+    fontWeight: 800,
+    marginBottom: 6,
+    lineHeight: 1.35,
+  },
+
+  placeCardSlug: {
+    fontSize: 13,
+    color: "#6b7280",
+    marginBottom: 10,
+    wordBreak: "break-all",
+  },
+
+  placeCardAddress: {
+    fontSize: 14,
+    color: "#374151",
+    marginBottom: 10,
+    lineHeight: 1.5,
+  },
+
+  placeCardMeta: {
+    fontSize: 13,
+    color: "#6b7280",
+    marginBottom: 14,
+    lineHeight: 1.5,
+  },
+
+  placeCardBadge: {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 999,
+    padding: "8px 12px",
+    color: "#ffffff",
+    fontSize: 13,
+    fontWeight: 700,
+    lineHeight: 1,
+  },
+
+  backLink: {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    textDecoration: "none",
+    color: "#111827",
+    borderWidth: 1,
+    borderStyle: "solid",
+    borderColor: "#d1d5db",
+    borderRadius: 999,
+    padding: "10px 14px",
+    fontSize: 14,
+    fontWeight: 700,
+    whiteSpace: "nowrap",
+    background: "#ffffff",
+  },
+};

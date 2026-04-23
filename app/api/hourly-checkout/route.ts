@@ -1,86 +1,87 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { getHourlyRate } from "@/lib/pricing-core";
+import { resolveActivePlace } from "@/lib/place-resolver";
 
-function ymdTodayJst() {
-  const now = new Date();
-  const jst = new Date(now.getTime() + 9 * 60 * 60 * 1000);
-  return jst.toISOString().slice(0, 10);
-}
-
-function normalizeDate(input: string): string {
-  if (!input) return input;
-  if (/^\d{8}$/.test(input)) {
-    return `${input.slice(0, 4)}-${input.slice(4, 6)}-${input.slice(6, 8)}`;
-  }
-  return input;
-}
-
-function normalizeSlot(input: string): string {
-  if (!input) return input.trim();
-
-  const v = input.trim().toUpperCase();
-
-  const s = v.match(/^S(\d{1,2})$/i);
-  if (s) {
-    return `S${String(Number(s[1])).padStart(2, "0")}`;
-  }
-
-  const a = v.match(/^([A-Z])[- ]?(\d{1,2})$/i);
-  if (a) {
-    return `${a[1].toUpperCase()}-${String(Number(a[2])).padStart(2, "0")}`;
-  }
-
-  return v;
-}
-
-function diffMinutesCeil(start: Date, end: Date) {
-  const ms = end.getTime() - start.getTime();
-  const minutes = Math.max(0, Math.ceil(ms / 1000 / 60));
-  return minutes;
-}
-
-function calcCeilHourYen(totalMinutes: number, hourlyYen: number) {
-  const hours = Math.max(1, Math.ceil(totalMinutes / 60));
-  return hours * hourlyYen;
-}
-
-function jsonError(message: string, status = 400, extra?: any) {
+function jsonError(message: string, status = 400, error?: string) {
   return NextResponse.json(
-    { ok: false, error: message, ...(extra ? { extra } : {}) },
+    {
+      ok: false,
+      error: error ?? "bad_request",
+      message,
+    },
     { status }
   );
 }
 
-export async function POST(req: Request) {
+function normalizeDate(input: string) {
+  const value = String(input ?? "").trim();
+  if (!value) return "";
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+
+  if (/^\d{8}$/.test(value)) {
+    return `${value.slice(0, 4)}-${value.slice(4, 6)}-${value.slice(6, 8)}`;
+  }
+
+  return value;
+}
+
+function normalizeSlot(input: string) {
+  const value = String(input ?? "").trim().toUpperCase();
+  if (!value) return "";
+
+  const s = value.match(/^S(\d{1,2})$/i);
+  if (s) {
+    return `S${String(Number(s[1])).padStart(2, "0")}`;
+  }
+
+  const a = value.match(/^([A-Z])[- ]?(\d{1,2})$/i);
+  if (a) {
+    return `${a[1].toUpperCase()}-${String(Number(a[2])).padStart(2, "0")}`;
+  }
+
+  return value;
+}
+
+function ymdTodayJst() {
+  return new Date().toLocaleDateString("sv-SE", {
+    timeZone: "Asia/Tokyo",
+  });
+}
+
+export async function POST(req: NextRequest) {
   try {
     const body = await req.json().catch(() => null);
-    if (!body) return jsonError("JSONが壊れてます", 400);
 
-    const placeId = String(body.placeId ?? "").trim();
-    const date = normalizeDate(String(body.date ?? ymdTodayJst()));
-    const slot = normalizeSlot(String(body.slot ?? ""));
+    if (!body || typeof body !== "object") {
+      return jsonError("JSON body が必要です", 400, "invalid_body");
+    }
 
-    if (!placeId) return jsonError("placeId は必須です", 400);
-    if (!slot) return jsonError("slot は必須です", 400);
+    const inputPlaceId = String(body.placeId ?? "").trim();
+    const inputPlaceSlug = String(body.placeSlug ?? "").trim();
+    const slot = normalizeSlot(body.slot ?? "");
+    const date = normalizeDate(body.date ?? ymdTodayJst());
 
-    const place = await prisma.place.findUnique({
-      where: { id: placeId },
-      select: {
-        id: true,
-        name: true,
-        operationMode: true,
-        isActive: true,
-      },
+    if (!slot) {
+      return jsonError("slot が必要です", 400, "missing_slot");
+    }
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      return jsonError("date は YYYY-MM-DD 形式で指定してください", 400, "invalid_date");
+    }
+
+    const place = await resolveActivePlace({
+      placeId: inputPlaceId,
+      placeSlug: inputPlaceSlug,
     });
 
-    if (!place || !place.isActive) {
-      return jsonError("place が見つかりません", 404);
+    if (!place) {
+      return jsonError("place が見つかりません", 404, "place_not_found");
     }
 
     const spot = await prisma.spot.findFirst({
       where: {
-        placeId,
+        placeId: place.id,
         code: slot,
         isActive: true,
       },
@@ -88,96 +89,144 @@ export async function POST(req: Request) {
         id: true,
         code: true,
         label: true,
-        operationModeOverride: true,
       },
     });
 
     if (!spot) {
-      return jsonError("spot が見つかりません", 404, { placeId, slot });
+      return jsonError("spot が見つかりません", 404, "spot_not_found");
     }
 
-    const effectiveOperationMode =
-      spot.operationModeOverride ?? place.operationMode;
-
-    const openSession = await prisma.parkingSession.findFirst({
+    const session = await prisma.parkingSession.findFirst({
       where: {
-        placeId,
+        placeId: place.id,
         spotId: spot.id,
         sessionType: "HOURLY",
         status: "IN",
         checkOutAt: null,
       },
-      orderBy: { checkInAt: "desc" },
+      orderBy: {
+        checkInAt: "desc",
+      },
       select: {
         id: true,
         plate: true,
+        phone: true,
+        customerName: true,
         checkInAt: true,
+        paid: true,
+        paidAt: true,
+        paymentRef: true,
       },
     });
 
-    if (!openSession) {
-      return jsonError("時間貸しの入庫中セッションがありません", 404, {
-        placeId,
-        slot,
+    if (!session) {
+      return jsonError("時間貸しセッションが見つかりません", 404, "hourly_session_not_found");
+    }
+
+    if (session.paid) {
+      return NextResponse.json({
+        ok: true,
+        alreadyPaid: true,
+        message: "この時間貸しセッションはすでに決済済みです",
+        parkingSessionId: session.id,
+        place: {
+          id: place.id,
+          slug: place.slug,
+          name: place.name,
+        },
+        spot: {
+          id: spot.id,
+          code: spot.code,
+          label: spot.label,
+        },
+        session: {
+          id: session.id,
+          plate: session.plate,
+          phone: session.phone,
+          customerName: session.customerName,
+          checkInAt: session.checkInAt,
+          paidAt: session.paidAt,
+          paymentRef: session.paymentRef,
+        },
       });
     }
 
-    const now = new Date();
-    const totalMinutes = diffMinutesCeil(openSession.checkInAt, now);
-
-    const hourlyYen = await getHourlyRate(placeId, date);
-    const totalYen = calcCeilHourYen(totalMinutes, hourlyYen);
-
-    const updated = await prisma.parkingSession.update({
-      where: { id: openSession.id },
-      data: {
-        checkOutAt: now,
-        totalMinutes,
-        totalYen,
-        status: "OUT",
+    const pricingRule = await prisma.pricingRule.findFirst({
+      where: {
+        placeId: place.id,
+        pricingType: "HOURLY",
+        isActive: true,
+      },
+      orderBy: {
+        createdAt: "desc",
       },
       select: {
-        id: true,
-        plate: true,
-        checkInAt: true,
-        checkOutAt: true,
-        totalMinutes: true,
-        totalYen: true,
+        hourlyYen: true,
       },
     });
+
+    let hourlyYen = pricingRule?.hourlyYen ?? 0;
+
+    const eventDay = await prisma.eventDay.findFirst({
+      where: {
+        placeId: place.id,
+        isActive: true,
+        date: {
+          gte: new Date(`${date}T00:00:00+09:00`),
+          lte: new Date(`${date}T23:59:59.999+09:00`),
+        },
+      },
+      select: {
+        hourlyYenOverride: true,
+      },
+    });
+
+    if (eventDay?.hourlyYenOverride != null) {
+      hourlyYen = eventDay.hourlyYenOverride;
+    }
+
+    if (!hourlyYen || hourlyYen <= 0) {
+      return jsonError("時間貸し料金が設定されていません", 500, "hourly_price_not_configured");
+    }
+
+    const now = new Date();
+    const totalMinutes = Math.max(
+      1,
+      Math.ceil((now.getTime() - session.checkInAt.getTime()) / 60000)
+    );
+    const billedHours = Math.ceil(totalMinutes / 60);
+    const totalYen = billedHours * hourlyYen;
 
     return NextResponse.json({
       ok: true,
-      status: "hourly_checked_out",
-      operationMode: effectiveOperationMode,
-      placeOperationMode: place.operationMode,
-      spotOperationModeOverride: spot.operationModeOverride,
-      placeId,
-      spotId: spot.id,
-      slot: spot.code,
-      sessionId: updated.id,
-      plate: updated.plate,
-      checkInAt: updated.checkInAt,
-      checkOutAt: updated.checkOutAt,
-      totalMinutes: updated.totalMinutes,
-      totalYen: updated.totalYen,
-      hourlyYen,
-      pricingRule: "DB_PRICINGRULE_OR_EVENTDAY_CEIL_HOUR",
+      alreadyPaid: false,
+      place: {
+        id: place.id,
+        slug: place.slug,
+        name: place.name,
+      },
+      spot: {
+        id: spot.id,
+        code: spot.code,
+        label: spot.label,
+      },
+      session: {
+        id: session.id,
+        plate: session.plate,
+        phone: session.phone,
+        customerName: session.customerName,
+        checkInAt: session.checkInAt,
+      },
+      pricing: {
+        totalMinutes,
+        billedHours,
+        hourlyYen,
+        totalYen,
+      },
       date,
     });
-  } catch (e: any) {
-    return NextResponse.json(
-      { ok: false, error: "server_error", message: String(e?.message ?? e) },
-      { status: 500 }
-    );
+  } catch (error) {
+    console.error("POST /api/hourly-checkout error:", error);
+    return jsonError("時間貸し精算情報の取得に失敗しました", 500, "internal_error");
   }
-}
-
-export async function GET(req: Request) {
-  const url = new URL(req.url);
-  return NextResponse.json({
-    ok: true,
-    hint: 'POST {"placeId":"...","slot":"A-03","date":"YYYY-MM-DD"}',
-    receivedUrl: url.toString(),
-  });
 }

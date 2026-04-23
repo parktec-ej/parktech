@@ -1,75 +1,130 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { resolveActivePlace } from "@/lib/place-resolver";
 
-function ymdTodayJst() {
-  const now = new Date();
-  const jst = new Date(now.getTime() + 9 * 60 * 60 * 1000);
-  return jst.toISOString().slice(0, 10);
-}
-
-function normalizeDate(input: string): string {
-  if (!input) return input;
-  if (/^\d{8}$/.test(input)) {
-    return `${input.slice(0, 4)}-${input.slice(4, 6)}-${input.slice(6, 8)}`;
-  }
-  return input;
-}
-
-function normalizeSlot(input: string): string {
-  if (!input) return input.trim();
-
-  const v = input.trim().toUpperCase();
-
-  const s = v.match(/^S(\d{1,2})$/i);
-  if (s) return `S${String(Number(s[1])).padStart(2, "0")}`;
-
-  const a = v.match(/^([A-Z])[- ]?(\d{1,2})$/i);
-  if (a) return `${a[1].toUpperCase()}-${String(Number(a[2])).padStart(2, "0")}`;
-
-  return v;
-}
-
-function genPin4() {
-  return String(Math.floor(Math.random() * 10000)).padStart(4, "0");
-}
-
-function jsonError(message: string, status = 400, extra?: any) {
+function jsonError(message: string, status = 400, error?: string) {
   return NextResponse.json(
-    { ok: false, error: message, ...(extra ? { extra } : {}) },
+    {
+      ok: false,
+      error: error ?? "bad_request",
+      message,
+    },
     { status }
   );
 }
 
-export async function POST(req: Request) {
+function normalizeDate(input: string) {
+  const value = String(input ?? "").trim();
+  if (!value) return "";
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+
+  if (/^\d{8}$/.test(value)) {
+    return `${value.slice(0, 4)}-${value.slice(4, 6)}-${value.slice(6, 8)}`;
+  }
+
+  return value;
+}
+
+function normalizeSlot(input: string) {
+  const value = String(input ?? "").trim().toUpperCase();
+  if (!value) return "";
+
+  const s = value.match(/^S(\d{1,2})$/i);
+  if (s) {
+    return `S${String(Number(s[1])).padStart(2, "0")}`;
+  }
+
+  const a = value.match(/^([A-Z])[- ]?(\d{1,2})$/i);
+  if (a) {
+    return `${a[1].toUpperCase()}-${String(Number(a[2])).padStart(2, "0")}`;
+  }
+
+  return value;
+}
+
+function normalizePhone(input: string) {
+  return String(input ?? "").replace(/[^\d]/g, "");
+}
+
+function ymdTodayJst() {
+  return new Date().toLocaleDateString("sv-SE", {
+    timeZone: "Asia/Tokyo",
+  });
+}
+
+type OperationMode =
+  | "RESERVATION_ONLY"
+  | "HOURLY_ONLY"
+  | "RESERVATION_THEN_HOURLY"
+  | "EVENT_ONLY"
+  | "CLOSED";
+
+function canStartHourly(mode: string | null | undefined) {
+  return mode === "HOURLY_ONLY" || mode === "RESERVATION_THEN_HOURLY";
+}
+
+export async function POST(req: NextRequest) {
   try {
     const body = await req.json().catch(() => null);
-    if (!body) return jsonError("JSONが壊れてます", 400);
 
-    const placeId = String(body.placeId ?? "").trim();
-    const date = normalizeDate(String(body.date ?? ymdTodayJst()));
-    const slot = normalizeSlot(String(body.slot ?? ""));
-    const plate = body.plate ? String(body.plate).trim() : null;
+    if (!body || typeof body !== "object") {
+      return jsonError("JSON body が必要です", 400, "invalid_body");
+    }
 
-    if (!placeId) return jsonError("placeId は必須です", 400);
-    if (!slot) return jsonError("slot は必須です", 400);
+    const inputPlaceId = String(body.placeId ?? "").trim();
+    const inputPlaceSlug = String(body.placeSlug ?? "").trim();
+    const slot = normalizeSlot(body.slot ?? "");
+    const date = normalizeDate(body.date ?? ymdTodayJst());
 
-    const place = await prisma.place.findUnique({
-      where: { id: placeId },
-      select: {
-        id: true,
-        name: true,
-        operationMode: true,
-        isActive: true,
-      },
+    const plate = String(body.plate ?? "").trim();
+    const phone = normalizePhone(body.phone ?? "");
+    const customerName = String(body.customerName ?? "").trim() || null;
+
+    if (!slot) {
+      return jsonError("slot が必要です", 400, "missing_slot");
+    }
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      return jsonError(
+        "date は YYYY-MM-DD 形式で指定してください",
+        400,
+        "invalid_date"
+      );
+    }
+
+    if (!plate) {
+      return jsonError("車番が必要です", 400, "missing_plate");
+    }
+
+    if (!phone) {
+      return jsonError("電話番号が必要です", 400, "missing_phone");
+    }
+
+    if (phone.length < 10 || phone.length > 11) {
+      return jsonError(
+        "電話番号の形式が不正です",
+        400,
+        "invalid_phone"
+      );
+    }
+
+    const place = await resolveActivePlace({
+      placeId: inputPlaceId,
+      placeSlug: inputPlaceSlug,
     });
 
-    if (!place || !place.isActive) {
-      return jsonError("place が見つかりません", 404);
+    if (!place) {
+      return jsonError(
+        "place が見つかりません",
+        404,
+        "place_not_found"
+      );
     }
 
     const spot = await prisma.spot.findFirst({
       where: {
-        placeId,
+        placeId: place.id,
         code: slot,
         isActive: true,
       },
@@ -82,121 +137,112 @@ export async function POST(req: Request) {
     });
 
     if (!spot) {
-      return jsonError("spot が見つかりません", 404, { placeId, slot });
+      return jsonError(
+        "spot が見つかりません",
+        404,
+        "spot_not_found"
+      );
     }
 
-    const effectiveOperationMode =
-      spot.operationModeOverride ?? place.operationMode;
-
-    const reservation = await prisma.reservation.findFirst({
+    const dayMode = await prisma.spotModeCalendar.findUnique({
       where: {
-        date,
-        placeId,
-        spotId: spot.id,
+        spotId_date: {
+          spotId: spot.id,
+          date,
+        },
       },
       select: {
-        id: true,
-        checkedOutAt: true,
+        operationMode: true,
       },
     });
 
-    if (effectiveOperationMode === "CLOSED") {
-      return jsonError("本日は営業していません", 409, {
-        operationMode: effectiveOperationMode,
-      });
+    const effectiveMode =
+      (dayMode?.operationMode as OperationMode | undefined) ??
+      (spot.operationModeOverride as OperationMode | null) ??
+      (place.operationMode as OperationMode | null) ??
+      "RESERVATION_ONLY";
+
+    if (effectiveMode === "CLOSED") {
+      return jsonError(
+        "この区画は本日クローズです",
+        403,
+        "spot_closed_on_date"
+      );
     }
 
-    if (effectiveOperationMode === "RESERVATION_ONLY") {
-      return jsonError("この区画は予約専用です", 409, {
-        operationMode: effectiveOperationMode,
-      });
+    if (!canStartHourly(effectiveMode)) {
+      return jsonError(
+        effectiveMode === "EVENT_ONLY"
+          ? "この区画はイベント予約専用です。時間貸しは開始できません"
+          : "この区画は予約専用です。時間貸しは開始できません",
+        403,
+        "spot_not_hourly_on_date"
+      );
     }
 
-    if (effectiveOperationMode === "RESERVATION_THEN_HOURLY" && reservation) {
-      if (!reservation.checkedOutAt) {
-        return jsonError("この区画は予約が入っています", 409, {
-          operationMode: effectiveOperationMode,
-          reservationId: reservation.id,
-        });
-      }
-    }
-
-    const openHourly = await prisma.parkingSession.findFirst({
+    const activeSession = await prisma.parkingSession.findFirst({
       where: {
-        placeId,
+        placeId: place.id,
         spotId: spot.id,
-        sessionType: "HOURLY",
         status: "IN",
-        checkOutAt: null,
       },
-      orderBy: { checkInAt: "desc" },
       select: {
         id: true,
-        checkInAt: true,
       },
     });
 
-    if (openHourly) {
-      return NextResponse.json({
-        ok: true,
-        status: "already_started",
-        operationMode: effectiveOperationMode,
-        placeOperationMode: place.operationMode,
-        spotOperationModeOverride: spot.operationModeOverride,
-        sessionId: openHourly.id,
-        checkInAt: openHourly.checkInAt,
-        placeId,
-        spotId: spot.id,
-        slot: spot.code,
-        date,
-      });
+    if (activeSession) {
+      return jsonError(
+        "この区画はすでに入庫中です",
+        409,
+        "session_already_active"
+      );
     }
-
-    const pin = genPin4();
-    const now = new Date();
 
     const session = await prisma.parkingSession.create({
       data: {
-        placeId,
+        placeId: place.id,
         spotId: spot.id,
         sessionType: "HOURLY",
         plate,
-        checkInAt: now,
+        phone,
+        customerName,
         status: "IN",
       },
       select: {
         id: true,
+        placeId: true,
+        spotId: true,
+        plate: true,
+        phone: true,
+        customerName: true,
+        status: true,
         checkInAt: true,
       },
     });
 
     return NextResponse.json({
       ok: true,
-      status: "started",
-      operationMode: effectiveOperationMode,
-      placeOperationMode: place.operationMode,
-      spotOperationModeOverride: spot.operationModeOverride,
-      sessionId: session.id,
-      checkInAt: session.checkInAt,
-      placeId,
-      spotId: spot.id,
-      slot: spot.code,
+      session,
+      place: {
+        id: place.id,
+        slug: place.slug,
+        name: place.name,
+      },
+      spot: {
+        id: spot.id,
+        code: spot.code,
+        label: spot.label,
+      },
+      effectiveMode,
       date,
-      pin,
     });
-  } catch (e: any) {
-    return NextResponse.json(
-      { ok: false, error: "server_error", message: String(e?.message ?? e) },
-      { status: 500 }
+  } catch (error) {
+    console.error("POST /api/hourly-start error:", error);
+    return jsonError(
+      "時間貸し入庫の開始に失敗しました",
+      500,
+      "internal_error"
     );
   }
-}
-
-export async function GET(req: Request) {
-  const url = new URL(req.url);
-  return NextResponse.json({
-    ok: true,
-    hint: 'POST {"placeId":"...","slot":"A-03","date":"YYYY-MM-DD","plate":"宮城300あ1234"}',
-    receivedUrl: url.toString(),
-  });
 }

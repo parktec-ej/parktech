@@ -12,18 +12,25 @@
   },
   "dependencies": {
     "@prisma/client": "^6.19.2",
+    "@supabase/supabase-js": "^2.99.3",
     "bcryptjs": "^3.0.2",
     "next": "^16.1.6",
+    "pdf-lib": "^1.17.1",
     "react": "^19.1.0",
-    "react-dom": "^19.1.0"
+    "react-dom": "^19.1.0",
+    "resend": "^6.9.3",
+    "stripe": "^20.4.1"
   },
   "devDependencies": {
+    "@tailwindcss/postcss": "^4.2.1",
     "@types/node": "^24.0.0",
     "@types/react": "^19.1.0",
     "@types/react-dom": "^19.1.0",
     "eslint": "^9.0.0",
     "eslint-config-next": "^16.1.6",
+    "postcss": "^8.5.8",
     "prisma": "^6.19.2",
+    "tailwindcss": "^4.2.1",
     "tsx": "^4.20.0",
     "typescript": "^5.0.0",
     "vitest": "^3.2.4"

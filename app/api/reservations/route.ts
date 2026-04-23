@@ -1,268 +1,440 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { getReservationFixedPrice } from "@/lib/pricing-core";
+import { resolveActivePlace } from "@/lib/place-resolver";
+import {
+  getReservationFixedPrice,
+  isReservationOpen,
+  ymdToUtcDate,
+} from "@/lib/pricing-core";
 
-const DEFAULT_PLACE_ID = "e24a57f5-787f-4c2e-9394-e5f54053a955";
-
-function normalizeDate(input: string): string {
-  if (!input) return input;
-  if (/^\d{8}$/.test(input)) {
-    return `${input.slice(0, 4)}-${input.slice(4, 6)}-${input.slice(6, 8)}`;
-  }
-  return input;
-}
-
-function normalizeSlot(input: string): string {
-  if (!input) return input.trim();
-
-  const v = input.trim().toUpperCase();
-
-  const s = v.match(/^S(\d{1,2})$/i);
-  if (s) {
-    return `S${String(Number(s[1])).padStart(2, "0")}`;
-  }
-
-  const a = v.match(/^([A-Z])[- ]?(\d{1,2})$/i);
-  if (a) {
-    return `${a[1].toUpperCase()}-${String(Number(a[2])).padStart(2, "0")}`;
-  }
-
-  return v;
-}
-
-function jsonError(message: string, status = 400, extra?: any) {
+function jsonError(message: string, status = 400, error?: string) {
   return NextResponse.json(
-    { ok: false, error: message, ...(extra ? { extra } : {}) },
+    {
+      ok: false,
+      error: error ?? "bad_request",
+      message,
+    },
     { status }
   );
 }
 
-function genPin4() {
-  return String(Math.floor(Math.random() * 10000)).padStart(4, "0");
+function normalizeDate(input: string) {
+  const value = String(input ?? "").trim();
+
+  if (!value) return "";
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+
+  if (/^\d{8}$/.test(value)) {
+    return `${value.slice(0, 4)}-${value.slice(4, 6)}-${value.slice(6, 8)}`;
+  }
+
+  return value;
 }
 
-export async function POST(req: Request) {
+function normalizeSlot(input: string) {
+  const value = String(input ?? "").trim().toUpperCase();
+
+  if (!value) return "";
+
+  const s = value.match(/^S(\d{1,2})$/i);
+  if (s) {
+    return `S${String(Number(s[1])).padStart(2, "0")}`;
+  }
+
+  const a = value.match(/^([A-Z])[- ]?(\d{1,2})$/i);
+  if (a) {
+    return `${a[1].toUpperCase()}-${String(Number(a[2])).padStart(2, "0")}`;
+  }
+
+  return value;
+}
+
+function ymdTodayJst() {
+  return new Date().toLocaleDateString("sv-SE", {
+    timeZone: "Asia/Tokyo",
+  });
+}
+
+type OperationMode =
+  | "RESERVATION_ONLY"
+  | "HOURLY_ONLY"
+  | "RESERVATION_THEN_HOURLY"
+  | "EVENT_ONLY"
+  | "CLOSED";
+
+async function isActiveEventDay(placeId: string, date: string) {
+  const targetDate = ymdToUtcDate(date);
+
+  const row = await prisma.eventDay.findFirst({
+    where: {
+      placeId,
+      date: targetDate,
+      isActive: true,
+    },
+    select: {
+      id: true,
+    },
+  });
+
+  return Boolean(row);
+}
+
+function canReserve(
+  mode: string | null | undefined,
+  eventDayActive: boolean
+) {
+  if (mode === "RESERVATION_ONLY") return true;
+  if (mode === "RESERVATION_THEN_HOURLY") return true;
+  if (mode === "EVENT_ONLY") return eventDayActive;
+  return false;
+}
+
+export async function GET(req: NextRequest) {
   try {
-    const body = await req.json().catch(() => null);
-    if (!body) return jsonError("JSONが壊れてます");
+    const url = new URL(req.url);
 
-    const placeId = String(body.placeId ?? DEFAULT_PLACE_ID).trim();
-    const inputSpotId = body.spotId ? String(body.spotId).trim() : null;
-    const inputSlot = body.slot ? normalizeSlot(String(body.slot)) : "";
-    const date = normalizeDate(String(body.date ?? ""));
-    const name = String(body.name ?? "").trim();
-    const plate = String(body.plate ?? "").trim();
-    const email = body.email ? String(body.email).trim() : null;
+    const date = normalizeDate(
+      url.searchParams.get("date") || ymdTodayJst()
+    );
 
-    if (!placeId) return jsonError("placeId は必須です");
-    if (!date) return jsonError("date は必須です");
-    if (!name || !plate) return jsonError("name と plate は必須です");
-    if (!inputSpotId && !inputSlot) return jsonError("spotId または slot は必須です");
+    const inputPlaceId = String(
+      url.searchParams.get("placeId") ?? ""
+    ).trim();
 
-    const place = await prisma.place.findUnique({
-      where: { id: placeId },
-      select: {
-        id: true,
-        name: true,
-        operationMode: true,
-        isActive: true,
-      },
+    const inputPlaceSlug = String(
+      url.searchParams.get("placeSlug") ?? ""
+    ).trim();
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      return jsonError(
+        "date は YYYY-MM-DD 形式で指定してください",
+        400,
+        "invalid_date"
+      );
+    }
+
+    const place = await resolveActivePlace({
+      placeId: inputPlaceId,
+      placeSlug: inputPlaceSlug,
     });
 
-    if (!place || !place.isActive) {
-      return jsonError("place が見つかりません", 404);
+    if (!place) {
+      return jsonError(
+        "place が見つかりません",
+        404,
+        "place_not_found"
+      );
     }
 
-    let spot:
-      | {
-          id: string;
-          placeId: string;
-          code: string;
-          label: string | null;
-          isActive: boolean;
-          operationModeOverride:
-            | "RESERVATION_ONLY"
-            | "HOURLY_ONLY"
-            | "RESERVATION_THEN_HOURLY"
-            | "CLOSED"
-            | null;
-        }
-      | null = null;
+    const reservationOpen = await isReservationOpen(
+      place.id,
+      date
+    );
 
-    if (inputSpotId) {
-      spot = await prisma.spot.findUnique({
-        where: { id: inputSpotId },
-        select: {
-          id: true,
-          placeId: true,
-          code: true,
-          label: true,
-          isActive: true,
-          operationModeOverride: true,
-        },
-      });
+    const eventDayActive = await isActiveEventDay(
+      place.id,
+      date
+    );
 
-      if (!spot || !spot.isActive) {
-        return jsonError("選択した区画が見つかりません", 404);
-      }
+    const [spots, reservations, dayModes] =
+      await Promise.all([
+        prisma.spot.findMany({
+          where: {
+            placeId: place.id,
+            isActive: true,
+          },
+          orderBy: [{ code: "asc" }],
+          select: {
+            id: true,
+            code: true,
+            label: true,
+            operationModeOverride: true,
+          },
+        }),
 
-      if (spot.placeId !== placeId) {
-        return jsonError("placeId と spotId が一致しません");
-      }
-    } else {
-      spot = await prisma.spot.findFirst({
-        where: {
-          placeId,
-          code: inputSlot,
-          isActive: true,
-        },
-        select: {
-          id: true,
-          placeId: true,
-          code: true,
-          label: true,
-          isActive: true,
-          operationModeOverride: true,
-        },
-      });
+        prisma.reservation.findMany({
+          where: {
+            placeId: place.id,
+            date,
+            status: "CONFIRMED",
+          },
+          select: {
+            id: true,
+            slot: true,
+            spotId: true,
+            name: true,
+            plate: true,
+            email: true,
+            price: true,
+            createdAt: true,
+            status: true,
+          },
+        }),
 
-      if (!spot) {
-        return jsonError("指定した区画が見つかりません", 404);
-      }
-    }
+        prisma.spotModeCalendar.findMany({
+          where: {
+            placeId: place.id,
+            date,
+          },
+          select: {
+            spotId: true,
+            operationMode: true,
+          },
+        }),
+      ]);
 
-    const effectiveOperationMode =
-      spot.operationModeOverride ?? place.operationMode;
+    const dayModeMap = new Map(
+      dayModes.map((x) => [x.spotId, x.operationMode])
+    );
 
-    if (effectiveOperationMode === "CLOSED") {
-      return jsonError("この区画は営業していません", 409, {
-        operationMode: effectiveOperationMode,
-        placeOperationMode: place.operationMode,
-        spotOperationModeOverride: spot.operationModeOverride,
-        spotId: spot.id,
-        slot: spot.code,
-      });
-    }
+    const reservedSpotIds = new Set(
+      reservations.map((r) => r.spotId).filter(Boolean)
+    );
 
-    if (effectiveOperationMode === "HOURLY_ONLY") {
-      return jsonError("この区画は時間貸し専用のため予約できません", 409, {
-        operationMode: effectiveOperationMode,
-        placeOperationMode: place.operationMode,
-        spotOperationModeOverride: spot.operationModeOverride,
-        spotId: spot.id,
-        slot: spot.code,
-      });
-    }
+    const reservedSlots = new Set(
+      reservations
+        .map((r) => normalizeSlot(r.slot))
+        .filter(Boolean)
+    );
 
-    const priceYen = await getReservationFixedPrice(placeId, date);
-    const pin = genPin4();
+    const availableSpots = spots.map((spot) => {
+      const normalizedCode = normalizeSlot(spot.code);
 
-    const created = await prisma.reservation.create({
-      data: {
-        placeId,
-        spotId: spot.id,
-        date,
-        slot: spot.code,
-        name,
-        plate,
-        email,
-        price: priceYen,
-        pin,
-        paid: true,
-        paidAt: new Date(),
-      },
-      select: {
-        id: true,
-        qrToken: true,
-        pin: true,
-        price: true,
-        placeId: true,
-        spotId: true,
-        slot: true,
-      },
+      const effectiveMode =
+        dayModeMap.get(spot.id) ??
+        spot.operationModeOverride ??
+        place.operationMode ??
+        "RESERVATION_ONLY";
+
+      const modeAllowsReservation = canReserve(
+        effectiveMode,
+        eventDayActive
+      );
+
+      return {
+        id: spot.id,
+        code: spot.code,
+        label: spot.label,
+        mode: effectiveMode,
+        isAvailable:
+          reservationOpen.ok &&
+          modeAllowsReservation &&
+          !reservedSpotIds.has(spot.id) &&
+          !reservedSlots.has(normalizedCode),
+      };
     });
 
     return NextResponse.json({
       ok: true,
-      ...created,
-      operationMode: effectiveOperationMode,
-      placeOperationMode: place.operationMode,
-      spotOperationModeOverride: spot.operationModeOverride,
+      place,
+      date,
+      reservationOpen,
+      eventDayActive,
+      spots: availableSpots,
+      reservations,
     });
-  } catch (e: any) {
-    if (e?.code === "P2002") {
-      return jsonError("この区画は予約済みです", 409);
-    }
+  } catch (error) {
+    console.error(error);
 
-    return NextResponse.json(
-      { ok: false, error: "server_error", message: String(e?.message ?? e) },
-      { status: 500 }
+    return jsonError(
+      "予約一覧取得に失敗しました",
+      500,
+      "server_error"
     );
   }
 }
 
-export async function GET(req: Request) {
+export async function POST(req: NextRequest) {
   try {
-    const url = new URL(req.url);
-    const rawDate = url.searchParams.get("date");
-    const placeId = url.searchParams.get("placeId") ?? DEFAULT_PLACE_ID;
+    const body = await req.json();
 
-    if (!rawDate) {
-      return NextResponse.json({
-        ok: true,
-        hint: 'add "?date=YYYY-MM-DD&placeId=..."',
-        receivedUrl: url.toString(),
-      });
+    const placeId = String(body.placeId ?? "").trim();
+    const placeSlug = String(body.placeSlug ?? "").trim();
+    const spotId = String(body.spotId ?? "").trim();
+
+    const date = normalizeDate(
+      body.date || ymdTodayJst()
+    );
+
+    const name = String(body.name ?? "").trim();
+    const plate = String(body.plate ?? "").trim();
+    const email = String(body.email ?? "").trim();
+
+    if (!spotId) {
+      return jsonError(
+        "spotId が必要です",
+        400,
+        "missing_spot_id"
+      );
     }
 
-    const date = normalizeDate(rawDate);
+    if (!name) {
+      return jsonError(
+        "氏名が必要です",
+        400,
+        "missing_name"
+      );
+    }
 
-    const place = await prisma.place.findUnique({
-      where: { id: placeId },
-      include: {
-        spots: {
-          where: { isActive: true },
-          orderBy: { code: "asc" },
-        },
-      },
+    if (!plate) {
+      return jsonError(
+        "車両ナンバーが必要です",
+        400,
+        "missing_plate"
+      );
+    }
+
+    const place = await resolveActivePlace({
+      placeId,
+      placeSlug,
     });
 
     if (!place) {
-      return jsonError("place が見つかりません", 404);
+      return jsonError(
+        "place が見つかりません",
+        404,
+        "place_not_found"
+      );
     }
 
-    const rows = await prisma.reservation.findMany({
-      where: { date, placeId },
-      select: { spotId: true, slot: true },
+    const reservationOpen = await isReservationOpen(
+      place.id,
+      date
+    );
+
+    if (!reservationOpen.ok) {
+      return jsonError(
+        "まだ予約開始前です",
+        409,
+        "not_open_yet"
+      );
+    }
+
+    const spot = await prisma.spot.findFirst({
+      where: {
+        id: spotId,
+        placeId: place.id,
+        isActive: true,
+      },
+      select: {
+        id: true,
+        code: true,
+        label: true,
+        operationModeOverride: true,
+      },
     });
 
-    const reservedSpotIds = rows
-      .map((r) => r.spotId)
-      .filter((v): v is string => Boolean(v));
+    if (!spot) {
+      return jsonError(
+        "spot が見つかりません",
+        404,
+        "spot_not_found"
+      );
+    }
+
+    const dayMode =
+      await prisma.spotModeCalendar.findUnique({
+        where: {
+          spotId_date: {
+            spotId: spot.id,
+            date,
+          },
+        },
+        select: {
+          operationMode: true,
+        },
+      });
+
+    const eventDayActive =
+      await isActiveEventDay(
+        place.id,
+        date
+      );
+
+    const effectiveMode =
+      dayMode?.operationMode ??
+      spot.operationModeOverride ??
+      place.operationMode ??
+      "RESERVATION_ONLY";
+
+    if (
+      !canReserve(
+        effectiveMode,
+        eventDayActive
+      )
+    ) {
+      return jsonError(
+        effectiveMode === "EVENT_ONLY"
+          ? "イベント日以外は予約できません"
+          : "この区画は予約不可です",
+        409,
+        "not_reservable"
+      );
+    }
+
+    const exists =
+      await prisma.reservation.findFirst({
+        where: {
+          placeId: place.id,
+          spotId: spot.id,
+          date,
+          status: "CONFIRMED",
+        },
+        select: {
+          id: true,
+        },
+      });
+
+    if (exists) {
+      return jsonError(
+        "その区画はすでに予約済みです。",
+        409,
+        "already_reserved"
+      );
+    }
+
+    const price =
+      await getReservationFixedPrice(
+        place.id,
+        date
+      );
+
+    const pin = String(
+      Math.floor(
+        1000 + Math.random() * 9000
+      )
+    );
+
+    const created =
+      await prisma.reservation.create({
+        data: {
+          placeId: place.id,
+          spotId: spot.id,
+          date,
+          slot: spot.code,
+          name,
+          plate,
+          email: email || null,
+          price,
+          pin,
+          paid: false,
+          status: "CONFIRMED",
+          refundStatus: "NONE",
+        },
+      });
 
     return NextResponse.json({
       ok: true,
-      mode: "place-spots",
-      date,
-      place: {
-        id: place.id,
-        name: place.name,
-        address: place.address,
-        operationMode: place.operationMode,
-      },
-      spots: place.spots.map((s) => ({
-        id: s.id,
-        code: s.code,
-        label: s.label,
-        operationModeOverride: s.operationModeOverride,
-        effectiveOperationMode: s.operationModeOverride ?? place.operationMode,
-        isReserved: reservedSpotIds.includes(s.id),
-      })),
+      reservation: created,
     });
-  } catch (e: any) {
-    return NextResponse.json(
-      { ok: false, error: "server_error", message: String(e?.message ?? e) },
-      { status: 500 }
+  } catch (error) {
+    console.error(error);
+
+    return jsonError(
+      "予約作成に失敗しました",
+      500,
+      "server_error"
     );
   }
 }
