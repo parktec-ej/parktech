@@ -12,6 +12,26 @@ function fmtYen(v: number) {
   return `${v.toLocaleString("ja-JP")} 円`;
 }
 
+type ActivePlaceItem = {
+  id: string;
+  slug: string;
+  name: string;
+  address: string | null;
+};
+
+type PaymentItem = {
+  kind: "RESERVATION" | "HOURLY" | "EVENT";
+  grossAmount: number;
+  confirmedAt: Date | null;
+  recognizedDate: Date;
+  customerNameSnapshot: string | null;
+  plateSnapshot: string | null;
+  spotCodeSnapshot: string | null;
+  spotLabelSnapshot: string | null;
+  checkedOutAt: Date | null;
+  serviceDate: string | null;
+};
+
 type SalesRow = {
   kind: "RESERVATION" | "HOURLY" | "EVENT";
   label: string;
@@ -46,7 +66,7 @@ export default async function AdminSalesPage({
     sp.date && /^\d{4}-\d{2}-\d{2}$/.test(sp.date) ? sp.date : ymdTodayJst();
   const placeKey = String(sp.placeId ?? "").trim();
 
-  const activePlaces = await prisma.place.findMany({
+  const activePlaces: ActivePlaceItem[] = await prisma.place.findMany({
     where: { isActive: true },
     orderBy: [{ createdAt: "desc" }],
     select: {
@@ -100,13 +120,14 @@ export default async function AdminSalesPage({
     );
   }
 
-  const payments = await prisma.payment.findMany({
+  const payments: PaymentItem[] = await prisma.payment.findMany({
     where: {
       placeId: place.id,
       recognizedDate: {
         gte: new Date(`${selectedDate}T00:00:00+09:00`),
         lt: new Date(
-          new Date(`${selectedDate}T00:00:00+09:00`).getTime() + 24 * 60 * 60 * 1000
+          new Date(`${selectedDate}T00:00:00+09:00`).getTime() +
+            24 * 60 * 60 * 1000
         ),
       },
       status: "CONFIRMED",
@@ -129,7 +150,7 @@ export default async function AdminSalesPage({
     },
   });
 
-  const allRows: SalesRow[] = payments.map((p: any) => ({
+  const allRows: SalesRow[] = payments.map((p: PaymentItem) => ({
     kind: p.kind,
     label: p.spotLabelSnapshot || p.spotCodeSnapshot || "-",
     customer:
@@ -151,13 +172,24 @@ export default async function AdminSalesPage({
         : "CONFIRMED",
   }));
 
-  const reservationRows = allRows.filter((r) => r.kind === "RESERVATION");
-  const hourlyRows = allRows.filter((r) => r.kind === "HOURLY");
-  const eventRows = allRows.filter((r) => r.kind === "EVENT");
+  const reservationRows = allRows.filter(
+    (r: SalesRow) => r.kind === "RESERVATION"
+  );
+  const hourlyRows = allRows.filter((r: SalesRow) => r.kind === "HOURLY");
+  const eventRows = allRows.filter((r: SalesRow) => r.kind === "EVENT");
 
-  const reservationSales = reservationRows.reduce((sum, row) => sum + row.amount, 0);
-  const hourlySales = hourlyRows.reduce((sum, row) => sum + row.amount, 0);
-  const eventSales = eventRows.reduce((sum, row) => sum + row.amount, 0);
+  const reservationSales = reservationRows.reduce(
+    (sum: number, row: SalesRow) => sum + row.amount,
+    0
+  );
+  const hourlySales = hourlyRows.reduce(
+    (sum: number, row: SalesRow) => sum + row.amount,
+    0
+  );
+  const eventSales = eventRows.reduce(
+    (sum: number, row: SalesRow) => sum + row.amount,
+    0
+  );
   const totalSales = reservationSales + hourlySales + eventSales;
 
   return (
@@ -182,7 +214,7 @@ export default async function AdminSalesPage({
           <div style={fieldStyle}>
             <div style={fieldLabelStyle}>対象 Place</div>
             <select name="placeId" defaultValue={place.id} style={inputStyle}>
-              {activePlaces.map((p) => (
+              {activePlaces.map((p: ActivePlaceItem) => (
                 <option key={p.id} value={p.id}>
                   {p.name} ({p.slug})
                 </option>
@@ -192,7 +224,12 @@ export default async function AdminSalesPage({
 
           <div style={fieldStyle}>
             <div style={fieldLabelStyle}>日付</div>
-            <input type="date" name="date" defaultValue={selectedDate} style={inputStyle} />
+            <input
+              type="date"
+              name="date"
+              defaultValue={selectedDate}
+              style={inputStyle}
+            />
           </div>
 
           <button type="submit" style={primaryButtonStyle}>
@@ -209,7 +246,9 @@ export default async function AdminSalesPage({
         <SummaryCard
           title="合計売上"
           value={fmtYen(totalSales)}
-          sub={`予約 ${fmtYen(reservationSales)} / 時間貸し ${fmtYen(hourlySales)} / イベント ${fmtYen(eventSales)}`}
+          sub={`予約 ${fmtYen(reservationSales)} / 時間貸し ${fmtYen(
+            hourlySales
+          )} / イベント ${fmtYen(eventSales)}`}
         />
         <SummaryCard
           title="予約売上"
@@ -248,7 +287,7 @@ export default async function AdminSalesPage({
                 </tr>
               </thead>
               <tbody>
-                {allRows.map((row, idx) => (
+                {allRows.map((row: SalesRow, idx: number) => (
                   <tr key={`${row.kind}-${idx}`}>
                     <td style={tdStyle}>
                       {row.kind === "RESERVATION"
