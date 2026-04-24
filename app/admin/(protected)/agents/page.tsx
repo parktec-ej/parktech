@@ -3,6 +3,22 @@ import type { CSSProperties } from "react";
 import { prisma } from "@/lib/db";
 import { requireAdmin } from "@/lib/admin-auth";
 
+type AgentItem = {
+  id: string;
+  code: string | null;
+  name: string | null;
+  displayName: string | null;
+  email: string | null;
+  phone: string | null;
+  defaultAgentRateBps: number;
+  registeredAt: Date;
+  bankName: string | null;
+  bankBranchName: string | null;
+  _count: {
+    assignments: number;
+  };
+};
+
 export default async function AgentsPage({
   searchParams,
 }: {
@@ -11,7 +27,7 @@ export default async function AgentsPage({
   await requireAdmin();
   const sp = (await searchParams) ?? {};
 
-  const agents = await prisma.agent.findMany({
+  const agents: AgentItem[] = await prisma.agent.findMany({
     orderBy: { registeredAt: "desc" },
     select: {
       id: true,
@@ -76,7 +92,7 @@ export default async function AgentsPage({
                   </td>
                 </tr>
               ) : (
-                agents.map((agent) => (
+                agents.map((agent: AgentItem) => (
                   <tr key={agent.id}>
                     <td style={tdStyle}>{formatDate(agent.registeredAt)}</td>
                     <td style={tdStyle}>{agent.code || "-"}</td>
@@ -84,7 +100,9 @@ export default async function AgentsPage({
                     <td style={tdStyle}>{agent.displayName || "-"}</td>
                     <td style={tdStyle}>{agent.email || "-"}</td>
                     <td style={tdStyle}>{agent.phone || "-"}</td>
-                    <td style={tdStyle}>{formatBps(agent.defaultAgentRateBps)}</td>
+                    <td style={tdStyle}>
+                      {formatBps(agent.defaultAgentRateBps)}
+                    </td>
                     <td style={tdStyle}>
                       {[agent.bankName, agent.bankBranchName]
                         .filter(Boolean)
@@ -92,7 +110,10 @@ export default async function AgentsPage({
                     </td>
                     <td style={tdStyle}>{agent._count.assignments}</td>
                     <td style={tdStyle}>
-                      <Link href={`/admin/agents/${agent.id}`} style={editButtonStyle}>
+                      <Link
+                        href={`/admin/agents/${agent.id}`}
+                        style={editButtonStyle}
+                      >
                         編集
                       </Link>
                     </td>
