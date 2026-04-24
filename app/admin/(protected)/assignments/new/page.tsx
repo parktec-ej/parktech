@@ -2,36 +2,58 @@ import type { CSSProperties } from "react";
 import { prisma } from "@/lib/db";
 import { requireAdmin } from "@/lib/admin-auth";
 
+type PlaceItem = {
+  id: string;
+  name: string;
+  slug: string;
+};
+
+type OwnerItem = {
+  id: string;
+  name: string;
+};
+
+type AgentItem = {
+  id: string;
+  name: string;
+  defaultAgentRateBps: number;
+};
+
 export default async function NewAssignmentPage() {
   await requireAdmin();
 
-  const [places, owners, agents] = await Promise.all([
-    prisma.place.findMany({
-      where: { isActive: true },
-      select: { id: true, name: true, slug: true },
-      orderBy: { createdAt: "asc" },
-    }),
-    prisma.owner.findMany({
-      where: { status: "ACTIVE" },
-      select: { id: true, name: true },
-      orderBy: { registeredAt: "asc" },
-    }),
-    prisma.agent.findMany({
-      where: { status: "ACTIVE" },
-      select: { id: true, name: true, defaultAgentRateBps: true },
-      orderBy: { registeredAt: "asc" },
-    }),
-  ]);
+  const [places, owners, agents]: [PlaceItem[], OwnerItem[], AgentItem[]] =
+    await Promise.all([
+      prisma.place.findMany({
+        where: { isActive: true },
+        select: { id: true, name: true, slug: true },
+        orderBy: { createdAt: "asc" },
+      }),
+      prisma.owner.findMany({
+        where: { status: "ACTIVE" },
+        select: { id: true, name: true },
+        orderBy: { registeredAt: "asc" },
+      }),
+      prisma.agent.findMany({
+        where: { status: "ACTIVE" },
+        select: { id: true, name: true, defaultAgentRateBps: true },
+        orderBy: { registeredAt: "asc" },
+      }),
+    ]);
 
   return (
     <main style={pageStyle}>
       <h1 style={titleStyle}>PlaceAssignment 新規登録</h1>
 
-      <form method="post" action="/api/admin/assignments/create" style={formCardStyle}>
+      <form
+        method="post"
+        action="/api/admin/assignments/create"
+        style={formCardStyle}
+      >
         <FormRow label="Place">
           <select name="placeId" required style={inputStyle}>
             <option value="">選択してください</option>
-            {places.map((p) => (
+            {places.map((p: PlaceItem) => (
               <option key={p.id} value={p.id}>
                 {p.name} ({p.slug})
               </option>
@@ -42,7 +64,7 @@ export default async function NewAssignmentPage() {
         <FormRow label="Owner">
           <select name="ownerId" required style={inputStyle}>
             <option value="">選択してください</option>
-            {owners.map((o) => (
+            {owners.map((o: OwnerItem) => (
               <option key={o.id} value={o.id}>
                 {o.name}
               </option>
@@ -53,7 +75,7 @@ export default async function NewAssignmentPage() {
         <FormRow label="Agent">
           <select name="agentId" style={inputStyle}>
             <option value="">なし</option>
-            {agents.map((a) => (
+            {agents.map((a: AgentItem) => (
               <option key={a.id} value={a.id}>
                 {a.name}（標準 {(a.defaultAgentRateBps / 100).toFixed(2)}%）
               </option>
@@ -63,33 +85,54 @@ export default async function NewAssignmentPage() {
 
         <div style={grid3Style}>
           <FormRow label="Owner率 (bps)">
-            <input name="ownerRateBps" type="number" defaultValue={8000} required style={inputStyle} />
+            <input
+              name="ownerRateBps"
+              type="number"
+              defaultValue={8000}
+              required
+              style={inputStyle}
+            />
           </FormRow>
+
           <FormRow label="Agent率 (bps)">
-            <input name="agentRateBps" type="number" defaultValue={0} required style={inputStyle} />
+            <input
+              name="agentRateBps"
+              type="number"
+              defaultValue={0}
+              required
+              style={inputStyle}
+            />
           </FormRow>
+
           <FormRow label="本部率 (bps)">
-            <input name="platformRateBps" type="number" defaultValue={2000} required style={inputStyle} />
+            <input
+              name="platformRateBps"
+              type="number"
+              defaultValue={2000}
+              required
+              style={inputStyle}
+            />
           </FormRow>
         </div>
 
         <div style={grid2Style}>
-          
+          <FormRow label="適用開始日">
+            <input
+              name="startsAt"
+              type="date"
+              required
+              defaultValue={new Date().toLocaleDateString("sv-SE", {
+                timeZone: "Asia/Tokyo",
+              })}
+              style={inputStyle}
+            />
+          </FormRow>
+
           <FormRow label="適用終了日">
             <input name="endsAt" type="date" style={inputStyle} />
           </FormRow>
         </div>
-<FormRow label="適用開始日">
-  <input
-    name="startsAt"
-    type="date"
-    required
-    defaultValue={new Date().toLocaleDateString("sv-SE", {
-      timeZone: "Asia/Tokyo",
-    })}
-    style={inputStyle}
-  />
-</FormRow>
+
         <label style={checkboxRowStyle}>
           <input name="isActive" type="checkbox" defaultChecked />
           <span>有効にする</span>
