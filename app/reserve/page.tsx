@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 type Spot = {
@@ -85,7 +85,7 @@ function canReserve(mode?: string | null) {
   );
 }
 
-export default function ReservePage() {
+function ReservePageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -422,7 +422,7 @@ export default function ReservePage() {
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="例: ご利用者名"
+            placeholder="例: 阿部龍昇"
             style={styles.input}
           />
         </section>
@@ -465,6 +465,14 @@ export default function ReservePage() {
         </button>
       </div>
     </main>
+  );
+}
+
+export default function ReservePage() {
+  return (
+    <Suspense fallback={<main style={styles.page}>読み込み中...</main>}>
+      <ReservePageInner />
+    </Suspense>
   );
 }
 

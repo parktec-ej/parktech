@@ -370,12 +370,12 @@ export async function POST(req: Request) {
       return result.response;
     }
 
-    if ("reservation" in result) {
-      console.log("reservation checkout mail check:", {
-        reservationId: result.reservation.id,
-        email: result.reservation.email,
-        paymentRef: result.reservation.paymentRef,
-        placeName: result.reservation.place?.name ?? "",
+    if ("reservation" in result && result.reservation) {
+  console.log("reservation checkout mail check:", {
+    reservationId: result.reservation.id,
+    email: result.reservation.email,
+    paymentRef: result.reservation.paymentRef,
+    placeName: result.reservation.place?.name ?? "",
         spotLabel:
           result.reservation.spot?.label ??
           result.reservation.spot?.code ??

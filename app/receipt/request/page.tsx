@@ -1,10 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState, useEffect } from "react";
+import { Suspense, useMemo, useState, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
 
-export default function ReceiptRequestPage() {
+function ReceiptRequestPageInner() {
   const searchParams = useSearchParams();
   const paymentRef = searchParams.get("paymentRef") ?? "";
 
@@ -19,9 +19,7 @@ export default function ReceiptRequestPage() {
 
       if (savedName) setName(savedName);
       if (savedNote) setNote(savedNote);
-    } catch {
-      // localStorage が使えない環境でも無視
-    }
+    } catch {}
   }, []);
 
   useEffect(() => {
@@ -30,9 +28,7 @@ export default function ReceiptRequestPage() {
     try {
       localStorage.setItem("parktech_receipt_name", name);
       localStorage.setItem("parktech_receipt_note", note);
-    } catch {
-      // 保存失敗は無視
-    }
+    } catch {}
   }, [name, note, touched]);
 
   const pdfUrl = useMemo(() => {
@@ -96,7 +92,7 @@ export default function ReceiptRequestPage() {
               setTouched(true);
               setName(e.target.value);
             }}
-            placeholder="例）株式会社〇〇 / ご利用者名"
+            placeholder="例）株式会社〇〇 / 山田 太郎"
             style={{
               ...inputStyle,
               borderColor: nameError ? "#fca5a5" : "#d1d5db",
@@ -188,6 +184,14 @@ export default function ReceiptRequestPage() {
         </p>
       </div>
     </main>
+  );
+}
+
+export default function ReceiptRequestPage() {
+  return (
+    <Suspense fallback={<main style={pageStyle}>読み込み中...</main>}>
+      <ReceiptRequestPageInner />
+    </Suspense>
   );
 }
 

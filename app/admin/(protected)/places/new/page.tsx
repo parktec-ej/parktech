@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 type OperationMode =
@@ -30,7 +30,7 @@ type AgentItem = {
   status: string;
 };
 
-export default function PlaceNewPage() {
+function PlaceNewPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -59,7 +59,9 @@ export default function PlaceNewPage() {
   const [platformRateBps, setPlatformRateBps] = useState(2000);
 
   const [policyStartMonth, setPolicyStartMonth] = useState(
-    new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Tokyo" }).slice(0, 7)
+    new Date()
+      .toLocaleDateString("sv-SE", { timeZone: "Asia/Tokyo" })
+      .slice(0, 7)
   );
   const [policyEndMonth, setPolicyEndMonth] = useState("");
   const [taxRateBps, setTaxRateBps] = useState(1000);
@@ -185,9 +187,11 @@ export default function PlaceNewPage() {
 
           ownerId,
           contractType,
-          agentId: contractType === "OWNER_AGENT_PLATFORM" ? agentId || null : null,
+          agentId:
+            contractType === "OWNER_AGENT_PLATFORM" ? agentId || null : null,
           ownerRateBps,
-          agentRateBps: contractType === "OWNER_AGENT_PLATFORM" ? agentRateBps : 0,
+          agentRateBps:
+            contractType === "OWNER_AGENT_PLATFORM" ? agentRateBps : 0,
           platformRateBps,
 
           startsAt,
@@ -237,12 +241,27 @@ export default function PlaceNewPage() {
           <h2 style={sectionTitleStyle}>基本情報</h2>
 
           <div style={grid2Style}>
-            <Input label="名前" value={name} onChange={setName} placeholder="例: ParkTech 利府北駐車場" />
-            <Input label="slug" value={slug} onChange={setSlug} placeholder="例: rifu-north" />
+            <Input
+              label="名前"
+              value={name}
+              onChange={setName}
+              placeholder="例: ParkTech 利府北駐車場"
+            />
+            <Input
+              label="slug"
+              value={slug}
+              onChange={setSlug}
+              placeholder="例: rifu-north"
+            />
           </div>
 
           <div style={grid2Style}>
-            <Input label="住所" value={address} onChange={setAddress} placeholder="宮城県..." />
+            <Input
+              label="住所"
+              value={address}
+              onChange={setAddress}
+              placeholder="宮城県..."
+            />
             <Input
               label="Google Map URL"
               value={googleMapUrl}
@@ -256,12 +275,16 @@ export default function PlaceNewPage() {
               <div style={labelStyle}>初期営業モード</div>
               <select
                 value={operationMode}
-                onChange={(e) => setOperationMode(e.target.value as OperationMode)}
+                onChange={(e) =>
+                  setOperationMode(e.target.value as OperationMode)
+                }
                 style={inputStyle}
               >
                 <option value="RESERVATION_ONLY">RESERVATION_ONLY</option>
                 <option value="HOURLY_ONLY">HOURLY_ONLY</option>
-                <option value="RESERVATION_THEN_HOURLY">RESERVATION_THEN_HOURLY</option>
+                <option value="RESERVATION_THEN_HOURLY">
+                  RESERVATION_THEN_HOURLY
+                </option>
                 <option value="EVENT_ONLY">EVENT_ONLY</option>
                 <option value="CLOSED">CLOSED</option>
               </select>
@@ -285,7 +308,9 @@ export default function PlaceNewPage() {
           <h2 style={sectionTitleStyle}>契約・配分設定</h2>
 
           {loadingMasters ? (
-            <div style={{ color: "#666" }}>オーナー / 代理店を読み込み中...</div>
+            <div style={{ color: "#666" }}>
+              オーナー / 代理店を読み込み中...
+            </div>
           ) : (
             <>
               <div style={grid2Style}>
@@ -310,10 +335,14 @@ export default function PlaceNewPage() {
                   <div style={labelStyle}>契約タイプ</div>
                   <select
                     value={contractType}
-                    onChange={(e) => setContractType(e.target.value as ContractType)}
+                    onChange={(e) =>
+                      setContractType(e.target.value as ContractType)
+                    }
                     style={inputStyle}
                   >
-                    <option value="OWNER_AGENT_PLATFORM">OWNER_AGENT_PLATFORM</option>
+                    <option value="OWNER_AGENT_PLATFORM">
+                      OWNER_AGENT_PLATFORM
+                    </option>
                     <option value="OWNER_DIRECT">OWNER_DIRECT</option>
                     <option value="HQ_BULK">HQ_BULK</option>
                   </select>
@@ -336,7 +365,8 @@ export default function PlaceNewPage() {
                     </option>
                     {agents.map((a) => (
                       <option key={a.id} value={a.id}>
-                        {a.displayName || a.name}（標準 {(a.defaultAgentRateBps / 100).toFixed(2)}%）
+                        {a.displayName || a.name}（標準{" "}
+                        {(a.defaultAgentRateBps / 100).toFixed(2)}%）
                       </option>
                     ))}
                   </select>
@@ -390,8 +420,16 @@ export default function PlaceNewPage() {
                 </label>
               </div>
 
-              <div style={{ fontSize: 13, color: rateTotal === 10000 ? "#166534" : "#b91c1c" }}>
-                合計: {rateTotal} bps {rateTotal === 10000 ? "（OK）" : "（10000にしてください）"}
+              <div
+                style={{
+                  fontSize: 13,
+                  color: rateTotal === 10000 ? "#166534" : "#b91c1c",
+                }}
+              >
+                合計: {rateTotal} bps{" "}
+                {rateTotal === 10000
+                  ? "（OK）"
+                  : "（10000にしてください）"}
               </div>
 
               <div style={grid2Style}>
@@ -451,7 +489,9 @@ export default function PlaceNewPage() {
               <input
                 type="number"
                 value={monthlyMinFeeThreshold}
-                onChange={(e) => setMonthlyMinFeeThreshold(Number(e.target.value))}
+                onChange={(e) =>
+                  setMonthlyMinFeeThreshold(Number(e.target.value))
+                }
                 style={inputStyle}
               />
             </label>
@@ -486,15 +526,14 @@ export default function PlaceNewPage() {
         </section>
 
         <div style={{ display: "flex", gap: 12 }}>
-          <button style={buttonStyle} disabled={saving || loadingMasters || rateTotal !== 10000}>
+          <button
+            style={buttonStyle}
+            disabled={saving || loadingMasters || rateTotal !== 10000}
+          >
             {saving ? "作成中..." : "保存"}
           </button>
 
-          <button
-            type="button"
-            style={cancelButton}
-            onClick={() => router.back()}
-          >
+          <button type="button" style={cancelButton} onClick={() => router.back()}>
             戻る
           </button>
         </div>
@@ -502,6 +541,20 @@ export default function PlaceNewPage() {
         {err && <div style={{ color: "red", fontWeight: 700 }}>{err}</div>}
       </form>
     </main>
+  );
+}
+
+export default function PlaceNewPage() {
+  return (
+    <Suspense
+      fallback={
+        <main style={{ maxWidth: 860, margin: "0 auto", padding: 24 }}>
+          読み込み中...
+        </main>
+      }
+    >
+      <PlaceNewPageInner />
+    </Suspense>
   );
 }
 

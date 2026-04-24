@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { Suspense, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 type CheckinResponse = {
@@ -23,7 +23,7 @@ function ymdTodayJst() {
   });
 }
 
-export default function CheckinPage() {
+function CheckinInner() {
   const router = useRouter();
   const search = useSearchParams();
 
@@ -31,10 +31,12 @@ export default function CheckinPage() {
     () => String(search.get("placeId") ?? "").trim(),
     [search]
   );
+
   const slot = useMemo(
     () => String(search.get("slot") ?? "").trim(),
     [search]
   );
+
   const date = useMemo(
     () => String(search.get("date") ?? ymdTodayJst()).trim(),
     [search]
@@ -94,8 +96,8 @@ export default function CheckinPage() {
       setResult(json);
       setCompleted(true);
       setPin("");
-    } catch (e: any) {
-      setError(String(e?.message ?? "通信エラーが発生しました。"));
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "通信エラーが発生しました。");
     } finally {
       setLoading(false);
     }
@@ -120,9 +122,7 @@ export default function CheckinPage() {
           <div style={cardStyle}>
             <div style={successTitleStyle}>チェックイン完了</div>
 
-            <div style={successMessageStyle}>
-              チェックイン完了しました。
-            </div>
+            <div style={successMessageStyle}>チェックイン完了しました。</div>
 
             <div style={normalTextStyle}>
               駐車してコーンを戻してください。
@@ -219,6 +219,14 @@ export default function CheckinPage() {
         </>
       )}
     </main>
+  );
+}
+
+export default function CheckinPage() {
+  return (
+    <Suspense fallback={<main style={pageStyle}>読み込み中...</main>}>
+      <CheckinInner />
+    </Suspense>
   );
 }
 

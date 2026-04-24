@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
 type ReservationView = {
@@ -29,7 +29,7 @@ type PolicyView = {
   refundAmount: number;
 };
 
-export default function Page() {
+function ReservationManagePageInner() {
   const searchParams = useSearchParams();
 
   const token = useMemo(() => {
@@ -269,5 +269,26 @@ export default function Page() {
         </div>
       )}
     </main>
+  );
+}
+
+export default function Page() {
+  return (
+    <Suspense
+      fallback={
+        <main
+          style={{
+            maxWidth: 980,
+            margin: "40px auto",
+            padding: 20,
+            fontFamily: "system-ui, sans-serif",
+          }}
+        >
+          予約情報を読み込んでいます...
+        </main>
+      }
+    >
+      <ReservationManagePageInner />
+    </Suspense>
   );
 }

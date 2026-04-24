@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { SessionStatus } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { getAdminSession } from "@/lib/admin-auth";
 import { resolveActivePlace } from "@/lib/place-resolver";
@@ -33,7 +34,14 @@ export async function GET(req: NextRequest) {
     const inputPlaceId = String(url.searchParams.get("placeId") ?? "").trim();
     const inputPlaceSlug = String(url.searchParams.get("placeSlug") ?? "").trim();
     const date = normalizeDate(url.searchParams.get("date") || ymdTodayJst());
-    const status = String(url.searchParams.get("status") ?? "ALL").trim().toUpperCase();
+
+    const rawStatus = String(url.searchParams.get("status") ?? "ALL")
+      .trim()
+      .toUpperCase();
+
+    const status: SessionStatus | undefined =
+      rawStatus === "IN" || rawStatus === "OUT" ? (rawStatus as SessionStatus) : undefined;
+
     const q = String(url.searchParams.get("q") ?? "").trim();
 
     const place = await resolveActivePlace({
@@ -58,7 +66,7 @@ export async function GET(req: NextRequest) {
           gte: start,
           lte: end,
         },
-        ...(status !== "ALL" ? { status } : {}),
+        ...(status ? { status } : {}),
         ...(q
           ? {
               OR: [
@@ -101,7 +109,7 @@ export async function GET(req: NextRequest) {
       },
       date,
       filters: {
-        status,
+        status: rawStatus,
         q,
       },
       summary: {

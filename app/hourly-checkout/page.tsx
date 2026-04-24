@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { Suspense, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 function ymdTodayJst() {
@@ -56,7 +56,7 @@ type HourlyStripeCheckoutResponse = {
   message?: string;
 };
 
-export default function HourlyCheckoutPage() {
+function HourlyCheckoutPageInner() {
   const router = useRouter();
   const search = useSearchParams();
 
@@ -247,6 +247,14 @@ export default function HourlyCheckoutPage() {
         </>
       )}
     </main>
+  );
+}
+
+export default function HourlyCheckoutPage() {
+  return (
+    <Suspense fallback={<main style={pageStyle}>読み込み中...</main>}>
+      <HourlyCheckoutPageInner />
+    </Suspense>
   );
 }
 

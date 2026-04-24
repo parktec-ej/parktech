@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 
@@ -118,7 +118,7 @@ function updateUrl(
   });
 }
 
-export default function AdminParkingSessionsPage() {
+function AdminParkingSessionsPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -544,6 +544,20 @@ export default function AdminParkingSessionsPage() {
         )}
       </div>
     </main>
+  );
+}
+
+export default function AdminParkingSessionsPage() {
+  return (
+    <Suspense
+      fallback={
+        <main style={{ maxWidth: 1180, margin: "0 auto", padding: 24 }}>
+          読み込み中...
+        </main>
+      }
+    >
+      <AdminParkingSessionsPageInner />
+    </Suspense>
   );
 }
 

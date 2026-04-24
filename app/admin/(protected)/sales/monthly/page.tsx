@@ -209,6 +209,7 @@ export default async function AdminMonthlySalesPage({
       id: true,
       kind: true,
       reason: true,
+      note: true,
       recognizedDate: true,
       grossDeltaAmount: true,
       ownerDeltaAmount: true,

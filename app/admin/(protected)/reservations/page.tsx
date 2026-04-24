@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 function ymdTodayJst() {
@@ -117,7 +117,7 @@ function updateUrl(
   });
 }
 
-export default function AdminReservationsPage() {
+function AdminReservationsPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -411,7 +411,9 @@ export default function AdminReservationsPage() {
           </div>
 
           <div>
-            <div style={{ fontSize: 12, color: "#666", marginBottom: 6 }}>日付</div>
+            <div style={{ fontSize: 12, color: "#666", marginBottom: 6 }}>
+              日付
+            </div>
             <input
               type="date"
               value={date}
@@ -426,7 +428,9 @@ export default function AdminReservationsPage() {
           </div>
 
           <div>
-            <div style={{ fontSize: 12, color: "#666", marginBottom: 6 }}>状態</div>
+            <div style={{ fontSize: 12, color: "#666", marginBottom: 6 }}>
+              状態
+            </div>
             <select
               value={status}
               onChange={(e) => setStatus(e.target.value)}
@@ -447,7 +451,9 @@ export default function AdminReservationsPage() {
           </div>
 
           <div>
-            <div style={{ fontSize: 12, color: "#666", marginBottom: 6 }}>並び順</div>
+            <div style={{ fontSize: 12, color: "#666", marginBottom: 6 }}>
+              並び順
+            </div>
             <select
               value={sort}
               onChange={(e) => setSort(e.target.value)}
@@ -758,5 +764,19 @@ export default function AdminReservationsPage() {
         </div>
       )}
     </main>
+  );
+}
+
+export default function AdminReservationsPage() {
+  return (
+    <Suspense
+      fallback={
+        <main style={{ maxWidth: 1100, margin: "0 auto", padding: 24 }}>
+          読み込み中...
+        </main>
+      }
+    >
+      <AdminReservationsPageInner />
+    </Suspense>
   );
 }

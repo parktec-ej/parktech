@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { Suspense, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 function buildReceiptPdfUrl(params: {
@@ -14,7 +14,7 @@ function buildReceiptPdfUrl(params: {
   return `/api/receipt/${encodeURIComponent(params.paymentRef)}/pdf?${qs.toString()}`;
 }
 
-export default function ReceiptRequestPage() {
+function ReceiptRequestPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -119,6 +119,14 @@ export default function ReceiptRequestPage() {
         </div>
       ) : null}
     </main>
+  );
+}
+
+export default function ReceiptRequestPage() {
+  return (
+    <Suspense fallback={<main style={pageStyle}>読み込み中...</main>}>
+      <ReceiptRequestPageInner />
+    </Suspense>
   );
 }
 

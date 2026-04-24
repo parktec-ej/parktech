@@ -1,91 +1,37 @@
 import { NextResponse } from "next/server";
+import { OperationMode } from "@prisma/client";
 import { prisma } from "@/lib/db";
-
-function normalizeCode(v: string) {
-  return v.trim().toUpperCase();
-}
+import { requireAdmin } from "@/lib/admin-auth";
 
 export async function POST(req: Request) {
   try {
-    const body = await req.json();
+    await requireAdmin();
 
-    const placeId = String(body.placeId ?? "").trim();
-    const code = normalizeCode(String(body.code ?? ""));
-    const label = String(body.label ?? "").trim() || code;
-    const operationModeOverride = String(
-      body.operationModeOverride ?? "HOURLY_ONLY"
-    ).trim();
+    const fd = await req.formData();
 
-    if (!placeId) {
+    const placeId = String(fd.get("placeId") ?? "").trim();
+    const code = String(fd.get("code") ?? "").trim();
+    const label = String(fd.get("label") ?? "").trim();
+
+    const rawOperationModeOverride = String(
+      fd.get("operationModeOverride") ?? ""
+    )
+      .trim()
+      .toUpperCase();
+
+    const operationModeOverride: OperationMode | null =
+      rawOperationModeOverride === "RESERVATION_ONLY" ||
+      rawOperationModeOverride === "HOURLY_ONLY" ||
+      rawOperationModeOverride === "RESERVATION_THEN_HOURLY" ||
+      rawOperationModeOverride === "CLOSED"
+        ? rawOperationModeOverride
+        : null;
+
+    if (!placeId || !code) {
       return NextResponse.json(
-        { ok: false, error: "missing_placeId", message: "placeId が必要です" },
+        { ok: false, error: "missing_params" },
         { status: 400 }
       );
-    }
-
-    if (!code) {
-      return NextResponse.json(
-        { ok: false, error: "missing_code", message: "SLOTコードが必要です" },
-        { status: 400 }
-      );
-    }
-
-    const place = await prisma.place.findUnique({
-      where: { id: placeId },
-      select: { id: true, name: true },
-    });
-
-    if (!place) {
-      return NextResponse.json(
-        { ok: false, error: "place_not_found", message: "Placeが見つかりません" },
-        { status: 404 }
-      );
-    }
-
-    const existing = await prisma.spot.findFirst({
-      where: {
-        placeId,
-        code,
-      },
-      select: {
-        id: true,
-        isActive: true,
-      },
-    });
-
-    if (existing && existing.isActive) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error: "spot_exists",
-          message: `SLOT ${code} はすでに存在します`,
-        },
-        { status: 409 }
-      );
-    }
-
-    if (existing && !existing.isActive) {
-      const reactivated = await prisma.spot.update({
-        where: { id: existing.id },
-        data: {
-          label,
-          isActive: true,
-          operationModeOverride,
-        },
-        select: {
-          id: true,
-          code: true,
-          label: true,
-          isActive: true,
-          operationModeOverride: true,
-        },
-      });
-
-      return NextResponse.json({
-        ok: true,
-        reactivated: true,
-        spot: reactivated,
-      });
     }
 
     const created = await prisma.spot.create({
@@ -98,6 +44,7 @@ export async function POST(req: Request) {
       },
       select: {
         id: true,
+        placeId: true,
         code: true,
         label: true,
         isActive: true,
@@ -105,19 +52,11 @@ export async function POST(req: Request) {
       },
     });
 
-    return NextResponse.json({
-      ok: true,
-      created: true,
-      spot: created,
-    });
-  } catch (e: any) {
-    console.error("create spot error:", e);
+    return NextResponse.json({ ok: true, spot: created });
+  } catch (err) {
+    console.error(err);
     return NextResponse.json(
-      {
-        ok: false,
-        error: "server_error",
-        message: String(e?.message ?? e),
-      },
+      { ok: false, error: "server_error" },
       { status: 500 }
     );
   }

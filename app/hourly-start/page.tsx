@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { Suspense, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 function normalizeDate(input: string) {
@@ -27,7 +27,7 @@ function ymdTodayJst() {
   });
 }
 
-export default function HourlyStartPage() {
+function HourlyStartPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -163,7 +163,7 @@ export default function HourlyStartPage() {
             <input
               value={customerName}
               onChange={(e) => setCustomerName(e.target.value)}
-              placeholder="例: ご利用者名"
+              placeholder="例: 阿部龍昇"
               style={inputStyle}
             />
           </label>
@@ -197,6 +197,14 @@ export default function HourlyStartPage() {
         </>
       )}
     </main>
+  );
+}
+
+export default function HourlyStartPage() {
+  return (
+    <Suspense fallback={<main style={pageStyle}>読み込み中...</main>}>
+      <HourlyStartPageInner />
+    </Suspense>
   );
 }
 

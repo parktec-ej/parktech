@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 type OperationMode =
@@ -59,7 +59,7 @@ function modeLabel(v: string | null | undefined) {
   return v;
 }
 
-export default function SpotModeCalendarPage() {
+function SpotModeCalendarPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -67,6 +67,7 @@ export default function SpotModeCalendarPage() {
     () => String(searchParams.get("placeId") ?? "rifu-main").trim(),
     [searchParams]
   );
+
   const date = useMemo(
     () => String(searchParams.get("date") ?? ymdTodayJst()).trim(),
     [searchParams]
@@ -147,9 +148,13 @@ export default function SpotModeCalendarPage() {
       });
 
       const json = await res.json();
+
       if (!res.ok || !json.ok) {
-        throw new Error(json.message ?? json.error ?? `${item.code} の削除に失敗しました`);
+        throw new Error(
+          json.message ?? json.error ?? `${item.code} の削除に失敗しました`
+        );
       }
+
       return;
     }
 
@@ -167,13 +172,17 @@ export default function SpotModeCalendarPage() {
     });
 
     const json = await res.json();
+
     if (!res.ok || !json.ok) {
-      throw new Error(json.message ?? json.error ?? `${item.code} の保存に失敗しました`);
+      throw new Error(
+        json.message ?? json.error ?? `${item.code} の保存に失敗しました`
+      );
     }
   }
 
   async function handleSave(item: CalendarItem) {
     const value = draftMap[item.spotId] ?? "";
+
     setSavingSpotId(item.spotId);
     setError("");
     setMessage("");
@@ -191,7 +200,8 @@ export default function SpotModeCalendarPage() {
 
   async function handleBulkSave() {
     const changedItems = items.filter(
-      (item) => (draftMap[item.spotId] ?? "") !== (originalMap[item.spotId] ?? "")
+      (item) =>
+        (draftMap[item.spotId] ?? "") !== (originalMap[item.spotId] ?? "")
     );
 
     if (changedItems.length === 0) {
@@ -229,7 +239,9 @@ export default function SpotModeCalendarPage() {
 
   function shiftDate(days: number) {
     const base = new Date(`${date}T00:00:00`);
+
     if (Number.isNaN(base.getTime())) return;
+
     base.setDate(base.getDate() + days);
     moveDate(base.toISOString().slice(0, 10));
   }
@@ -266,7 +278,9 @@ export default function SpotModeCalendarPage() {
         }}
       >
         <div>
-          <div style={{ fontSize: 12, color: "#666", marginBottom: 6 }}>対象日</div>
+          <div style={{ fontSize: 12, color: "#666", marginBottom: 6 }}>
+            対象日
+          </div>
           <input
             type="date"
             value={date}
@@ -315,18 +329,14 @@ export default function SpotModeCalendarPage() {
           style={{
             ...primaryButtonStyle,
             opacity: bulkSaving || changedCount === 0 ? 0.55 : 1,
-            cursor: bulkSaving || changedCount === 0 ? "not-allowed" : "pointer",
+            cursor:
+              bulkSaving || changedCount === 0 ? "not-allowed" : "pointer",
           }}
         >
           {bulkSaving ? "一括保存中..." : `変更を一括保存 (${changedCount})`}
         </button>
 
-        <button
-          onClick={() =>
-            router.push(`/admin/places`)
-          }
-          style={subButtonStyle}
-        >
+        <button onClick={() => router.push(`/admin/places`)} style={subButtonStyle}>
           Place一覧へ戻る
         </button>
       </div>
@@ -406,7 +416,9 @@ export default function SpotModeCalendarPage() {
                   <tr key={item.spotId}>
                     <td style={tdStyle}>{item.code}</td>
                     <td style={tdStyle}>{item.label ?? "-"}</td>
-                    <td style={tdStyle}>{modeLabel(item.inheritedOperationMode)}</td>
+                    <td style={tdStyle}>
+                      {modeLabel(item.inheritedOperationMode)}
+                    </td>
                     <td style={tdStyle}>
                       <div style={{ display: "grid", gap: 6 }}>
                         <select
@@ -421,7 +433,9 @@ export default function SpotModeCalendarPage() {
                             width: "100%",
                             padding: "10px 12px",
                             borderRadius: 10,
-                            border: changed ? "1px solid #2563eb" : "1px solid #ccc",
+                            border: changed
+                              ? "1px solid #2563eb"
+                              : "1px solid #ccc",
                             background: "#fff",
                           }}
                         >
@@ -432,8 +446,15 @@ export default function SpotModeCalendarPage() {
                             </option>
                           ))}
                         </select>
+
                         {changed ? (
-                          <span style={{ fontSize: 12, color: "#2563eb", fontWeight: 700 }}>
+                          <span
+                            style={{
+                              fontSize: 12,
+                              color: "#2563eb",
+                              fontWeight: 700,
+                            }}
+                          >
                             未保存の変更
                           </span>
                         ) : (
@@ -480,6 +501,26 @@ export default function SpotModeCalendarPage() {
         </div>
       )}
     </main>
+  );
+}
+
+export default function SpotModeCalendarPage() {
+  return (
+    <Suspense
+      fallback={
+        <main
+          style={{
+            maxWidth: 960,
+            margin: "0 auto",
+            padding: "24px 16px 56px",
+          }}
+        >
+          読み込み中...
+        </main>
+      }
+    >
+      <SpotModeCalendarPageInner />
+    </Suspense>
   );
 }
 

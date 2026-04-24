@@ -1,6 +1,6 @@
-　"use client";
+"use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 
@@ -86,7 +86,7 @@ async function fetchJson(input: RequestInfo | URL, init?: RequestInit) {
   return { res, json };
 }
 
-export default function PartnerBusReservePage() {
+function PartnerBusReservePageInner() {
   const searchParams = useSearchParams();
 
   const initialDate = useMemo(() => {
@@ -363,7 +363,7 @@ export default function PartnerBusReservePage() {
                   value={contactName}
                   onChange={(e) => setContactName(e.target.value)}
                   style={inputStyle}
-                  placeholder="例: ご利用者名"
+                  placeholder="例: 田中 太郎"
                 />
               </div>
 
@@ -447,6 +447,14 @@ export default function PartnerBusReservePage() {
         </div>
       </div>
     </main>
+  );
+}
+
+export default function PartnerBusReservePage() {
+  return (
+    <Suspense fallback={<main style={pageStyle}>読み込み中...</main>}>
+      <PartnerBusReservePageInner />
+    </Suspense>
   );
 }
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 type GateMode =
@@ -59,7 +59,7 @@ function modeLabel(mode?: string | null) {
   return mode;
 }
 
-export default function GatePage() {
+function GateInner() {
   const router = useRouter();
   const search = useSearchParams();
 
@@ -121,8 +121,8 @@ export default function GatePage() {
       }
 
       setData(json);
-    } catch (e: any) {
-      setError(String(e?.message ?? "通信エラーが発生しました"));
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "通信エラーが発生しました");
       setData(null);
     } finally {
       setLoading(false);
@@ -243,13 +243,10 @@ export default function GatePage() {
       mode === "unpaid" ||
       mode === "no_reservation");
 
-  const canUseHourly =
-    !disableAll &&
-    mode === "can_start_hourly";
+  const canUseHourly = !disableAll && mode === "can_start_hourly";
 
   const canUseCheckout =
-    !disableAll &&
-    (mode === "can_checkout" || mode === "can_checkout_hourly");
+    !disableAll && (mode === "can_checkout" || mode === "can_checkout_hourly");
 
   function handleCheckin() {
     if (!canUseReservation) return;
@@ -404,6 +401,14 @@ export default function GatePage() {
         </button>
       </div>
     </main>
+  );
+}
+
+export default function GatePage() {
+  return (
+    <Suspense fallback={<main style={pageStyle}>状態を確認しています...</main>}>
+      <GateInner />
+    </Suspense>
   );
 }
 

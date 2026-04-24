@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
 type EventDayRow = {
@@ -32,7 +32,7 @@ function toNullableNumber(value: string) {
   return Number.isFinite(n) ? Math.trunc(n) : null;
 }
 
-export default function AdminPricingPage() {
+function AdminPricingPageInner() {
   const searchParams = useSearchParams();
   const placeId = String(searchParams.get("placeId") ?? "").trim();
 
@@ -168,7 +168,9 @@ export default function AdminPricingPage() {
         seen.add(row.date);
 
         if (![0, 7, 14, 30, 60].includes(Number(row.reservationOpenDaysBefore))) {
-          setErr(`予約開放日は 0 / 7 / 14 / 30 / 60 のいずれかにしてください: ${row.date}`);
+          setErr(
+            `予約開放日は 0 / 7 / 14 / 30 / 60 のいずれかにしてください: ${row.date}`
+          );
           setSaving(false);
           return;
         }
@@ -244,7 +246,9 @@ export default function AdminPricingPage() {
               </label>
 
               <label>
-                <div style={{ fontWeight: 700, marginBottom: 6 }}>通常時間貸し料金（円/時）</div>
+                <div style={{ fontWeight: 700, marginBottom: 6 }}>
+                  通常時間貸し料金（円/時）
+                </div>
                 <input
                   type="number"
                   value={hourlyYen}
@@ -429,6 +433,14 @@ export default function AdminPricingPage() {
         )}
       </section>
     </main>
+  );
+}
+
+export default function AdminPricingPage() {
+  return (
+    <Suspense fallback={<main style={{ padding: 24, maxWidth: 1200 }}>読み込み中...</main>}>
+      <AdminPricingPageInner />
+    </Suspense>
   );
 }
 

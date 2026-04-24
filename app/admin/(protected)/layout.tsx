@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import type { ReactNode, CSSProperties } from "react";
+import { Suspense } from "react";
 import PlacePicker from "./PlacePicker";
 
 function NavLink({
@@ -62,11 +63,10 @@ function AdminTabs() {
         current={pathname.startsWith("/admin/owners")}
       />
       <NavLink
-         href="/admin/agents"
-         label="代理店管理"
-         current={pathname.startsWith("/admin/agents")}
+        href="/admin/agents"
+        label="代理店管理"
+        current={pathname.startsWith("/admin/agents")}
       />
-
       <NavLink
         href={withCurrentPlace("/admin/pricing", searchParams)}
         label="料金設定"
@@ -77,13 +77,11 @@ function AdminTabs() {
         label="予約一覧"
         current={pathname.startsWith("/admin/reservations")}
       />
-
       <NavLink
         href={withCurrentPlace("/admin/parking-sessions", searchParams)}
         label="入庫管理"
         current={pathname.startsWith("/admin/parking-sessions")}
       />
-
       <NavLink
         href={withCurrentPlace("/admin/sales", searchParams)}
         label="売上一覧"
@@ -108,7 +106,23 @@ function AdminTabs() {
         href={withCurrentPlace("/admin/assignments", searchParams)}
         label="料率設定"
         current={pathname.startsWith("/admin/assignments")}
-       />
+      />
+    </div>
+  );
+}
+
+function AdminHeaderControls() {
+  return (
+    <div style={{ display: "flex", gap: 12, alignItems: "flex-start", flexWrap: "wrap" }}>
+      <Suspense fallback={null}>
+        <PlacePicker />
+      </Suspense>
+
+      <form action="/api/admin/logout" method="post">
+        <button type="submit" style={logoutButtonStyle}>
+          ログアウト
+        </button>
+      </form>
     </div>
   );
 }
@@ -141,17 +155,13 @@ export default function AdminProtectedLayout({
           <div>
             <div style={{ fontWeight: 900, fontSize: 20 }}>ParkTech Admin</div>
             <div style={{ fontSize: 12, color: "#666" }}>ParkTech Admin</div>
-            <AdminTabs />
+
+            <Suspense fallback={null}>
+              <AdminTabs />
+            </Suspense>
           </div>
 
-          <div style={{ display: "flex", gap: 12, alignItems: "flex-start", flexWrap: "wrap" }}>
-            <PlacePicker />
-            <form action="/api/admin/logout" method="post">
-              <button type="submit" style={logoutButtonStyle}>
-                ログアウト
-              </button>
-            </form>
-          </div>
+          <AdminHeaderControls />
         </div>
       </header>
 

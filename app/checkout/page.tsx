@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { Suspense, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 type CheckoutResponse = {
@@ -32,7 +32,7 @@ function fmtYen(value?: number | null) {
   return `${Number(value ?? 0).toLocaleString("ja-JP")} 円`;
 }
 
-export default function CheckoutPage() {
+function CheckoutInner() {
   const router = useRouter();
   const search = useSearchParams();
 
@@ -103,8 +103,8 @@ export default function CheckoutPage() {
       setResult(json);
       setCompleted(true);
       setPin("");
-    } catch (e: any) {
-      setError(String(e?.message ?? "通信エラーが発生しました。"));
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "通信エラーが発生しました。");
     } finally {
       setLoading(false);
     }
@@ -182,41 +182,47 @@ export default function CheckoutPage() {
           </button>
         </>
       ) : (
-        <>
-          <div style={cardStyle}>
-            <form onSubmit={handleSubmit} style={{ display: "grid", gap: 16 }}>
-              <label style={labelStyle}>
-                PINコード
-                <input
-                  inputMode="numeric"
-                  autoComplete="one-time-code"
-                  placeholder="4桁のPIN"
-                  value={pin}
-                  onChange={(e) => setPin(e.target.value)}
-                  style={inputStyle}
-                  maxLength={8}
-                  disabled={loading}
-                />
-              </label>
+        <div style={cardStyle}>
+          <form onSubmit={handleSubmit} style={{ display: "grid", gap: 16 }}>
+            <label style={labelStyle}>
+              PINコード
+              <input
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                placeholder="4桁のPIN"
+                value={pin}
+                onChange={(e) => setPin(e.target.value)}
+                style={inputStyle}
+                maxLength={8}
+                disabled={loading}
+              />
+            </label>
 
-              {error ? <div style={errorStyle}>{error}</div> : null}
+            {error ? <div style={errorStyle}>{error}</div> : null}
 
-              <div style={descriptionStyle}>
-                出庫する場合は PIN を入力して、下のボタンを押してください。
-              </div>
+            <div style={descriptionStyle}>
+              出庫する場合は PIN を入力して、下のボタンを押してください。
+            </div>
 
-              <button
-                type="submit"
-                style={primaryButtonStyle}
-                disabled={loading || missingParams}
-              >
-                {loading ? "出庫処理中..." : "出庫する"}
-              </button>
-            </form>
-          </div>
-        </>
+            <button
+              type="submit"
+              style={primaryButtonStyle}
+              disabled={loading || missingParams}
+            >
+              {loading ? "出庫処理中..." : "出庫する"}
+            </button>
+          </form>
+        </div>
       )}
     </main>
+  );
+}
+
+export default function CheckoutPage() {
+  return (
+    <Suspense fallback={<main style={pageStyle}>読み込み中...</main>}>
+      <CheckoutInner />
+    </Suspense>
   );
 }
 

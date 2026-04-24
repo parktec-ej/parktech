@@ -63,14 +63,12 @@ export async function POST(req: Request) {
 
     const ownerId = place.ownerId;
 
-    const existing = await prisma.settlement.findUnique({
-      where: {
-        month_placeId: {
-          month,
-          placeId,
-        },
-      },
-    });
+    const existing = await prisma.settlement.findFirst({
+  where: {
+    month,
+    placeId,
+  },
+});
 
     if (existing) {
       return NextResponse.redirect(
