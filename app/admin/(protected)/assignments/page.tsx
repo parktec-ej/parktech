@@ -3,6 +3,29 @@ import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { requireAdmin } from "@/lib/admin-auth";
 
+type AssignmentRow = {
+  id: string;
+  ownerRateBps: number;
+  agentRateBps: number;
+  platformRateBps: number;
+  startsAt: Date;
+  endsAt: Date | null;
+  isActive: boolean;
+  place: {
+    id: string;
+    name: string;
+    slug: string;
+  };
+  owner: {
+    id: string;
+    name: string;
+  };
+  agent: {
+    id: string;
+    name: string;
+  } | null;
+};
+
 function fmtPct(bps: number) {
   return `${(bps / 100).toFixed(2)}%`;
 }
@@ -20,7 +43,7 @@ export default async function AssignmentsPage({
   await requireAdmin();
   const sp = (await searchParams) ?? {};
 
-  const rows = await prisma.placeAssignment.findMany({
+  const rows: AssignmentRow[] = await prisma.placeAssignment.findMany({
     include: {
       place: { select: { id: true, name: true, slug: true } },
       owner: { select: { id: true, name: true } },
@@ -69,7 +92,7 @@ export default async function AssignmentsPage({
                 </tr>
               </thead>
               <tbody>
-                {rows.map((row) => (
+                {rows.map((row: AssignmentRow) => (
                   <tr key={row.id}>
                     <td style={tdStyle}>{row.place.name}</td>
                     <td style={tdStyle}>{row.owner.name}</td>
