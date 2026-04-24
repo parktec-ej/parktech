@@ -4,6 +4,30 @@ import { getAdminSession } from "@/lib/admin-auth";
 
 const MIN_PLATFORM_FEE_YEN = 300;
 
+type OwnerMonthPayment = {
+  platformAmount: number;
+};
+
+type PaymentRow = {
+  kind: string;
+  recognizedDate: Date;
+  serviceDate: string | null;
+  spotCodeSnapshot: string | null;
+  spotLabelSnapshot: string | null;
+  customerNameSnapshot: string | null;
+  plateSnapshot: string | null;
+  grossAmount: number;
+  ownerRateBps: number;
+  ownerAmount: number;
+  agentRateBps: number;
+  agentAmount: number;
+  platformRateBps: number;
+  platformAmount: number;
+  paymentRef: string | null;
+  status: string;
+  createdAt: Date;
+};
+
 function ymTodayJst() {
   const d = new Date();
   const y = d.toLocaleDateString("sv-SE", {
@@ -24,6 +48,7 @@ function escapeCsv(value: string | number | null | undefined) {
 
 export async function GET(req: Request) {
   const admin = await getAdminSession();
+
   if (!admin) {
     return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
   }
@@ -62,7 +87,7 @@ export async function GET(req: Request) {
       );
     }
 
-    const payments = await prisma.payment.findMany({
+    const payments: PaymentRow[] = await prisma.payment.findMany({
       where: {
         placeId: place.id,
         recognizedMonth: targetMonth,
@@ -91,7 +116,7 @@ export async function GET(req: Request) {
       orderBy: [{ recognizedDate: "asc" }, { createdAt: "asc" }],
     });
 
-    const ownerMonthPayments = place.ownerId
+    const ownerMonthPayments: OwnerMonthPayment[] = place.ownerId
       ? await prisma.payment.findMany({
           where: {
             ownerId: place.ownerId,
@@ -106,7 +131,7 @@ export async function GET(req: Request) {
       : [];
 
     const ownerMonthPlatformRaw = ownerMonthPayments.reduce(
-      (sum, p) => sum + p.platformAmount,
+      (sum: number, p: OwnerMonthPayment) => sum + p.platformAmount,
       0
     );
 
@@ -115,15 +140,31 @@ export async function GET(req: Request) {
         ? MIN_PLATFORM_FEE_YEN - ownerMonthPlatformRaw
         : 0;
 
-    const totalGross = payments.reduce((sum, p) => sum + p.grossAmount, 0);
-    const totalOwnerRaw = payments.reduce((sum, p) => sum + p.ownerAmount, 0);
-    const totalAgent = payments.reduce((sum, p) => sum + p.agentAmount, 0);
-    const totalPlatformRaw = payments.reduce((sum, p) => sum + p.platformAmount, 0);
+    const totalGross = payments.reduce(
+      (sum: number, p: PaymentRow) => sum + p.grossAmount,
+      0
+    );
+
+    const totalOwnerRaw = payments.reduce(
+      (sum: number, p: PaymentRow) => sum + p.ownerAmount,
+      0
+    );
+
+    const totalAgent = payments.reduce(
+      (sum: number, p: PaymentRow) => sum + p.agentAmount,
+      0
+    );
+
+    const totalPlatformRaw = payments.reduce(
+      (sum: number, p: PaymentRow) => sum + p.platformAmount,
+      0
+    );
 
     const totalOwnerFinal = Math.max(0, totalOwnerRaw - monthlyMinFeeAdjustment);
     const totalPlatformFinal = totalPlatformRaw + monthlyMinFeeAdjustment;
 
     const lines: string[] = [];
+
     lines.push(
       [
         "Place",
@@ -155,7 +196,13 @@ export async function GET(req: Request) {
       lines.push(
         [
           escapeCsv(place.name),
-          escapeCsv(p.kind === "RESERVATION" ? "予約" : p.kind === "HOURLY" ? "時間貸し" : "イベント"),
+          escapeCsv(
+            p.kind === "RESERVATION"
+              ? "予約"
+              : p.kind === "HOURLY"
+              ? "時間貸し"
+              : "イベント"
+          ),
           escapeCsv(useDate),
           escapeCsv(p.spotLabelSnapshot || p.spotCodeSnapshot || ""),
           escapeCsv(p.customerNameSnapshot || ""),
