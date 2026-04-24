@@ -4,6 +4,74 @@ import { prisma } from "@/lib/db";
 
 const MIN_PLATFORM_FEE_YEN = 300;
 
+type ActivePlaceItem = {
+  id: string;
+  slug: string;
+  name: string;
+  address: string | null;
+  ownerId: string | null;
+};
+
+type PaymentItem = {
+  id: string;
+  kind: string;
+  recognizedDate: Date;
+  serviceDate: string | null;
+  grossAmount: number;
+  ownerAmount: number;
+  agentAmount: number;
+  platformAmount: number;
+  createdAt: Date;
+  refunded: boolean;
+};
+
+type AdjustmentItem = {
+  id: string;
+  kind: string;
+  reason: string;
+  note: string | null;
+  recognizedDate: Date;
+  grossDeltaAmount: number;
+  ownerDeltaAmount: number;
+  agentDeltaAmount: number;
+  platformDeltaAmount: number;
+  createdAt: Date;
+  payment: {
+    paymentRef: string | null;
+    customerNameSnapshot: string | null;
+    plateSnapshot: string | null;
+  } | null;
+};
+
+type OwnerMonthPayment = {
+  platformAmount: number;
+};
+
+type OwnerMonthAdjustment = {
+  platformDeltaAmount: number;
+};
+
+type DayRow = {
+  date: string;
+  reservationSales: number;
+  hourlySales: number;
+  grossSales: number;
+  refundAmount: number;
+  netSales: number;
+  reservationCount: number;
+  hourlyCount: number;
+  adjustmentCount: number;
+  ownerAmount: number;
+  ownerDeltaAmount: number;
+  ownerNetAmount: number;
+  agentAmount: number;
+  agentDeltaAmount: number;
+  agentNetAmount: number;
+  platformAmount: number;
+  platformDeltaAmount: number;
+  platformNetAmount: number;
+};
+
 function ymTodayJst() {
   const d = new Date();
   const y = d.toLocaleDateString("sv-SE", {
@@ -46,35 +114,16 @@ function buildUrl(
   params?: Record<string, string | undefined | null>
 ) {
   const qs = new URLSearchParams();
+
   if (params) {
     Object.entries(params).forEach(([k, v]) => {
       if (v) qs.set(k, v);
     });
   }
+
   const s = qs.toString();
   return s ? `${pathname}?${s}` : pathname;
 }
-
-type DayRow = {
-  date: string;
-  reservationSales: number;
-  hourlySales: number;
-  grossSales: number;
-  refundAmount: number;
-  netSales: number;
-  reservationCount: number;
-  hourlyCount: number;
-  adjustmentCount: number;
-  ownerAmount: number;
-  ownerDeltaAmount: number;
-  ownerNetAmount: number;
-  agentAmount: number;
-  agentDeltaAmount: number;
-  agentNetAmount: number;
-  platformAmount: number;
-  platformDeltaAmount: number;
-  platformNetAmount: number;
-};
 
 export default async function AdminMonthlySalesPage({
   searchParams,
@@ -82,11 +131,13 @@ export default async function AdminMonthlySalesPage({
   searchParams?: Promise<{ month?: string; placeId?: string }>;
 }) {
   const sp = (await searchParams) ?? {};
+
   const month =
     sp.month && /^\d{4}-\d{2}$/.test(sp.month) ? sp.month : ymTodayJst();
+
   const placeKey = String(sp.placeId ?? "").trim();
 
-  const activePlaces = await prisma.place.findMany({
+  const activePlaces: ActivePlaceItem[] = await prisma.place.findMany({
     where: { isActive: true },
     orderBy: [{ createdAt: "desc" }],
     select: {
@@ -98,7 +149,7 @@ export default async function AdminMonthlySalesPage({
     },
   });
 
-  const place =
+  const place: ActivePlaceItem | null =
     (placeKey
       ? await prisma.place.findFirst({
           where: {
@@ -175,11 +226,11 @@ export default async function AdminMonthlySalesPage({
       })
     : null;
 
-  const payments = await prisma.payment.findMany({
+  const payments: PaymentItem[] = await prisma.payment.findMany({
     where: {
       placeId: place.id,
       recognizedMonth: month,
-      status: settlement ? { in: ["CONFIRMED", "SETTLED", "REFUNDED"] } : { in: ["CONFIRMED", "SETTLED", "REFUNDED"] },
+      status: { in: ["CONFIRMED", "SETTLED", "REFUNDED"] },
       excludedFromSettlement: false,
     },
     select: {
@@ -197,10 +248,10 @@ export default async function AdminMonthlySalesPage({
     orderBy: [{ recognizedDate: "asc" }, { createdAt: "asc" }],
   });
 
-  const adjustments = await prisma.adjustment.findMany({
+  const adjustments: AdjustmentItem[] = await prisma.adjustment.findMany({
     where: {
       recognizedMonth: month,
-      status: settlement ? { in: ["CONFIRMED", "SETTLED"] } : { in: ["CONFIRMED", "SETTLED"] },
+      status: { in: ["CONFIRMED", "SETTLED"] },
       payment: {
         placeId: place.id,
       },
@@ -227,12 +278,12 @@ export default async function AdminMonthlySalesPage({
     orderBy: [{ recognizedDate: "asc" }, { createdAt: "asc" }],
   });
 
-  const ownerMonthPayments = place.ownerId
+  const ownerMonthPayments: OwnerMonthPayment[] = place.ownerId
     ? await prisma.payment.findMany({
         where: {
           ownerId: place.ownerId,
           recognizedMonth: month,
-          status: settlement ? { in: ["CONFIRMED", "SETTLED", "REFUNDED"] } : { in: ["CONFIRMED", "SETTLED", "REFUNDED"] },
+          status: { in: ["CONFIRMED", "SETTLED", "REFUNDED"] },
           excludedFromSettlement: false,
         },
         select: {
@@ -241,7 +292,7 @@ export default async function AdminMonthlySalesPage({
       })
     : [];
 
-  const ownerMonthAdjustments = place.ownerId
+  const ownerMonthAdjustments: OwnerMonthAdjustment[] = place.ownerId
     ? await prisma.adjustment.findMany({
         where: {
           recognizedMonth: month,
@@ -257,12 +308,20 @@ export default async function AdminMonthlySalesPage({
     : [];
 
   const ownerMonthPlatformRaw =
-    ownerMonthPayments.reduce((sum, p) => sum + p.platformAmount, 0) +
-    ownerMonthAdjustments.reduce((sum, a) => sum + a.platformDeltaAmount, 0);
+    ownerMonthPayments.reduce(
+      (sum: number, p: OwnerMonthPayment) => sum + p.platformAmount,
+      0
+    ) +
+    ownerMonthAdjustments.reduce(
+      (sum: number, a: OwnerMonthAdjustment) =>
+        sum + a.platformDeltaAmount,
+      0
+    );
 
   const monthlyMinFeeAdjustment =
     settlement?.monthlyMinFeeAdjustment ??
-    (ownerMonthPayments.length > 0 && ownerMonthPlatformRaw < MIN_PLATFORM_FEE_YEN
+    (ownerMonthPayments.length > 0 &&
+    ownerMonthPlatformRaw < MIN_PLATFORM_FEE_YEN
       ? MIN_PLATFORM_FEE_YEN - ownerMonthPlatformRaw
       : 0);
 
@@ -291,6 +350,7 @@ export default async function AdminMonthlySalesPage({
         platformNetAmount: 0,
       });
     }
+
     return map.get(date)!;
   }
 
@@ -334,29 +394,86 @@ export default async function AdminMonthlySalesPage({
     row.platformNetAmount = row.platformAmount + row.platformDeltaAmount;
   }
 
-  const rows = Array.from(map.values()).sort((a, b) => a.date.localeCompare(b.date));
+  const rows: DayRow[] = Array.from(map.values()).sort((a, b) =>
+    a.date.localeCompare(b.date)
+  );
 
-  const reservationSales = rows.reduce((s, r) => s + r.reservationSales, 0);
-  const hourlySales = rows.reduce((s, r) => s + r.hourlySales, 0);
-  const grossSales = rows.reduce((s, r) => s + r.grossSales, 0);
-  const refundTotal = rows.reduce((s, r) => s + r.refundAmount, 0);
-  const netSales = rows.reduce((s, r) => s + r.netSales, 0);
+  const reservationSales = rows.reduce(
+    (sum: number, row: DayRow) => sum + row.reservationSales,
+    0
+  );
 
-  const reservationCount = rows.reduce((s, r) => s + r.reservationCount, 0);
-  const hourlyCount = rows.reduce((s, r) => s + r.hourlyCount, 0);
-  const adjustmentCount = rows.reduce((s, r) => s + r.adjustmentCount, 0);
+  const hourlySales = rows.reduce(
+    (sum: number, row: DayRow) => sum + row.hourlySales,
+    0
+  );
 
-  const totalOwnerRaw = rows.reduce((s, r) => s + r.ownerAmount, 0);
-  const totalOwnerDelta = rows.reduce((s, r) => s + r.ownerDeltaAmount, 0);
+  const grossSales = rows.reduce(
+    (sum: number, row: DayRow) => sum + row.grossSales,
+    0
+  );
+
+  const refundTotal = rows.reduce(
+    (sum: number, row: DayRow) => sum + row.refundAmount,
+    0
+  );
+
+  const netSales = rows.reduce(
+    (sum: number, row: DayRow) => sum + row.netSales,
+    0
+  );
+
+  const reservationCount = rows.reduce(
+    (sum: number, row: DayRow) => sum + row.reservationCount,
+    0
+  );
+
+  const hourlyCount = rows.reduce(
+    (sum: number, row: DayRow) => sum + row.hourlyCount,
+    0
+  );
+
+  const adjustmentCount = rows.reduce(
+    (sum: number, row: DayRow) => sum + row.adjustmentCount,
+    0
+  );
+
+  const totalOwnerRaw = rows.reduce(
+    (sum: number, row: DayRow) => sum + row.ownerAmount,
+    0
+  );
+
+  const totalOwnerDelta = rows.reduce(
+    (sum: number, row: DayRow) => sum + row.ownerDeltaAmount,
+    0
+  );
+
   const totalOwnerNetBeforeMinFee = totalOwnerRaw + totalOwnerDelta;
 
-  const totalAgentRaw = rows.reduce((s, r) => s + r.agentAmount, 0);
-  const totalAgentDelta = rows.reduce((s, r) => s + r.agentDeltaAmount, 0);
+  const totalAgentRaw = rows.reduce(
+    (sum: number, row: DayRow) => sum + row.agentAmount,
+    0
+  );
+
+  const totalAgentDelta = rows.reduce(
+    (sum: number, row: DayRow) => sum + row.agentDeltaAmount,
+    0
+  );
+
   const totalAgentNet = totalAgentRaw + totalAgentDelta;
 
-  const totalPlatformRaw = rows.reduce((s, r) => s + r.platformAmount, 0);
-  const totalPlatformDelta = rows.reduce((s, r) => s + r.platformDeltaAmount, 0);
-  const totalPlatformNetBeforeMinFee = totalPlatformRaw + totalPlatformDelta;
+  const totalPlatformRaw = rows.reduce(
+    (sum: number, row: DayRow) => sum + row.platformAmount,
+    0
+  );
+
+  const totalPlatformDelta = rows.reduce(
+    (sum: number, row: DayRow) => sum + row.platformDeltaAmount,
+    0
+  );
+
+  const totalPlatformNetBeforeMinFee =
+    totalPlatformRaw + totalPlatformDelta;
 
   const totalOwnerFinal =
     settlement?.finalOwnerPayoutAmount ??
@@ -364,15 +481,20 @@ export default async function AdminMonthlySalesPage({
 
   const totalPlatformFinal =
     settlement?.totalPlatformAmount != null
-      ? settlement.totalPlatformAmount + settlement.monthlyMinFeeAdjustment + totalPlatformDelta
+      ? settlement.totalPlatformAmount +
+        settlement.monthlyMinFeeAdjustment +
+        totalPlatformDelta
       : totalPlatformNetBeforeMinFee + monthlyMinFeeAdjustment;
 
   const isSettledMonth = Boolean(settlement);
   const isPaidMonth = settlement?.status === "PAID";
 
-  const recentAdjustments = adjustments
+  const recentAdjustments: AdjustmentItem[] = adjustments
     .slice()
-    .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+    .sort(
+      (a: AdjustmentItem, b: AdjustmentItem) =>
+        b.createdAt.getTime() - a.createdAt.getTime()
+    )
     .slice(0, 20);
 
   return (
@@ -389,9 +511,11 @@ export default async function AdminMonthlySalesPage({
 
         <form method="get" style={cardStyle}>
           <div style={fieldStyle}>
-            <div style={{ fontSize: 12, color: "#666", marginBottom: 6 }}>対象 Place</div>
+            <div style={{ fontSize: 12, color: "#666", marginBottom: 6 }}>
+              対象 Place
+            </div>
             <select name="placeId" defaultValue={place.id} style={inputStyle}>
-              {activePlaces.map((p) => (
+              {activePlaces.map((p: ActivePlaceItem) => (
                 <option key={p.id} value={p.id}>
                   {p.name} ({p.slug})
                 </option>
@@ -400,11 +524,25 @@ export default async function AdminMonthlySalesPage({
           </div>
 
           <div style={{ ...fieldStyle, marginTop: 10 }}>
-            <div style={{ fontSize: 12, color: "#666", marginBottom: 6 }}>対象月</div>
-            <input type="month" name="month" defaultValue={month} style={inputStyle} />
+            <div style={{ fontSize: 12, color: "#666", marginBottom: 6 }}>
+              対象月
+            </div>
+            <input
+              type="month"
+              name="month"
+              defaultValue={month}
+              style={inputStyle}
+            />
           </div>
 
-          <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <div
+            style={{
+              marginTop: 10,
+              display: "flex",
+              gap: 8,
+              flexWrap: "wrap",
+            }}
+          >
             <button type="submit" style={primaryButtonStyle}>
               表示
             </button>
@@ -440,9 +578,17 @@ export default async function AdminMonthlySalesPage({
             }}
           >
             <div>
-              <div style={{ fontSize: 20, fontWeight: 900, color: "#166534", marginBottom: 8 }}>
+              <div
+                style={{
+                  fontSize: 20,
+                  fontWeight: 900,
+                  color: "#166534",
+                  marginBottom: 8,
+                }}
+              >
                 {isPaidMonth ? "締め済み・送金済み" : "締め済み"}
               </div>
+
               <div style={{ color: "#166534", lineHeight: 1.8, fontSize: 14 }}>
                 <div>Settlement ID: {settlement.id}</div>
                 <div>状態: {settlement.status}</div>
@@ -458,13 +604,23 @@ export default async function AdminMonthlySalesPage({
               <div style={{ fontSize: 13, color: "#166534", marginBottom: 8 }}>
                 確定済み金額の見方
               </div>
+
               <div style={{ fontSize: 14, color: "#166534", lineHeight: 1.8 }}>
                 <div>売上総額: {fmtYen(settlement.totalGrossAmount)}</div>
                 <div>返金総額: {fmtYen(refundTotal)}</div>
                 <div>純売上: {fmtYen(netSales)}</div>
-                <div>最低利用料調整: {fmtYen(settlement.monthlyMinFeeAdjustment)}</div>
-                <div>オーナー振込予定: {fmtYen(settlement.finalOwnerPayoutAmount)}</div>
-                <div>代理店振込予定: {fmtYen(settlement.finalAgentPayoutAmount)}</div>
+                <div>
+                  最低利用料調整:{" "}
+                  {fmtYen(settlement.monthlyMinFeeAdjustment)}
+                </div>
+                <div>
+                  オーナー振込予定:{" "}
+                  {fmtYen(settlement.finalOwnerPayoutAmount)}
+                </div>
+                <div>
+                  代理店振込予定:{" "}
+                  {fmtYen(settlement.finalAgentPayoutAmount)}
+                </div>
               </div>
 
               <div style={{ marginTop: 12 }}>
@@ -487,7 +643,9 @@ export default async function AdminMonthlySalesPage({
         <SummaryCard
           title="月間総売上"
           value={fmtYen(grossSales)}
-          sub={`予約 ${fmtYen(reservationSales)} / 時間貸し ${fmtYen(hourlySales)}`}
+          sub={`予約 ${fmtYen(reservationSales)} / 時間貸し ${fmtYen(
+            hourlySales
+          )}`}
         />
         <SummaryCard
           title="返金総額"
@@ -497,7 +655,7 @@ export default async function AdminMonthlySalesPage({
         <SummaryCard
           title="純売上"
           value={fmtYen(netSales)}
-          sub={`総売上 - 返金`}
+          sub="総売上 - 返金"
           strong
         />
         <SummaryCard
@@ -505,7 +663,9 @@ export default async function AdminMonthlySalesPage({
           value={fmtYen(totalOwnerFinal)}
           sub={
             monthlyMinFeeAdjustment > 0
-              ? `調整前 ${fmtYen(totalOwnerNetBeforeMinFee)} / 最低利用料 -${fmtYen(monthlyMinFeeAdjustment)}`
+              ? `調整前 ${fmtYen(
+                  totalOwnerNetBeforeMinFee
+                )} / 最低利用料 -${fmtYen(monthlyMinFeeAdjustment)}`
               : `純取り分 ${fmtYen(totalOwnerNetBeforeMinFee)}`
           }
         />
@@ -514,7 +674,9 @@ export default async function AdminMonthlySalesPage({
           value={fmtYen(totalPlatformFinal)}
           sub={
             monthlyMinFeeAdjustment > 0
-              ? `調整前 ${fmtYen(totalPlatformNetBeforeMinFee)} / 最低利用料 +${fmtYen(monthlyMinFeeAdjustment)}`
+              ? `調整前 ${fmtYen(
+                  totalPlatformNetBeforeMinFee
+                )} / 最低利用料 +${fmtYen(monthlyMinFeeAdjustment)}`
               : `代理店 ${fmtYen(totalAgentNet)}`
           }
         />
@@ -542,7 +704,10 @@ export default async function AdminMonthlySalesPage({
         <div style={{ fontSize: 14, color: "#444", lineHeight: 1.8 }}>
           <div>本部取り分（売上ベース）: {fmtYen(totalPlatformRaw)}</div>
           <div>本部差額（返金反映）: {fmtSignedYen(totalPlatformDelta)}</div>
-          <div>本部取り分（返金反映後）: {fmtYen(totalPlatformNetBeforeMinFee)}</div>
+          <div>
+            本部取り分（返金反映後）:{" "}
+            {fmtYen(totalPlatformNetBeforeMinFee)}
+          </div>
           <div>最低利用料基準: {fmtYen(MIN_PLATFORM_FEE_YEN)}</div>
           <div>最低利用料調整額: {fmtYen(monthlyMinFeeAdjustment)}</div>
           <div>本部取り分（調整後）: {fmtYen(totalPlatformFinal)}</div>
@@ -573,14 +738,17 @@ export default async function AdminMonthlySalesPage({
                   <th style={thStyle}>調整件数</th>
                 </tr>
               </thead>
+
               <tbody>
-                {rows.map((row) => (
+                {rows.map((row: DayRow) => (
                   <tr key={row.date}>
                     <td style={tdStyle}>{row.date}</td>
                     <td style={tdStyle}>{fmtYen(row.reservationSales)}</td>
                     <td style={tdStyle}>{fmtYen(row.hourlySales)}</td>
                     <td style={tdStyle}>{fmtYen(row.refundAmount)}</td>
-                    <td style={{ ...tdStyle, fontWeight: 800 }}>{fmtYen(row.netSales)}</td>
+                    <td style={{ ...tdStyle, fontWeight: 800 }}>
+                      {fmtYen(row.netSales)}
+                    </td>
                     <td style={tdStyle}>{fmtYen(row.ownerNetAmount)}</td>
                     <td style={tdStyle}>{fmtYen(row.agentNetAmount)}</td>
                     <td style={tdStyle}>{fmtYen(row.platformNetAmount)}</td>
@@ -615,8 +783,9 @@ export default async function AdminMonthlySalesPage({
                   <th style={thStyle}>メモ</th>
                 </tr>
               </thead>
+
               <tbody>
-                {recentAdjustments.map((row) => (
+                {recentAdjustments.map((row: AdjustmentItem) => (
                   <tr key={row.id}>
                     <td style={tdStyle}>{fmtJstDateTime(row.createdAt)}</td>
                     <td style={tdStyle}>{row.kind}</td>
@@ -624,8 +793,16 @@ export default async function AdminMonthlySalesPage({
                     <td style={tdStyle}>{fmtSignedYen(row.grossDeltaAmount)}</td>
                     <td style={tdStyle}>{fmtSignedYen(row.ownerDeltaAmount)}</td>
                     <td style={tdStyle}>{fmtSignedYen(row.agentDeltaAmount)}</td>
-                    <td style={tdStyle}>{fmtSignedYen(row.platformDeltaAmount)}</td>
-                    <td style={{ ...tdStyle, whiteSpace: "pre-wrap", minWidth: 240 }}>
+                    <td style={tdStyle}>
+                      {fmtSignedYen(row.platformDeltaAmount)}
+                    </td>
+                    <td
+                      style={{
+                        ...tdStyle,
+                        whiteSpace: "pre-wrap",
+                        minWidth: 240,
+                      }}
+                    >
                       {row.note || "-"}
                     </td>
                   </tr>
@@ -652,7 +829,9 @@ function SummaryCard({
 }) {
   return (
     <div style={summaryCardStyle}>
-      <div style={{ fontSize: 14, color: "#666", marginBottom: 8 }}>{title}</div>
+      <div style={{ fontSize: 14, color: "#666", marginBottom: 8 }}>
+        {title}
+      </div>
       <div
         style={{
           fontSize: 28,
@@ -663,7 +842,9 @@ function SummaryCard({
       >
         {value}
       </div>
-      <div style={{ fontSize: 13, color: "#777", lineHeight: 1.6 }}>{sub}</div>
+      <div style={{ fontSize: 13, color: "#777", lineHeight: 1.6 }}>
+        {sub}
+      </div>
     </div>
   );
 }
