@@ -3,6 +3,17 @@ import type { CSSProperties } from "react";
 import { prisma } from "@/lib/db";
 import { requireAdmin } from "@/lib/admin-auth";
 
+type OwnerItem = {
+  id: string;
+  name: string | null;
+  displayName: string | null;
+  email: string | null;
+  phone: string | null;
+  registeredAt: Date;
+  bankName: string | null;
+  bankBranchName: string | null;
+};
+
 export default async function OwnersPage({
   searchParams,
 }: {
@@ -11,7 +22,7 @@ export default async function OwnersPage({
   await requireAdmin();
   const sp = (await searchParams) ?? {};
 
-  const owners = await prisma.owner.findMany({
+  const owners: OwnerItem[] = await prisma.owner.findMany({
     orderBy: { registeredAt: "desc" },
     select: {
       id: true,
@@ -58,6 +69,7 @@ export default async function OwnersPage({
                 <th style={thStyle}>操作</th>
               </tr>
             </thead>
+
             <tbody>
               {owners.length === 0 ? (
                 <tr>
@@ -66,7 +78,7 @@ export default async function OwnersPage({
                   </td>
                 </tr>
               ) : (
-                owners.map((owner) => (
+                owners.map((owner: OwnerItem) => (
                   <tr key={owner.id}>
                     <td style={tdStyle}>{formatDate(owner.registeredAt)}</td>
                     <td style={tdStyle}>{owner.name || "-"}</td>
@@ -79,7 +91,10 @@ export default async function OwnersPage({
                         .join(" ") || "-"}
                     </td>
                     <td style={tdStyle}>
-                      <Link href={`/admin/owners/${owner.id}`} style={editButtonStyle}>
+                      <Link
+                        href={`/admin/owners/${owner.id}`}
+                        style={editButtonStyle}
+                      >
                         編集
                       </Link>
                     </td>
