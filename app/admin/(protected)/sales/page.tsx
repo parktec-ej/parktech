@@ -129,7 +129,7 @@ export default async function AdminSalesPage({
     },
   });
 
-  const allRows = payments.map<SalesRow>((p) => ({
+  const allRows: SalesRow[] = payments.map((p: any) => ({
     kind: p.kind,
     label: p.spotLabelSnapshot || p.spotCodeSnapshot || "-",
     customer:
