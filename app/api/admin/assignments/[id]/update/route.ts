@@ -1,9 +1,11 @@
 import { NextResponse } from "next/server";
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { getAdminSession } from "@/lib/admin-auth";
 
 function redirectToList(req: Request, suffix = "") {
   const url = new URL(req.url);
+
   return NextResponse.redirect(
     new URL(`/admin/assignments${suffix}`, url.origin),
     { status: 303 }
@@ -15,8 +17,12 @@ export async function POST(
   context: { params: Promise<{ id: string }> }
 ) {
   const admin = await getAdminSession();
+
   if (!admin) {
-    return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
+    return NextResponse.json(
+      { ok: false, error: "unauthorized" },
+      { status: 401 }
+    );
   }
 
   const { id } = await context.params;
@@ -53,14 +59,19 @@ export async function POST(
       return redirectToList(req, `/${id}?error=rate_total_must_be_10000`);
     }
 
-    const startsAt = startsAtRaw ? new Date(`${startsAtRaw}T00:00:00+09:00`) : null;
-    const endsAt = endsAtRaw ? new Date(`${endsAtRaw}T00:00:00+09:00`) : null;
+    const startsAt = startsAtRaw
+      ? new Date(`${startsAtRaw}T00:00:00+09:00`)
+      : null;
 
-    if (!startsAt || isNaN(startsAt.getTime())) {
+    const endsAt = endsAtRaw
+      ? new Date(`${endsAtRaw}T00:00:00+09:00`)
+      : null;
+
+    if (!startsAt || Number.isNaN(startsAt.getTime())) {
       return redirectToList(req, `/${id}?error=startsAt_required`);
     }
 
-    if (endsAt && isNaN(endsAt.getTime())) {
+    if (endsAt && Number.isNaN(endsAt.getTime())) {
       return redirectToList(req, `/${id}?error=endsAt_invalid`);
     }
 
@@ -68,7 +79,7 @@ export async function POST(
       return redirectToList(req, `/${id}?error=endsAt_before_startsAt`);
     }
 
-    await prisma.$transaction(async (tx) => {
+    await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       const current = await tx.placeAssignment.findUnique({
         where: { id },
         select: { id: true, placeId: true },
@@ -78,7 +89,6 @@ export async function POST(
         throw new Error("assignment_not_found");
       }
 
-      // 今回有効化するなら、同じplaceの他Assignmentは全部無効化
       if (isActive) {
         await tx.placeAssignment.updateMany({
           where: {
@@ -110,6 +120,9 @@ export async function POST(
 
     return redirectToList(req, "?updated=1");
   } catch (e: any) {
-    return redirectToList(req, `/${id}?error=${encodeURIComponent(String(e?.message ?? e))}`);
+    return redirectToList(
+      req,
+      `/${id}?error=${encodeURIComponent(String(e?.message ?? e))}`
+    );
   }
 }
