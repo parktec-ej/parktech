@@ -1,8 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { requireAdmin } from "@/lib/admin-auth";
 
-function jsonError(message: string, status = 400, error?: string, detail?: unknown) {
+function jsonError(
+  message: string,
+  status = 400,
+  error?: string,
+  detail?: unknown
+) {
   return NextResponse.json(
     {
       ok: false,
@@ -49,11 +55,31 @@ function isAllowedOpenDays(value: number) {
 type EventDayInput = {
   id?: string;
   date: string;
-  fixedYenOverride?: number | null;
-  hourlyYenOverride?: number | null;
-  busFixedYen?: number | null;
-  reservationOpenDaysBefore?: number | null;
+  fixedYenOverride?: number | string | null;
+  hourlyYenOverride?: number | string | null;
+  busFixedYen?: number | string | null;
+  reservationOpenDaysBefore?: number | string | null;
   label?: string | null;
+};
+
+type EventDayRow = {
+  id: string;
+  date: Date;
+  label: string | null;
+  fixedYenOverride: number | null;
+  hourlyYenOverride: number | null;
+  busFixedYen: number | null;
+  reservationOpenDaysBefore: number | null;
+};
+
+type NormalizedEventDay = {
+  id: string;
+  date: string;
+  label: string | null;
+  fixedYenOverride: number | null;
+  hourlyYenOverride: number | null;
+  busFixedYen: number | null;
+  reservationOpenDaysBefore: number;
 };
 
 export async function GET(req: NextRequest) {
@@ -125,12 +151,14 @@ export async function GET(req: NextRequest) {
       }),
     ]);
 
+    const eventDayRows = eventDays as EventDayRow[];
+
     return NextResponse.json({
       ok: true,
       place,
       reservationFixedYen: reservationRule?.fixedYen ?? 3000,
       hourlyYen: hourlyRule?.hourlyYen ?? 500,
-      eventDays: eventDays.map((d) => ({
+      eventDays: eventDayRows.map((d: EventDayRow) => ({
         id: d.id,
         date: d.date.toISOString().slice(0, 10),
         label: d.label ?? "",
@@ -142,6 +170,7 @@ export async function GET(req: NextRequest) {
     });
   } catch (error) {
     console.error("GET /api/admin/pricing error:", error);
+
     return jsonError(
       "料金設定の取得に失敗しました",
       500,
@@ -164,10 +193,20 @@ export async function POST(req: NextRequest) {
       return jsonError("JSON body が必要です", 400, "invalid_body");
     }
 
-    const placeId = String(body.placeId ?? "").trim();
-    const reservationFixedYen = toInt(body.reservationFixedYen, 3000);
-    const hourlyYen = toInt(body.hourlyYen, 500);
-    const rawEventDays = Array.isArray(body.eventDays) ? (body.eventDays as EventDayInput[]) : [];
+    const bodyObj = body as {
+      placeId?: unknown;
+      reservationFixedYen?: unknown;
+      hourlyYen?: unknown;
+      eventDays?: unknown;
+    };
+
+    const placeId = String(bodyObj.placeId ?? "").trim();
+    const reservationFixedYen = toInt(bodyObj.reservationFixedYen, 3000);
+    const hourlyYen = toInt(bodyObj.hourlyYen, 500);
+
+    const rawEventDays: EventDayInput[] = Array.isArray(bodyObj.eventDays)
+      ? (bodyObj.eventDays as EventDayInput[])
+      : [];
 
     console.log("ADMIN PRICING placeId:", placeId);
     console.log("ADMIN PRICING values:", {
@@ -193,13 +232,22 @@ export async function POST(req: NextRequest) {
       return jsonError("place が見つかりません", 404, "place_not_found");
     }
 
-    const normalizedEventDays = rawEventDays
-      .map((row) => {
+    const normalizedEventDays: NormalizedEventDay[] = rawEventDays
+      .map((row: EventDayInput): NormalizedEventDay | null => {
         const ymd = normalizeYmd(String(row?.date ?? ""));
-        if (!/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return null;
 
-        const reservationOpenDaysBefore = toInt(row?.reservationOpenDaysBefore, 0);
-        if (!isAllowedOpenDays(reservationOpenDaysBefore)) return null;
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(ymd)) {
+          return null;
+        }
+
+        const reservationOpenDaysBefore = toInt(
+          row?.reservationOpenDaysBefore,
+          0
+        );
+
+        if (!isAllowedOpenDays(reservationOpenDaysBefore)) {
+          return null;
+        }
 
         return {
           id: row?.id ? String(row.id) : "",
@@ -211,137 +259,146 @@ export async function POST(req: NextRequest) {
           reservationOpenDaysBefore,
         };
       })
-      .filter((v): v is NonNullable<typeof v> => v !== null);
+      .filter((v: NormalizedEventDay | null): v is NormalizedEventDay => {
+        return v !== null;
+      });
 
     console.log("ADMIN PRICING normalizedEventDays:", normalizedEventDays);
 
-    const txResult = await prisma.$transaction(async (tx) => {
-      const reservationRule = await tx.pricingRule.findFirst({
-        where: {
-          placeId,
-          pricingType: "RESERVATION_FIXED",
-        },
-        orderBy: { createdAt: "desc" },
-        select: { id: true },
-      });
-
-      let reservationRuleId: string;
-
-      if (reservationRule) {
-        const updated = await tx.pricingRule.update({
-          where: { id: reservationRule.id },
-          data: {
-            fixedYen: reservationFixedYen,
-            isActive: true,
-          },
-          select: { id: true },
-        });
-        reservationRuleId = updated.id;
-      } else {
-        const created = await tx.pricingRule.create({
-          data: {
-            placeId,
-            pricingType: "RESERVATION_FIXED",
-            fixedYen: reservationFixedYen,
-            isActive: true,
-          },
-          select: { id: true },
-        });
-        reservationRuleId = created.id;
-      }
-
-      const hourlyRule = await tx.pricingRule.findFirst({
-        where: {
-          placeId,
-          pricingType: "HOURLY",
-        },
-        orderBy: { createdAt: "desc" },
-        select: { id: true },
-      });
-
-      let hourlyRuleId: string;
-
-      if (hourlyRule) {
-        const updated = await tx.pricingRule.update({
-          where: { id: hourlyRule.id },
-          data: {
-            hourlyYen,
-            isActive: true,
-          },
-          select: { id: true },
-        });
-        hourlyRuleId = updated.id;
-      } else {
-        const created = await tx.pricingRule.create({
-          data: {
-            placeId,
-            pricingType: "HOURLY",
-            hourlyYen,
-            isActive: true,
-          },
-          select: { id: true },
-        });
-        hourlyRuleId = created.id;
-      }
-
-      // まず既存イベント日をすべて非アクティブ化
-      await tx.eventDay.updateMany({
-        where: { placeId },
-        data: { isActive: false },
-      });
-
-      const eventDayIds: string[] = [];
-
-      for (const row of normalizedEventDays) {
-        const date = ymdToUtcDate(row.date);
-
-        const existing = await tx.eventDay.findFirst({
+    const txResult = await prisma.$transaction(
+      async (tx: Prisma.TransactionClient) => {
+        const reservationRule = await tx.pricingRule.findFirst({
           where: {
             placeId,
-            date,
+            pricingType: "RESERVATION_FIXED",
           },
           orderBy: { createdAt: "desc" },
           select: { id: true },
         });
 
-        if (existing) {
-          const updated = await tx.eventDay.update({
-            where: { id: existing.id },
+        let reservationRuleId: string;
+
+        if (reservationRule) {
+          const updated = await tx.pricingRule.update({
+            where: { id: reservationRule.id },
             data: {
-              label: row.label,
-              fixedYenOverride: row.fixedYenOverride,
-              hourlyYenOverride: row.hourlyYenOverride,
-              busFixedYen: row.busFixedYen,
-              reservationOpenDaysBefore: row.reservationOpenDaysBefore,
+              fixedYen: reservationFixedYen,
               isActive: true,
             },
             select: { id: true },
           });
-          eventDayIds.push(updated.id);
+
+          reservationRuleId = updated.id;
         } else {
-          const created = await tx.eventDay.create({
+          const created = await tx.pricingRule.create({
             data: {
               placeId,
-              date,
-              label: row.label,
-              fixedYenOverride: row.fixedYenOverride,
-              hourlyYenOverride: row.hourlyYenOverride,
-              busFixedYen: row.busFixedYen,
-              reservationOpenDaysBefore: row.reservationOpenDaysBefore,
+              pricingType: "RESERVATION_FIXED",
+              fixedYen: reservationFixedYen,
               isActive: true,
             },
             select: { id: true },
           });
-          eventDayIds.push(created.id);
-        }
-      }
 
-      return {
-        reservationRuleId,
-        hourlyRuleId,
-        eventDayIds,
-      };
-    });
+          reservationRuleId = created.id;
+        }
+
+        const hourlyRule = await tx.pricingRule.findFirst({
+          where: {
+            placeId,
+            pricingType: "HOURLY",
+          },
+          orderBy: { createdAt: "desc" },
+          select: { id: true },
+        });
+
+        let hourlyRuleId: string;
+
+        if (hourlyRule) {
+          const updated = await tx.pricingRule.update({
+            where: { id: hourlyRule.id },
+            data: {
+              hourlyYen,
+              isActive: true,
+            },
+            select: { id: true },
+          });
+
+          hourlyRuleId = updated.id;
+        } else {
+          const created = await tx.pricingRule.create({
+            data: {
+              placeId,
+              pricingType: "HOURLY",
+              hourlyYen,
+              isActive: true,
+            },
+            select: { id: true },
+          });
+
+          hourlyRuleId = created.id;
+        }
+
+        await tx.eventDay.updateMany({
+          where: { placeId },
+          data: { isActive: false },
+        });
+
+        const eventDayIds: string[] = [];
+
+        for (const row of normalizedEventDays) {
+          const date = ymdToUtcDate(row.date);
+
+          const existing = await tx.eventDay.findFirst({
+            where: {
+              placeId,
+              date,
+            },
+            orderBy: { createdAt: "desc" },
+            select: { id: true },
+          });
+
+          if (existing) {
+            const updated = await tx.eventDay.update({
+              where: { id: existing.id },
+              data: {
+                label: row.label,
+                fixedYenOverride: row.fixedYenOverride,
+                hourlyYenOverride: row.hourlyYenOverride,
+                busFixedYen: row.busFixedYen,
+                reservationOpenDaysBefore: row.reservationOpenDaysBefore,
+                isActive: true,
+              },
+              select: { id: true },
+            });
+
+            eventDayIds.push(updated.id);
+          } else {
+            const created = await tx.eventDay.create({
+              data: {
+                placeId,
+                date,
+                label: row.label,
+                fixedYenOverride: row.fixedYenOverride,
+                hourlyYenOverride: row.hourlyYenOverride,
+                busFixedYen: row.busFixedYen,
+                reservationOpenDaysBefore: row.reservationOpenDaysBefore,
+                isActive: true,
+              },
+              select: { id: true },
+            });
+
+            eventDayIds.push(created.id);
+          }
+        }
+
+        return {
+          reservationRuleId,
+          hourlyRuleId,
+          eventDayIds,
+        };
+      }
+    );
 
     console.log("ADMIN PRICING POST SUCCESS:", txResult);
 
@@ -352,6 +409,7 @@ export async function POST(req: NextRequest) {
     });
   } catch (error) {
     console.error("POST /api/admin/pricing error:", error);
+
     return jsonError(
       "料金設定の保存に失敗しました",
       500,
