@@ -1,8 +1,37 @@
 import { NextRequest, NextResponse } from "next/server";
-import { SessionStatus } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { getAdminSession } from "@/lib/admin-auth";
 import { resolveActivePlace } from "@/lib/place-resolver";
+
+type SessionStatus = "IN" | "OUT";
+
+type ParkingSessionItem = {
+  id: string;
+  sessionType: string;
+  plate: string | null;
+  phone: string | null;
+  customerName: string | null;
+  paid: boolean;
+  paidAt: Date | null;
+  paymentRef: string | null;
+  totalMinutes: number | null;
+  totalYen: number | null;
+  checkInAt: Date;
+  checkOutAt: Date | null;
+  status: string;
+  createdAt: Date;
+  spot: {
+    id: string;
+    code: string;
+    label: string | null;
+  } | null;
+  reservation: {
+    id: string;
+    date: string;
+    slot: string;
+    name: string;
+  } | null;
+};
 
 function normalizeDate(input: string) {
   const value = String(input ?? "").trim();
@@ -25,12 +54,17 @@ function ymdTodayJst() {
 
 export async function GET(req: NextRequest) {
   const admin = await getAdminSession();
+
   if (!admin) {
-    return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
+    return NextResponse.json(
+      { ok: false, error: "unauthorized" },
+      { status: 401 }
+    );
   }
 
   try {
     const url = new URL(req.url);
+
     const inputPlaceId = String(url.searchParams.get("placeId") ?? "").trim();
     const inputPlaceSlug = String(url.searchParams.get("placeSlug") ?? "").trim();
     const date = normalizeDate(url.searchParams.get("date") || ymdTodayJst());
@@ -40,7 +74,9 @@ export async function GET(req: NextRequest) {
       .toUpperCase();
 
     const status: SessionStatus | undefined =
-      rawStatus === "IN" || rawStatus === "OUT" ? (rawStatus as SessionStatus) : undefined;
+      rawStatus === "IN" || rawStatus === "OUT"
+        ? (rawStatus as SessionStatus)
+        : undefined;
 
     const q = String(url.searchParams.get("q") ?? "").trim();
 
@@ -51,7 +87,11 @@ export async function GET(req: NextRequest) {
 
     if (!place) {
       return NextResponse.json(
-        { ok: false, error: "place_not_found", message: "place が見つかりません" },
+        {
+          ok: false,
+          error: "place_not_found",
+          message: "place が見つかりません",
+        },
         { status: 404 }
       );
     }
@@ -59,7 +99,7 @@ export async function GET(req: NextRequest) {
     const start = new Date(`${date}T00:00:00+09:00`);
     const end = new Date(`${date}T23:59:59.999+09:00`);
 
-    const sessions = await prisma.parkingSession.findMany({
+    const sessions: ParkingSessionItem[] = await prisma.parkingSession.findMany({
       where: {
         placeId: place.id,
         checkInAt: {
@@ -114,10 +154,12 @@ export async function GET(req: NextRequest) {
       },
       summary: {
         total: sessions.length,
-        inCount: sessions.filter((x) => x.status === "IN").length,
-        outCount: sessions.filter((x) => x.status === "OUT").length,
+        inCount: sessions.filter((x: ParkingSessionItem) => x.status === "IN")
+          .length,
+        outCount: sessions.filter((x: ParkingSessionItem) => x.status === "OUT")
+          .length,
       },
-      sessions: sessions.map((s) => ({
+      sessions: sessions.map((s: ParkingSessionItem) => ({
         id: s.id,
         sessionType: s.sessionType,
         plate: s.plate,
