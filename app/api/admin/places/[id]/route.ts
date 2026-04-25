@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { getAdminSession } from "@/lib/admin-auth";
 
@@ -41,7 +42,6 @@ export async function GET(
 
   try {
     const { id } = await context.params;
-    console.log("[places/:id][GET] id =", id);
 
     const place = await prisma.place.findUnique({
       where: { id },
@@ -221,10 +221,7 @@ export async function PATCH(
       );
     }
 
-    if (
-      (contractType === "HQ_BULK" || contractType === "OWNER_DIRECT") &&
-      agentId
-    ) {
+    if ((contractType === "HQ_BULK" || contractType === "OWNER_DIRECT") && agentId) {
       return NextResponse.json(
         {
           ok: false,
@@ -343,105 +340,105 @@ export async function PATCH(
     const normalizedAgentRateBps =
       contractType === "OWNER_AGENT_PLATFORM" ? agentRateBps : 0;
 
-    console.log("[places/:id][PATCH] id =", id);
-
-    const result = await prisma.$transaction(async (tx) => {
-      const place = await tx.place.update({
-        where: { id },
-        data: {
-          name,
-          slug,
-          address,
-          googleMapUrl,
-          ownerId,
-          operationMode: operationMode as
-            | "RESERVATION_ONLY"
-            | "HOURLY_ONLY"
-            | "RESERVATION_THEN_HOURLY"
-            | "EVENT_ONLY"
-            | "CLOSED",
-        },
-      });
-
-      if (assignmentId) {
-        await tx.placeAssignment.update({
-          where: { id: assignmentId },
+    const result = await prisma.$transaction(
+      async (tx: Prisma.TransactionClient) => {
+        const place = await tx.place.update({
+          where: { id },
           data: {
+            name,
+            slug,
+            address,
+            googleMapUrl,
             ownerId,
-            agentId: normalizedAgentId,
-            contractType: contractType as
-              | "HQ_BULK"
-              | "OWNER_DIRECT"
-              | "OWNER_AGENT_PLATFORM",
-            ownerRateBps,
-            agentRateBps: normalizedAgentRateBps,
-            platformRateBps,
-            startsAt,
-            endsAt,
+            operationMode: operationMode as
+              | "RESERVATION_ONLY"
+              | "HOURLY_ONLY"
+              | "RESERVATION_THEN_HOURLY"
+              | "EVENT_ONLY"
+              | "CLOSED",
           },
         });
-      } else {
-        await tx.placeAssignment.create({
-          data: {
+
+        if (assignmentId) {
+          await tx.placeAssignment.update({
+            where: { id: assignmentId },
+            data: {
+              ownerId,
+              agentId: normalizedAgentId,
+              contractType: contractType as
+                | "HQ_BULK"
+                | "OWNER_DIRECT"
+                | "OWNER_AGENT_PLATFORM",
+              ownerRateBps,
+              agentRateBps: normalizedAgentRateBps,
+              platformRateBps,
+              startsAt,
+              endsAt,
+            },
+          });
+        } else {
+          await tx.placeAssignment.create({
+            data: {
+              placeId: id,
+              ownerId,
+              agentId: normalizedAgentId,
+              contractType: contractType as
+                | "HQ_BULK"
+                | "OWNER_DIRECT"
+                | "OWNER_AGENT_PLATFORM",
+              ownerRateBps,
+              agentRateBps: normalizedAgentRateBps,
+              platformRateBps,
+              startsAt,
+              endsAt,
+              isActive: true,
+              note: "Place編集時に作成",
+            },
+          });
+        }
+
+        const currentAssignment = await tx.placeAssignment.findFirst({
+          where: {
             placeId: id,
-            ownerId,
-            agentId: normalizedAgentId,
-            contractType: contractType as
-              | "HQ_BULK"
-              | "OWNER_DIRECT"
-              | "OWNER_AGENT_PLATFORM",
-            ownerRateBps,
-            agentRateBps: normalizedAgentRateBps,
-            platformRateBps,
-            startsAt,
-            endsAt,
             isActive: true,
-            note: "Place編集時に作成",
+          },
+          orderBy: {
+            startsAt: "desc",
+          },
+          include: {
+            owner: {
+              select: {
+                id: true,
+                name: true,
+                displayName: true,
+                status: true,
+              },
+            },
+            agent: {
+              select: {
+                id: true,
+                code: true,
+                name: true,
+                displayName: true,
+                status: true,
+              },
+            },
           },
         });
+
+        const currentBillingPolicy = await tx.placeBillingPolicy.findFirst({
+          where: {
+            placeId: id,
+            isActive: true,
+          },
+          orderBy: {
+            startMonth: "desc",
+          },
+        });
+
+        return { place, currentAssignment, currentBillingPolicy };
       }
-
-      const currentAssignment = await tx.placeAssignment.findFirst({
-        where: {
-          placeId: id,
-          isActive: true,
-        },
-        orderBy: {
-          startsAt: "desc",
-        },
-        include: {
-          owner: {
-            select: {
-              id: true,
-              name: true,
-              displayName: true,
-              status: true,
-            },
-          },
-          agent: {
-            select: {
-              id: true,
-              code: true,
-              name: true,
-              displayName: true,
-              status: true,
-            },
-          },
-        },
-      });
-
-      const currentBillingPolicy = await tx.placeBillingPolicy.findFirst({
-        where: {
-          placeId: id,
-          isActive: true,
-        },
-        orderBy: {
-          startMonth: "desc",
-        },
-      });
-
-      return { place, currentAssignment, currentBillingPolicy };
-    });
+    );
 
     return NextResponse.json({
       ok: true,
