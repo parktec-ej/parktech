@@ -3,6 +3,36 @@ import { prisma } from "@/lib/db";
 
 export const runtime = "nodejs";
 
+type PaymentSummary = {
+  count: number;
+  grossAmount: number;
+  ownerAmount: number;
+  agentAmount: number;
+  platformAmount: number;
+};
+
+type AdjustmentSummary = {
+  count: number;
+  grossDeltaAmount: number;
+  ownerDeltaAmount: number;
+  agentDeltaAmount: number;
+  platformDeltaAmount: number;
+};
+
+type PaymentRow = {
+  grossAmount: number;
+  ownerAmount: number;
+  agentAmount: number;
+  platformAmount: number;
+};
+
+type AdjustmentRow = {
+  grossDeltaAmount: number;
+  ownerDeltaAmount: number;
+  agentDeltaAmount: number;
+  platformDeltaAmount: number;
+};
+
 function isValidMonth(value: string) {
   return /^\d{4}-\d{2}$/.test(value);
 }
@@ -89,7 +119,7 @@ export async function GET(req: NextRequest) {
     ]);
 
     const paymentSummary = payments.reduce(
-      (acc, p) => {
+      (acc: PaymentSummary, p: PaymentRow) => {
         acc.count += 1;
         acc.grossAmount += p.grossAmount;
         acc.ownerAmount += p.ownerAmount;
@@ -103,11 +133,11 @@ export async function GET(req: NextRequest) {
         ownerAmount: 0,
         agentAmount: 0,
         platformAmount: 0,
-      }
+      } as PaymentSummary
     );
 
     const adjustmentSummary = adjustments.reduce(
-      (acc, a) => {
+      (acc: AdjustmentSummary, a: AdjustmentRow) => {
         acc.count += 1;
         acc.grossDeltaAmount += a.grossDeltaAmount;
         acc.ownerDeltaAmount += a.ownerDeltaAmount;
@@ -121,7 +151,7 @@ export async function GET(req: NextRequest) {
         ownerDeltaAmount: 0,
         agentDeltaAmount: 0,
         platformDeltaAmount: 0,
-      }
+      } as AdjustmentSummary
     );
 
     const netSummary = {
@@ -159,6 +189,7 @@ export async function GET(req: NextRequest) {
 
     for (const p of payments) {
       const key = p.placeId;
+
       if (!byPlaceMap.has(key)) {
         byPlaceMap.set(key, {
           placeId: p.placeId,
@@ -190,6 +221,7 @@ export async function GET(req: NextRequest) {
 
     for (const a of adjustments) {
       const key = a.payment.placeId;
+
       if (!byPlaceMap.has(key)) {
         byPlaceMap.set(key, {
           placeId: a.payment.placeId,
@@ -230,6 +262,7 @@ export async function GET(req: NextRequest) {
       .sort((a, b) => b.netGrossAmount - a.netGrossAmount);
 
     const recentPayments = payments.slice(0, 50);
+
     const recentAdjustments = adjustments.slice(0, 50).map((a) => ({
       id: a.id,
       paymentId: a.paymentId,
@@ -262,8 +295,9 @@ export async function GET(req: NextRequest) {
       recentPayments,
       recentAdjustments,
     });
-  } catch (error) {
+  } catch (error: unknown) {
     console.error(error);
+
     return NextResponse.json(
       {
         ok: false,
