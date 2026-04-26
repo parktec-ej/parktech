@@ -12,6 +12,13 @@ type OperationMode =
   | "EVENT_ONLY"
   | "CLOSED";
 
+type SpotRow = {
+  id: string;
+  code: string;
+  label: string | null;
+  operationModeOverride: string | null;
+};
+
 function jsonError(message: string, status = 400, error?: string) {
   return NextResponse.json(
     {
@@ -129,7 +136,7 @@ export async function GET(req: NextRequest) {
       return jsonError("place が見つかりません", 404, "place_not_found");
     }
 
-    const spots = await prisma.spot.findMany({
+    const spotsRaw = await prisma.spot.findMany({
       where: {
         placeId: place.id,
         isActive: true,
@@ -143,9 +150,15 @@ export async function GET(req: NextRequest) {
       orderBy: [{ code: "asc" }],
     });
 
+    const spots = spotsRaw as SpotRow[];
+
     const spot =
-      spots.find((s) => normalizeSlot(s.code) === normalizedSlot) ??
-      spots.find((s) => normalizeSlot(s.label ?? "") === normalizedSlot);
+      spots.find(
+        (s: SpotRow) => normalizeSlot(s.code) === normalizedSlot
+      ) ??
+      spots.find(
+        (s: SpotRow) => normalizeSlot(s.label ?? "") === normalizedSlot
+      );
 
     if (!spot) {
       return jsonError("slot に対応する区画が見つかりません", 404, "spot_not_found");
@@ -190,7 +203,6 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    // 有効予約は CONFIRMED のみ
     const reservation = await prisma.reservation.findFirst({
       where: {
         placeId: place.id,
@@ -211,7 +223,6 @@ export async function GET(req: NextRequest) {
       },
     });
 
-    // 予約がある場合は予約優先
     if (reservation) {
       if (!reservation.paid) {
         return NextResponse.json({
@@ -300,7 +311,6 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    // 時間貸しの利用中セッション確認
     const activeSession = await prisma.parkingSession.findFirst({
       where: {
         placeId: place.id,
@@ -374,7 +384,7 @@ export async function GET(req: NextRequest) {
       placeOperationMode: place.operationMode,
       message: "ご利用方法を選んでください。",
     });
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("gate-status error:", error);
     return jsonError("ゲート状態の取得に失敗しました", 500, "server_error");
   }
