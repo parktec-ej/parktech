@@ -63,6 +63,30 @@ type OperationMode =
   | "EVENT_ONLY"
   | "CLOSED";
 
+type SpotRow = {
+  id: string;
+  code: string;
+  label: string | null;
+  operationModeOverride: OperationMode | null;
+};
+
+type ReservationRow = {
+  id: string;
+  slot: string;
+  spotId: string | null;
+  name: string;
+  plate: string;
+  email: string | null;
+  price: number;
+  createdAt: Date;
+  status: string;
+};
+
+type DayModeRow = {
+  spotId: string;
+  operationMode: OperationMode;
+};
+
 async function isActiveEventDay(placeId: string, date: string) {
   const targetDate = ymdToUtcDate(date);
 
@@ -137,7 +161,7 @@ export async function GET(req: NextRequest) {
       date
     );
 
-    const [spots, reservations, dayModes] =
+    const [spotsRaw, reservationsRaw, dayModesRaw] =
       await Promise.all([
         prisma.spot.findMany({
           where: {
@@ -184,21 +208,27 @@ export async function GET(req: NextRequest) {
         }),
       ]);
 
-    const dayModeMap = new Map(
-      dayModes.map((x) => [x.spotId, x.operationMode])
+    const spots = spotsRaw as SpotRow[];
+    const reservations = reservationsRaw as ReservationRow[];
+    const dayModes = dayModesRaw as DayModeRow[];
+
+    const dayModeMap = new Map<string, OperationMode>(
+      dayModes.map((x: DayModeRow) => [x.spotId, x.operationMode])
     );
 
-    const reservedSpotIds = new Set(
-      reservations.map((r) => r.spotId).filter(Boolean)
-    );
-
-    const reservedSlots = new Set(
+    const reservedSpotIds = new Set<string>(
       reservations
-        .map((r) => normalizeSlot(r.slot))
-        .filter(Boolean)
+        .map((r: ReservationRow) => r.spotId)
+        .filter((x: string | null): x is string => Boolean(x))
     );
 
-    const availableSpots = spots.map((spot) => {
+    const reservedSlots = new Set<string>(
+      reservations
+        .map((r: ReservationRow) => normalizeSlot(r.slot))
+        .filter((x: string): x is string => Boolean(x))
+    );
+
+    const availableSpots = spots.map((spot: SpotRow) => {
       const normalizedCode = normalizeSlot(spot.code);
 
       const effectiveMode =
@@ -234,7 +264,7 @@ export async function GET(req: NextRequest) {
       spots: availableSpots,
       reservations,
     });
-  } catch (error) {
+  } catch (error: unknown) {
     console.error(error);
 
     return jsonError(
@@ -428,7 +458,7 @@ export async function POST(req: NextRequest) {
       ok: true,
       reservation: created,
     });
-  } catch (error) {
+  } catch (error: unknown) {
     console.error(error);
 
     return jsonError(
