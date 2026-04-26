@@ -19,25 +19,31 @@ function formatJst(d: Date | null | undefined) {
 
 function normalizeDate(input: string) {
   const v = String(input ?? "").trim();
+
   if (!v) return "";
+
   if (/^\d{8}$/.test(v)) {
     return `${v.slice(0, 4)}-${v.slice(4, 6)}-${v.slice(6, 8)}`;
   }
+
   return v;
 }
 
 function normalizeSlot(input: string): string {
   const raw = String(input ?? "");
+
   if (!raw) return "";
 
   const v = raw.trim().toUpperCase();
 
   const s = v.match(/^S(\d{1,2})$/i);
+
   if (s) {
     return `S${String(Number(s[1])).padStart(2, "0")}`;
   }
 
   const a = v.match(/^([A-Z])[- ]?(\d{1,2})$/i);
+
   if (a) {
     return `${a[1].toUpperCase()}-${String(Number(a[2])).padStart(2, "0")}`;
   }
@@ -52,7 +58,12 @@ function jsonError(
   extra?: unknown
 ) {
   return NextResponse.json(
-    { ok: false, error, message, ...(extra ? { extra } : {}) },
+    {
+      ok: false,
+      error,
+      message,
+      ...(extra !== undefined ? { extra } : {}),
+    },
     { status }
   );
 }
@@ -145,25 +156,24 @@ export async function POST(req: Request) {
           },
         });
 
-        let reservation =
-          openSession?.reservationId
-            ? await tx.reservation.findUnique({
-                where: { id: openSession.reservationId },
-                include: {
-                  place: {
-                    select: {
-                      name: true,
-                    },
-                  },
-                  spot: {
-                    select: {
-                      code: true,
-                      label: true,
-                    },
+        let reservation = openSession?.reservationId
+          ? await tx.reservation.findUnique({
+              where: { id: openSession.reservationId },
+              include: {
+                place: {
+                  select: {
+                    name: true,
                   },
                 },
-              })
-            : null;
+                spot: {
+                  select: {
+                    code: true,
+                    label: true,
+                  },
+                },
+              },
+            })
+          : null;
 
         if (!reservation) {
           reservation = await tx.reservation.findFirst({
@@ -378,34 +388,34 @@ export async function POST(req: Request) {
       return result.response;
     }
 
-    if ("reservation" in result) {
+    if (
+      result.kind === "success" &&
+      "reservation" in result &&
+      result.reservation
+    ) {
+      const reservation = result.reservation;
+
       console.log("reservation checkout mail check:", {
-        reservationId: result.reservation.id,
-        email: result.reservation.email,
-        paymentRef: result.reservation.paymentRef,
-        placeName: result.reservation.place?.name ?? "",
-        spotLabel:
-          result.reservation.spot?.label ??
-          result.reservation.spot?.code ??
-          slot,
-        totalYen: result.reservation.price,
+        reservationId: reservation.id,
+        email: reservation.email,
+        paymentRef: reservation.paymentRef,
+        placeName: reservation.place?.name ?? "",
+        spotLabel: reservation.spot?.label ?? reservation.spot?.code ?? slot,
+        totalYen: reservation.price,
       });
 
-      if (result.reservation.email && result.reservation.paymentRef) {
+      if (reservation.email && reservation.paymentRef) {
         try {
           await sendCheckoutThanksMail({
-            to: result.reservation.email,
-            placeName: result.reservation.place?.name ?? "",
-            spotLabel:
-              result.reservation.spot?.label ??
-              result.reservation.spot?.code ??
-              slot,
-            useDate: result.reservation.date,
-            checkIn: formatJst(result.reservation.checkedInAt),
-            checkOut: formatJst(result.reservation.checkedOutAt),
+            to: reservation.email,
+            placeName: reservation.place?.name ?? "",
+            spotLabel: reservation.spot?.label ?? reservation.spot?.code ?? slot,
+            useDate: reservation.date,
+            checkIn: formatJst(reservation.checkedInAt),
+            checkOut: formatJst(reservation.checkedOutAt),
             minutes: result.totalMinutes,
-            totalYen: result.reservation.price,
-            paymentRef: result.reservation.paymentRef,
+            totalYen: reservation.price,
+            paymentRef: reservation.paymentRef,
             flowLabel: "予約利用",
           });
 
@@ -415,10 +425,10 @@ export async function POST(req: Request) {
         }
       } else {
         console.log("reservation checkout thanks mail skipped:", {
-          hasEmail: !!result.reservation.email,
-          hasPaymentRef: !!result.reservation.paymentRef,
-          email: result.reservation.email ?? null,
-          paymentRef: result.reservation.paymentRef ?? null,
+          hasEmail: !!reservation.email,
+          hasPaymentRef: !!reservation.paymentRef,
+          email: reservation.email ?? null,
+          paymentRef: reservation.paymentRef ?? null,
         });
       }
     }
