@@ -2,26 +2,39 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getAdminSession } from "@/lib/admin-auth";
 
+type ForceCheckoutBody = {
+  parkingSessionId?: unknown;
+};
+
+function jsonError(error: string, status: number, message?: string) {
+  return NextResponse.json(
+    {
+      ok: false,
+      error,
+      ...(message ? { message } : {}),
+    },
+    { status }
+  );
+}
+
 export async function POST(req: Request) {
   const admin = await getAdminSession();
+
   if (!admin) {
-    return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
+    return jsonError("unauthorized", 401);
   }
 
   try {
-    const body = await req.json().catch(() => null);
+    const body = (await req.json().catch(() => null)) as ForceCheckoutBody | null;
 
-    if (!body) {
-      return NextResponse.json({ ok: false, error: "invalid_json" }, { status: 400 });
+    if (!body || typeof body !== "object") {
+      return jsonError("invalid_json", 400);
     }
 
     const parkingSessionId = String(body.parkingSessionId ?? "").trim();
 
     if (!parkingSessionId) {
-      return NextResponse.json(
-        { ok: false, error: "parking_session_id_required" },
-        { status: 400 }
-      );
+      return jsonError("parking_session_id_required", 400);
     }
 
     const session = await prisma.parkingSession.findUnique({
@@ -36,10 +49,7 @@ export async function POST(req: Request) {
     });
 
     if (!session) {
-      return NextResponse.json(
-        { ok: false, error: "parking_session_not_found" },
-        { status: 404 }
-      );
+      return jsonError("parking_session_not_found", 404);
     }
 
     if (session.status === "OUT" || session.checkOutAt) {
@@ -47,6 +57,7 @@ export async function POST(req: Request) {
         ok: true,
         status: "already_checked_out",
         parkingSessionId,
+        checkedOutAt: session.checkOutAt?.toISOString() ?? null,
       });
     }
 
@@ -64,17 +75,14 @@ export async function POST(req: Request) {
       ok: true,
       status: "forced_checked_out",
       parkingSessionId,
-      checkedOutAt: now,
+      checkedOutAt: now.toISOString(),
       note: "駐車状態のみ終了。精算完了ではありません。",
     });
-  } catch (e: any) {
-    return NextResponse.json(
-      {
-        ok: false,
-        error: "server_error",
-        message: String(e?.message ?? e),
-      },
-      { status: 500 }
-    );
+  } catch (e: unknown) {
+    const message = e instanceof Error ? e.message : String(e);
+
+    console.error("POST /api/admin/reservations/force-checkout error:", e);
+
+    return jsonError("server_error", 500, message);
   }
 }
