@@ -5,7 +5,7 @@ import { resolveActivePlace } from "@/lib/place-resolver";
 
 type SessionStatus = "IN" | "OUT";
 
-type ParkingSessionItem = {
+type ParkingSessionRow = {
   id: string;
   sessionType: string;
   plate: string | null;
@@ -27,7 +27,7 @@ type ParkingSessionItem = {
   } | null;
   reservation: {
     id: string;
-    date: string;
+    date: Date;
     slot: string;
     name: string;
   } | null;
@@ -52,6 +52,10 @@ function ymdTodayJst() {
   });
 }
 
+function isSessionStatus(value: string): value is SessionStatus {
+  return value === "IN" || value === "OUT";
+}
+
 export async function GET(req: NextRequest) {
   const admin = await getAdminSession();
 
@@ -68,16 +72,9 @@ export async function GET(req: NextRequest) {
     const inputPlaceId = String(url.searchParams.get("placeId") ?? "").trim();
     const inputPlaceSlug = String(url.searchParams.get("placeSlug") ?? "").trim();
     const date = normalizeDate(url.searchParams.get("date") || ymdTodayJst());
-
-    const rawStatus = String(url.searchParams.get("status") ?? "ALL")
-      .trim()
-      .toUpperCase();
-
-    const status: SessionStatus | undefined =
-      rawStatus === "IN" || rawStatus === "OUT"
-        ? (rawStatus as SessionStatus)
-        : undefined;
-
+    const statusParam = String(
+      url.searchParams.get("status") ?? "ALL"
+    ).trim().toUpperCase();
     const q = String(url.searchParams.get("q") ?? "").trim();
 
     const place = await resolveActivePlace({
@@ -99,14 +96,19 @@ export async function GET(req: NextRequest) {
     const start = new Date(`${date}T00:00:00+09:00`);
     const end = new Date(`${date}T23:59:59.999+09:00`);
 
-    const sessions: ParkingSessionItem[] = await prisma.parkingSession.findMany({
+    const statusWhere =
+      statusParam !== "ALL" && isSessionStatus(statusParam)
+        ? { status: statusParam }
+        : {};
+
+    const sessions = await prisma.parkingSession.findMany({
       where: {
         placeId: place.id,
         checkInAt: {
           gte: start,
           lte: end,
         },
-        ...(status ? { status } : {}),
+        ...statusWhere,
         ...(q
           ? {
               OR: [
@@ -139,6 +141,8 @@ export async function GET(req: NextRequest) {
       orderBy: [{ checkInAt: "desc" }],
     });
 
+    const rows = sessions as ParkingSessionRow[];
+
     return NextResponse.json({
       ok: true,
       place: {
@@ -149,17 +153,17 @@ export async function GET(req: NextRequest) {
       },
       date,
       filters: {
-        status: rawStatus,
+        status: statusParam,
         q,
       },
       summary: {
-        total: sessions.length,
-        inCount: sessions.filter((x: ParkingSessionItem) => x.status === "IN")
+        total: rows.length,
+        inCount: rows.filter((x: ParkingSessionRow) => x.status === "IN")
           .length,
-        outCount: sessions.filter((x: ParkingSessionItem) => x.status === "OUT")
+        outCount: rows.filter((x: ParkingSessionRow) => x.status === "OUT")
           .length,
       },
-      sessions: sessions.map((s: ParkingSessionItem) => ({
+      sessions: rows.map((s: ParkingSessionRow) => ({
         id: s.id,
         sessionType: s.sessionType,
         plate: s.plate,
@@ -178,12 +182,16 @@ export async function GET(req: NextRequest) {
         reservation: s.reservation,
       })),
     });
-  } catch (e: any) {
+  } catch (e: unknown) {
+    const message = e instanceof Error ? e.message : String(e);
+
+    console.error("GET /api/admin/parking-sessions error:", e);
+
     return NextResponse.json(
       {
         ok: false,
         error: "server_error",
-        message: String(e?.message ?? e),
+        message,
       },
       { status: 500 }
     );
