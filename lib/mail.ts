@@ -1,6 +1,8 @@
 import { Resend } from "resend";
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+function getResend() {
+  return new Resend(process.env.RESEND_API_KEY);
+}
 
 const MAIL_FROM = process.env.MAIL_FROM!;
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
@@ -34,7 +36,7 @@ export async function sendReservationPinMail(params: {
     manageUrl,
   } = params;
 
-  return resend.emails.send({
+  return getResend().emails.send({
     from: MAIL_FROM,
     to,
     subject: "【ParkTech】駐車場予約完了 / PINコードのお知らせ",
@@ -150,7 +152,7 @@ ${minutes != null ? `■ 利用時間: ${minutes}分` : ""}
 ${receiptRequestUrl}
 `.trim();
 
-  return resend.emails.send({
+  return getResend().emails.send({
     from: MAIL_FROM,
     to,
     subject: "【ParkTech】ご利用ありがとうございました",
@@ -216,7 +218,7 @@ export async function sendReservationCanceledMail(params: {
     refundFee,
   } = params;
 
-  return resend.emails.send({
+  return getResend().emails.send({
     from: MAIL_FROM,
     to,
     subject: "【ParkTech】キャンセル完了のお知らせ",
