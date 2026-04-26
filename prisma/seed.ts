@@ -1,14 +1,19 @@
-import {
-  PrismaClient,
-  PricingType,
-  RoundingType,
-} from '@prisma/client'
+import { PrismaClient } from '@prisma/client'
 import bcrypt from 'bcryptjs'
 
 const prisma = new PrismaClient()
 
 const OPERATION_MODE_RESERVATION_THEN_HOURLY =
   'RESERVATION_THEN_HOURLY' as const
+
+const PRICING_TYPE_RESERVATION_FIXED =
+  'RESERVATION_FIXED' as const
+
+const PRICING_TYPE_HOURLY =
+  'HOURLY' as const
+
+const ROUNDING_TYPE_CEIL_HOUR =
+  'CEIL_HOUR' as const
 
 async function main() {
   const place = await prisma.place.upsert({
@@ -61,19 +66,19 @@ async function main() {
     where: { id: 'rifu-reservation-fixed-rule' },
     update: {
       placeId: place.id,
-      pricingType: PricingType.RESERVATION_FIXED,
+      pricingType: PRICING_TYPE_RESERVATION_FIXED,
       fixedYen: 3000,
       hourlyYen: null,
-      roundingType: RoundingType.CEIL_HOUR,
+      roundingType: ROUNDING_TYPE_CEIL_HOUR,
       isActive: true,
     },
     create: {
       id: 'rifu-reservation-fixed-rule',
       placeId: place.id,
-      pricingType: PricingType.RESERVATION_FIXED,
+      pricingType: PRICING_TYPE_RESERVATION_FIXED,
       fixedYen: 3000,
       hourlyYen: null,
-      roundingType: RoundingType.CEIL_HOUR,
+      roundingType: ROUNDING_TYPE_CEIL_HOUR,
       isActive: true,
     },
   })
@@ -82,19 +87,19 @@ async function main() {
     where: { id: 'rifu-hourly-rule' },
     update: {
       placeId: place.id,
-      pricingType: PricingType.HOURLY,
+      pricingType: PRICING_TYPE_HOURLY,
       hourlyYen: 500,
       fixedYen: null,
-      roundingType: RoundingType.CEIL_HOUR,
+      roundingType: ROUNDING_TYPE_CEIL_HOUR,
       isActive: true,
     },
     create: {
       id: 'rifu-hourly-rule',
       placeId: place.id,
-      pricingType: PricingType.HOURLY,
+      pricingType: PRICING_TYPE_HOURLY,
       hourlyYen: 500,
       fixedYen: null,
-      roundingType: RoundingType.CEIL_HOUR,
+      roundingType: ROUNDING_TYPE_CEIL_HOUR,
       isActive: true,
     },
   })
