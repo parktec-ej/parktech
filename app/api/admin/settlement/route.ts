@@ -20,17 +20,72 @@ type AdjustmentSummary = {
 };
 
 type PaymentRow = {
+  id: string;
+  kind: string;
+  status: string;
+  recognizedMonth: string;
+  recognizedDate: Date;
+  serviceDate: Date | null;
+  paymentRef: string | null;
+  placeId: string;
+  placeNameSnapshot: string;
+  ownerId: string | null;
+  ownerNameSnapshot: string | null;
+  agentId: string | null;
+  agentNameSnapshot: string | null;
   grossAmount: number;
   ownerAmount: number;
   agentAmount: number;
   platformAmount: number;
+  refunded: boolean;
+  customerNameSnapshot: string | null;
+  plateSnapshot: string | null;
 };
 
 type AdjustmentRow = {
+  id: string;
+  paymentId: string;
+  kind: string;
+  status: string;
+  recognizedMonth: string;
+  recognizedDate: Date;
   grossDeltaAmount: number;
   ownerDeltaAmount: number;
   agentDeltaAmount: number;
   platformDeltaAmount: number;
+  reason: string | null;
+  note: string | null;
+  createdAt: Date;
+  payment: {
+    id: string;
+    kind: string;
+    paymentRef: string | null;
+    placeId: string;
+    placeNameSnapshot: string;
+    ownerId: string | null;
+    ownerNameSnapshot: string | null;
+    agentId: string | null;
+    agentNameSnapshot: string | null;
+  };
+};
+
+type ByPlaceRow = {
+  placeId: string;
+  placeName: string;
+  paymentCount: number;
+  adjustmentCount: number;
+  grossAmount: number;
+  grossDeltaAmount: number;
+  netGrossAmount: number;
+  ownerAmount: number;
+  ownerDeltaAmount: number;
+  netOwnerAmount: number;
+  agentAmount: number;
+  agentDeltaAmount: number;
+  netAgentAmount: number;
+  platformAmount: number;
+  platformDeltaAmount: number;
+  netPlatformAmount: number;
 };
 
 function isValidMonth(value: string) {
@@ -58,7 +113,7 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const [payments, adjustments] = await Promise.all([
+    const [paymentsRaw, adjustmentsRaw] = await Promise.all([
       prisma.payment.findMany({
         where: {
           recognizedMonth: month,
@@ -118,6 +173,9 @@ export async function GET(req: NextRequest) {
       }),
     ]);
 
+    const payments = paymentsRaw as PaymentRow[];
+    const adjustments = adjustmentsRaw as AdjustmentRow[];
+
     const paymentSummary = payments.reduce(
       (acc: PaymentSummary, p: PaymentRow) => {
         acc.count += 1;
@@ -165,27 +223,7 @@ export async function GET(req: NextRequest) {
         paymentSummary.platformAmount + adjustmentSummary.platformDeltaAmount,
     };
 
-    const byPlaceMap = new Map<
-      string,
-      {
-        placeId: string;
-        placeName: string;
-        paymentCount: number;
-        adjustmentCount: number;
-        grossAmount: number;
-        grossDeltaAmount: number;
-        netGrossAmount: number;
-        ownerAmount: number;
-        ownerDeltaAmount: number;
-        netOwnerAmount: number;
-        agentAmount: number;
-        agentDeltaAmount: number;
-        netAgentAmount: number;
-        platformAmount: number;
-        platformDeltaAmount: number;
-        netPlatformAmount: number;
-      }
-    >();
+    const byPlaceMap = new Map<string, ByPlaceRow>();
 
     for (const p of payments) {
       const key = p.placeId;
@@ -211,7 +249,10 @@ export async function GET(req: NextRequest) {
         });
       }
 
-      const row = byPlaceMap.get(key)!;
+      const row = byPlaceMap.get(key);
+
+      if (!row) continue;
+
       row.paymentCount += 1;
       row.grossAmount += p.grossAmount;
       row.ownerAmount += p.ownerAmount;
@@ -243,7 +284,10 @@ export async function GET(req: NextRequest) {
         });
       }
 
-      const row = byPlaceMap.get(key)!;
+      const row = byPlaceMap.get(key);
+
+      if (!row) continue;
+
       row.adjustmentCount += 1;
       row.grossDeltaAmount += a.grossDeltaAmount;
       row.ownerDeltaAmount += a.ownerDeltaAmount;
@@ -252,18 +296,20 @@ export async function GET(req: NextRequest) {
     }
 
     const byPlace = Array.from(byPlaceMap.values())
-      .map((row) => ({
+      .map((row: ByPlaceRow): ByPlaceRow => ({
         ...row,
         netGrossAmount: row.grossAmount + row.grossDeltaAmount,
         netOwnerAmount: row.ownerAmount + row.ownerDeltaAmount,
         netAgentAmount: row.agentAmount + row.agentDeltaAmount,
         netPlatformAmount: row.platformAmount + row.platformDeltaAmount,
       }))
-      .sort((a, b) => b.netGrossAmount - a.netGrossAmount);
+      .sort((a: ByPlaceRow, b: ByPlaceRow) => {
+        return b.netGrossAmount - a.netGrossAmount;
+      });
 
     const recentPayments = payments.slice(0, 50);
 
-    const recentAdjustments = adjustments.slice(0, 50).map((a) => ({
+    const recentAdjustments = adjustments.slice(0, 50).map((a: AdjustmentRow) => ({
       id: a.id,
       paymentId: a.paymentId,
       paymentRef: a.payment.paymentRef,
