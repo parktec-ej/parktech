@@ -2,11 +2,68 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getAdminSession } from "@/lib/admin-auth";
 
+type ReservationStatus =
+  | "CHECKED_OUT"
+  | "CHECKED_IN"
+  | "RESERVED"
+  | "UNPAID";
+
+type ReservationRow = {
+  id: string;
+  date: Date | string;
+  slot: string;
+  name: string;
+  plate: string;
+  email: string | null;
+  price: number;
+  pin: string | null;
+  paid: boolean;
+  paidAt: Date | null;
+  checkedIn: boolean;
+  checkedInAt: Date | null;
+  checkedOutAt: Date | null;
+  createdAt: Date;
+  spotId: string | null;
+  qrToken: string | null;
+  spot: {
+    id: string;
+    code: string;
+    label: string | null;
+  } | null;
+};
+
+type ReservationItem = {
+  id: string;
+  date: Date | string;
+  slot: string;
+  customerName: string;
+  plate: string;
+  email: string | null;
+  price: number;
+  pin: string | null;
+  paid: boolean;
+  paidAt: Date | null;
+  checkedIn: boolean;
+  checkedInAt: Date | null;
+  checkedOutAt: Date | null;
+  createdAt: Date;
+  spotId: string | null;
+  qrToken: string | null;
+  status: ReservationStatus;
+  spot: {
+    id: string;
+    code: string;
+    label: string | null;
+  } | null;
+};
+
 function normalizeDate(input: string) {
   if (!input) return input;
+
   if (/^\d{8}$/.test(input)) {
     return `${input.slice(0, 4)}-${input.slice(4, 6)}-${input.slice(6, 8)}`;
   }
+
   return input;
 }
 
@@ -20,16 +77,20 @@ function getReservationStatus(r: {
   paid: boolean;
   checkedIn: boolean;
   checkedOutAt: Date | null;
-}) {
-  if (r.checkedOutAt) return "CHECKED_OUT" as const;
-  if (r.checkedIn) return "CHECKED_IN" as const;
-  if (r.paid) return "RESERVED" as const;
-  return "UNPAID" as const;
+}): ReservationStatus {
+  if (r.checkedOutAt) return "CHECKED_OUT";
+  if (r.checkedIn) return "CHECKED_IN";
+  if (r.paid) return "RESERVED";
+  return "UNPAID";
 }
 
 function slotParts(slot: string) {
   const m = String(slot ?? "").toUpperCase().match(/^([A-Z]+)-?(\d+)$/);
-  if (!m) return { prefix: String(slot ?? ""), num: 0 };
+
+  if (!m) {
+    return { prefix: String(slot ?? ""), num: 0 };
+  }
+
   return { prefix: m[1], num: Number(m[2]) };
 }
 
@@ -38,26 +99,40 @@ function compareSlot(a: string, b: string) {
   const bb = slotParts(b);
 
   const prefixCmp = aa.prefix.localeCompare(bb.prefix, "ja");
-  if (prefixCmp !== 0) return prefixCmp;
+
+  if (prefixCmp !== 0) {
+    return prefixCmp;
+  }
+
   return aa.num - bb.num;
 }
 
 export async function GET(req: Request) {
   const admin = await getAdminSession();
+
   if (!admin) {
-    return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
+    return NextResponse.json(
+      { ok: false, error: "unauthorized" },
+      { status: 401 }
+    );
   }
 
   try {
     const url = new URL(req.url);
+
     const placeId = String(url.searchParams.get("placeId") ?? "").trim();
-    const date = normalizeDate(String(url.searchParams.get("date") ?? ymdTodayJst()).trim());
+    const date = normalizeDate(
+      String(url.searchParams.get("date") ?? ymdTodayJst()).trim()
+    );
     const status = String(url.searchParams.get("status") ?? "ALL").trim();
     const q = String(url.searchParams.get("q") ?? "").trim();
     const sort = String(url.searchParams.get("sort") ?? "slot_asc").trim();
 
     if (!placeId) {
-      return NextResponse.json({ ok: false, error: "place_id_required" }, { status: 400 });
+      return NextResponse.json(
+        { ok: false, error: "place_id_required" },
+        { status: 400 }
+      );
     }
 
     const place = await prisma.place.findUnique({
@@ -71,7 +146,10 @@ export async function GET(req: Request) {
     });
 
     if (!place) {
-      return NextResponse.json({ ok: false, error: "place_not_found" }, { status: 404 });
+      return NextResponse.json(
+        { ok: false, error: "place_not_found" },
+        { status: 404 }
+      );
     }
 
     const reservations = await prisma.reservation.findMany({
@@ -107,7 +185,9 @@ export async function GET(req: Request) {
       },
     });
 
-    let items = reservations.map((r) => ({
+    const reservationRows = reservations as ReservationRow[];
+
+    let items: ReservationItem[] = reservationRows.map((r: ReservationRow) => ({
       id: r.id,
       date: r.date,
       slot: r.slot,
@@ -136,7 +216,8 @@ export async function GET(req: Request) {
 
     if (q) {
       const qq = q.toLowerCase();
-      items = items.filter((x) =>
+
+      items = items.filter((x: ReservationItem) =>
         [
           x.slot,
           x.customerName,
@@ -144,15 +225,15 @@ export async function GET(req: Request) {
           x.email ?? "",
           x.spot?.code ?? "",
           x.spot?.label ?? "",
-        ].some((v) => String(v).toLowerCase().includes(qq))
+        ].some((v: string) => String(v).toLowerCase().includes(qq))
       );
     }
 
     if (status !== "ALL") {
-      items = items.filter((x) => x.status === status);
+      items = items.filter((x: ReservationItem) => x.status === status);
     }
 
-    items.sort((a, b) => {
+    items.sort((a: ReservationItem, b: ReservationItem) => {
       switch (sort) {
         case "slot_desc":
           return compareSlot(b.slot, a.slot);
@@ -183,19 +264,27 @@ export async function GET(req: Request) {
       },
       summary: {
         total: items.length,
-        unpaid: items.filter((x) => x.status === "UNPAID").length,
-        reserved: items.filter((x) => x.status === "RESERVED").length,
-        checkedIn: items.filter((x) => x.status === "CHECKED_IN").length,
-        checkedOut: items.filter((x) => x.status === "CHECKED_OUT").length,
+        unpaid: items.filter((x: ReservationItem) => x.status === "UNPAID")
+          .length,
+        reserved: items.filter((x: ReservationItem) => x.status === "RESERVED")
+          .length,
+        checkedIn: items.filter(
+          (x: ReservationItem) => x.status === "CHECKED_IN"
+        ).length,
+        checkedOut: items.filter(
+          (x: ReservationItem) => x.status === "CHECKED_OUT"
+        ).length,
       },
       reservations: items,
     });
-  } catch (e: any) {
+  } catch (e: unknown) {
+    const message = e instanceof Error ? e.message : String(e);
+
     return NextResponse.json(
       {
         ok: false,
         error: "server_error",
-        message: String(e?.message ?? e),
+        message,
       },
       { status: 500 }
     );
