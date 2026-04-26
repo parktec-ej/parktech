@@ -1,6 +1,5 @@
 import {
   PrismaClient,
-  OperationMode,
   PricingType,
   RoundingType,
 } from '@prisma/client'
@@ -8,20 +7,23 @@ import bcrypt from 'bcryptjs'
 
 const prisma = new PrismaClient()
 
+const OPERATION_MODE_RESERVATION_THEN_HOURLY =
+  'RESERVATION_THEN_HOURLY' as const
+
 async function main() {
   const place = await prisma.place.upsert({
     where: { slug: 'rifu-main' },
     update: {
       name: 'ParkTech 利府メイン駐車場',
       address: '宮城県宮城郡利府町',
-      operationMode: OperationMode.RESERVATION_THEN_HOURLY,
+      operationMode: OPERATION_MODE_RESERVATION_THEN_HOURLY,
       isActive: true,
     },
     create: {
       slug: 'rifu-main',
       name: 'ParkTech 利府メイン駐車場',
       address: '宮城県宮城郡利府町',
-      operationMode: OperationMode.RESERVATION_THEN_HOURLY,
+      operationMode: OPERATION_MODE_RESERVATION_THEN_HOURLY,
       isActive: true,
     },
   })
@@ -144,7 +146,7 @@ async function main() {
 }
 
 main()
-  .catch((e) => {
+  .catch((e: unknown) => {
     console.error(e)
     process.exit(1)
   })
