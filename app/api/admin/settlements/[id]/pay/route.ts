@@ -1,14 +1,28 @@
 import { NextResponse } from "next/server";
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { getAdminSession } from "@/lib/admin-auth";
+
+type SettlementItemRow = {
+  paymentId: string | null;
+};
+
+type SettlementPayoutRow = {
+  id: string;
+  payoutTarget: string;
+};
 
 export async function POST(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const admin = await getAdminSession();
+
   if (!admin) {
-    return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
+    return NextResponse.json(
+      { ok: false, error: "unauthorized" },
+      { status: 401 }
+    );
   }
 
   try {
@@ -40,20 +54,32 @@ export async function POST(
 
     if (settlement.status === "PAID") {
       return NextResponse.redirect(
-        new URL(`/admin/settlements?month=${encodeURIComponent(settlement.month)}&paid=1`, req.url),
+        new URL(
+          `/admin/settlements?month=${encodeURIComponent(
+            settlement.month
+          )}&paid=1`,
+          req.url
+        ),
         { status: 303 }
       );
     }
 
-    const paymentIds = settlement.items
-      .map((x) => x.paymentId)
-      .filter((x): x is string => Boolean(x));
+    const paymentIds = (settlement.items as SettlementItemRow[])
+      .map((x: SettlementItemRow) => x.paymentId)
+      .filter((x: string | null): x is string => Boolean(x));
 
     const now = new Date();
 
-    await prisma.$transaction(async (tx) => {
-      const hasOwnerPayout = settlement.payouts.some((p) => p.payoutTarget === "OWNER");
-      const hasAgentPayout = settlement.payouts.some((p) => p.payoutTarget === "AGENT");
+    await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+      const payouts = settlement.payouts as SettlementPayoutRow[];
+
+      const hasOwnerPayout = payouts.some(
+        (p: SettlementPayoutRow) => p.payoutTarget === "OWNER"
+      );
+
+      const hasAgentPayout = payouts.some(
+        (p: SettlementPayoutRow) => p.payoutTarget === "AGENT"
+      );
 
       if (!hasOwnerPayout && settlement.finalOwnerPayoutAmount > 0) {
         await tx.payout.create({
@@ -123,14 +149,18 @@ export async function POST(
 
     return NextResponse.redirect(
       new URL(
-        `/admin/settlements?month=${encodeURIComponent(settlement.month)}&paid=1`,
+        `/admin/settlements?month=${encodeURIComponent(
+          settlement.month
+        )}&paid=1`,
         req.url
       ),
       { status: 303 }
     );
-  } catch (e: any) {
+  } catch (e: unknown) {
+    const message = e instanceof Error ? e.message : String(e);
+
     return NextResponse.json(
-      { ok: false, error: "server_error", message: String(e?.message ?? e) },
+      { ok: false, error: "server_error", message },
       { status: 500 }
     );
   }
