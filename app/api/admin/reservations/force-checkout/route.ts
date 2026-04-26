@@ -1,35 +1,53 @@
 import { NextResponse } from "next/server";
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { getAdminSession } from "@/lib/admin-auth";
 
+type ForceCheckoutBody = {
+  reservationId?: unknown;
+};
+
+function jsonError(error: string, status: number, message?: string) {
+  return NextResponse.json(
+    {
+      ok: false,
+      error,
+      ...(message ? { message } : {}),
+    },
+    { status }
+  );
+}
+
 export async function POST(req: Request) {
   const admin = await getAdminSession();
+
   if (!admin) {
-    return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
+    return jsonError("unauthorized", 401);
   }
 
   try {
-    const body = await req.json().catch(() => null);
-    if (!body) {
-      return NextResponse.json({ ok: false, error: "invalid_json" }, { status: 400 });
+    const body = (await req.json().catch(() => null)) as ForceCheckoutBody | null;
+
+    if (!body || typeof body !== "object") {
+      return jsonError("invalid_json", 400);
     }
 
     const reservationId = String(body.reservationId ?? "").trim();
+
     if (!reservationId) {
-      return NextResponse.json({ ok: false, error: "reservation_id_required" }, { status: 400 });
+      return jsonError("reservation_id_required", 400);
     }
 
     const reservation = await prisma.reservation.findUnique({
       where: { id: reservationId },
       select: {
         id: true,
-        checkedIn: true,
         checkedOutAt: true,
       },
     });
 
     if (!reservation) {
-      return NextResponse.json({ ok: false, error: "reservation_not_found" }, { status: 404 });
+      return jsonError("reservation_not_found", 404);
     }
 
     if (reservation.checkedOutAt) {
@@ -37,16 +55,13 @@ export async function POST(req: Request) {
         ok: true,
         status: "already_checked_out",
         reservationId,
+        checkedOutAt: reservation.checkedOutAt.toISOString(),
       });
-    }
-
-    if (!reservation.checkedIn) {
-      return NextResponse.json({ ok: false, error: "not_checked_in" }, { status: 409 });
     }
 
     const now = new Date();
 
-    await prisma.$transaction(async (tx) => {
+    await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       await tx.reservation.update({
         where: { id: reservationId },
         data: {
@@ -60,8 +75,8 @@ export async function POST(req: Request) {
           checkOutAt: null,
         },
         data: {
-          checkOutAt: now,
           status: "OUT",
+          checkOutAt: now,
         },
       });
     });
@@ -70,16 +85,11 @@ export async function POST(req: Request) {
       ok: true,
       status: "forced_checked_out",
       reservationId,
-      checkedOutAt: now,
+      checkedOutAt: now.toISOString(),
     });
-  } catch (e: any) {
-    return NextResponse.json(
-      {
-        ok: false,
-        error: "server_error",
-        message: String(e?.message ?? e),
-      },
-      { status: 500 }
-    );
+  } catch (e: unknown) {
+    const message = e instanceof Error ? e.message : String(e);
+
+    return jsonError("server_error", 500, message);
   }
 }
