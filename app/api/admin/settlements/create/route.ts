@@ -5,17 +5,31 @@ import { requireAdmin } from "@/lib/admin-auth";
 const TAX_RATE = 0.1;
 const PLATFORM_RATE = 0.2;
 
+type CreateSettlementBody = {
+  month: string;
+  placeId: string;
+};
+
+type PaymentRow = {
+  id: string;
+  grossAmount: number;
+  ownerAmount: number;
+  agentAmount: number | null;
+  platformAmount: number;
+};
+
 function splitTax(gross: number) {
   const net = Math.floor(gross / (1 + TAX_RATE));
   const tax = gross - net;
   return { net, tax };
 }
 
-async function readPostBody(req: Request) {
+async function readPostBody(req: Request): Promise<CreateSettlementBody> {
   const contentType = req.headers.get("content-type") ?? "";
 
   if (contentType.includes("application/json")) {
     const body = await req.json();
+
     return {
       month: typeof body?.month === "string" ? body.month : "",
       placeId: typeof body?.placeId === "string" ? body.placeId : "",
@@ -27,6 +41,7 @@ async function readPostBody(req: Request) {
     contentType.includes("multipart/form-data")
   ) {
     const fd = await req.formData();
+
     return {
       month: String(fd.get("month") ?? ""),
       placeId: String(fd.get("placeId") ?? ""),
@@ -64,11 +79,11 @@ export async function POST(req: Request) {
     const ownerId = place.ownerId;
 
     const existing = await prisma.settlement.findFirst({
-  where: {
-    month,
-    placeId,
-  },
-});
+      where: {
+        month,
+        placeId,
+      },
+    });
 
     if (existing) {
       return NextResponse.redirect(
@@ -82,7 +97,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const payments = await prisma.payment.findMany({
+    const paymentsRaw = await prisma.payment.findMany({
       where: {
         placeId,
         recognizedMonth: month,
@@ -91,7 +106,16 @@ export async function POST(req: Request) {
         },
         excludedFromSettlement: false,
       },
+      select: {
+        id: true,
+        grossAmount: true,
+        ownerAmount: true,
+        agentAmount: true,
+        platformAmount: true,
+      },
     });
+
+    const payments = paymentsRaw as PaymentRow[];
 
     if (payments.length === 0) {
       return NextResponse.redirect(
@@ -105,7 +129,11 @@ export async function POST(req: Request) {
       );
     }
 
-    const grossTotal = payments.reduce((sum, p) => sum + p.grossAmount, 0);
+    const grossTotal = payments.reduce(
+      (sum: number, p: PaymentRow) => sum + p.grossAmount,
+      0
+    );
+
     const { net: totalNet, tax: totalTax } = splitTax(grossTotal);
 
     const platformNet = Math.floor(totalNet * PLATFORM_RATE);
@@ -114,13 +142,18 @@ export async function POST(req: Request) {
 
     const ownerPayout = grossTotal - platformGross;
 
-    const totalOwnerAmount = payments.reduce((sum, p) => sum + p.ownerAmount, 0);
-    const totalAgentAmount = payments.reduce(
-      (sum, p) => sum + (p.agentAmount ?? 0),
+    const totalOwnerAmount = payments.reduce(
+      (sum: number, p: PaymentRow) => sum + p.ownerAmount,
       0
     );
+
+    const totalAgentAmount = payments.reduce(
+      (sum: number, p: PaymentRow) => sum + (p.agentAmount ?? 0),
+      0
+    );
+
     const totalPlatformAmount = payments.reduce(
-      (sum, p) => sum + p.platformAmount,
+      (sum: number, p: PaymentRow) => sum + p.platformAmount,
       0
     );
 
@@ -158,7 +191,9 @@ export async function POST(req: Request) {
 
     await prisma.payment.updateMany({
       where: {
-        id: { in: payments.map((p) => p.id) },
+        id: {
+          in: payments.map((p: PaymentRow) => p.id),
+        },
       },
       data: {
         status: "SETTLED",
@@ -168,7 +203,7 @@ export async function POST(req: Request) {
     });
 
     await prisma.settlementItem.createMany({
-      data: payments.map((p) => ({
+      data: payments.map((p: PaymentRow) => ({
         settlementId: settlement.id,
         paymentId: p.id,
         itemType: "PAYMENT",
@@ -190,8 +225,9 @@ export async function POST(req: Request) {
       ),
       { status: 303 }
     );
-  } catch (err) {
+  } catch (err: unknown) {
     console.error(err);
+
     return NextResponse.json(
       { ok: false, error: "server_error" },
       { status: 500 }
