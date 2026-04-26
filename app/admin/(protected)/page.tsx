@@ -5,97 +5,6 @@ import DateSwitcher from "./DateSwitcher";
 import ForceCheckoutButton from "./_components/ForceCheckoutButton";
 import AutoRefresh from "./_components/AutoRefresh";
 
-type AdminPlaceItem = {
-  id: string;
-  name: string;
-  slug: string;
-  address: string | null;
-  operationMode: string | null;
-  ownerId: string | null;
-};
-
-type AdminSpotItem = {
-  id: string;
-  code: string;
-  label: string | null;
-  operationModeOverride: string | null;
-};
-
-type OwnerLite = {
-  id: string;
-  name: string;
-};
-
-type AgentLite = {
-  id: string;
-  name: string;
-};
-
-type ReservationItem = {
-  id: string;
-  date: string;
-  slot: string;
-  name: string;
-  plate: string;
-  price: number;
-  paid: boolean;
-  checkedIn: boolean;
-  checkedInAt: Date | null;
-  checkedOutAt: Date | null;
-  createdAt: Date;
-  spotId: string | null;
-};
-
-type HourlyInSession = {
-  id: string;
-  plate: string | null;
-  checkInAt: Date;
-  spotId: string | null;
-  spot: {
-    code: string;
-    label: string | null;
-  } | null;
-};
-
-type HourlyOutSession = {
-  id: string;
-  totalYen: number | null;
-  paidAt: Date | null;
-};
-
-type ReservationInSession = {
-  id: string;
-  plate: string | null;
-  checkInAt: Date;
-  spotId: string | null;
-  reservationId: string | null;
-  reservation: {
-    id: string;
-    name: string;
-    slot: string;
-  } | null;
-  spot: {
-    code: string;
-    label: string | null;
-  } | null;
-};
-
-type DaySpotMode = {
-  spotId: string;
-  operationMode: string | null;
-};
-
-type AssignmentItem = {
-  id: string;
-  ownerRateBps: number;
-  agentRateBps: number;
-  platformRateBps: number;
-  startsAt: Date;
-  endsAt: Date | null;
-  owner: OwnerLite | null;
-  agent: AgentLite | null;
-};
-
 function ymdTodayJst() {
   return new Date().toLocaleDateString("sv-SE", {
     timeZone: "Asia/Tokyo",
@@ -202,7 +111,8 @@ export default async function AdminHomePage({
     sp.date && /^\d{4}-\d{2}-\d{2}$/.test(sp.date) ? sp.date : ymdTodayJst();
   const placeKey = String(sp.placeId ?? "").trim();
 
-  const activePlaces: AdminPlaceItem[] = await prisma.place.findMany({
+  // まず軽量に Place 一覧を取る
+  const activePlaces = await prisma.place.findMany({
     orderBy: { createdAt: "desc" },
     select: {
       id: true,
@@ -223,14 +133,14 @@ export default async function AdminHomePage({
     );
   }
 
+  // 対象 Place 決定
   const basePlace =
-    activePlaces.find(
-      (p: AdminPlaceItem) => p.id === placeKey || p.slug === placeKey
-    ) ??
-    activePlaces.find((p: AdminPlaceItem) => p.slug === "rifu-main") ??
+    activePlaces.find((p) => p.id === placeKey || p.slug === placeKey) ??
+    activePlaces.find((p) => p.slug === "rifu-main") ??
     activePlaces[0];
 
-  const placeSpots: AdminSpotItem[] = await prisma.spot.findMany({
+  // スポットだけ別取得
+  const placeSpots = await prisma.spot.findMany({
     where: {
       placeId: basePlace.id,
       isActive: true,
@@ -244,7 +154,8 @@ export default async function AdminHomePage({
     },
   });
 
-  const owner: OwnerLite | null = basePlace.ownerId
+  // owner 名は必要なら軽く別取得
+  const owner = basePlace.ownerId
     ? await prisma.owner.findUnique({
         where: { id: basePlace.ownerId },
         select: { id: true, name: true },
@@ -269,7 +180,7 @@ export default async function AdminHomePage({
     totalOwners,
     totalAgents,
     monthlySettlementCount,
-  ] = (await Promise.all([
+  ] = await Promise.all([
     prisma.reservation.findMany({
       where: {
         placeId: place.id,
@@ -379,8 +290,8 @@ export default async function AdminHomePage({
         ],
       },
       include: {
-        owner: { select: { id: true, name: true } },
-        agent: { select: { id: true, name: true } },
+        Owner: { select: { id: true, name: true } },
+        Agent: { select: { id: true, name: true } },
       },
       orderBy: [{ startsAt: "desc" }],
     }),
@@ -395,30 +306,16 @@ export default async function AdminHomePage({
         status: { not: "CANCELLED" },
       },
     }),
-  ])) as [
-    ReservationItem[],
-    HourlyInSession[],
-    HourlyOutSession[],
-    ReservationInSession[],
-    DaySpotMode[],
-    AssignmentItem[],
-    number,
-    number,
-    number
-  ];
+  ]);
 
-  const paidReservations = reservationsTargetDay.filter((r: ReservationItem) => r.paid);
-  const unpaidReservations = reservationsTargetDay.filter(
-    (r: ReservationItem) => !r.paid
-  );
+  const paidReservations = reservationsTargetDay.filter((r) => r.paid);
+  const unpaidReservations = reservationsTargetDay.filter((r) => !r.paid);
   const reservedWaiting = reservationsTargetDay.filter(
-    (r: ReservationItem) => r.paid && !r.checkedIn && !r.checkedOutAt
+    (r) => r.paid && !r.checkedIn && !r.checkedOutAt
   );
-  const checkedOutReservations = reservationsTargetDay.filter(
-    (r: ReservationItem) => !!r.checkedOutAt
-  );
+  const checkedOutReservations = reservationsTargetDay.filter((r) => !!r.checkedOutAt);
 
-  const hourlyPaidTargetDay = hourlyOutSessions.filter((s: HourlyOutSession) => {
+  const hourlyPaidTargetDay = hourlyOutSessions.filter((s) => {
     if (!s.paidAt) return false;
     const paidDay = new Date(s.paidAt).toLocaleDateString("sv-SE", {
       timeZone: "Asia/Tokyo",
@@ -427,33 +324,25 @@ export default async function AdminHomePage({
   });
 
   const reservationSalesTargetDay = paidReservations.reduce(
-    (sum: number, r: ReservationItem) => sum + (r.price || 0),
+    (sum, r) => sum + (r.price || 0),
     0
   );
   const hourlySalesTargetDay = hourlyPaidTargetDay.reduce(
-    (sum: number, s: HourlyOutSession) => sum + (s.totalYen || 0),
+    (sum, s) => sum + (s.totalYen || 0),
     0
   );
   const salesTargetDay = reservationSalesTargetDay + hourlySalesTargetDay;
 
-  const spotModeMap = new Map(
-    daySpotModes.map((x: DaySpotMode) => [x.spotId, x.operationMode])
-  );
-  const hourlyInMap = new Map(
-    hourlyInSessions.map((x: HourlyInSession) => [x.spotId, x])
-  );
-  const reservationInMap = new Map(
-    reservationInSessions.map((x: ReservationInSession) => [x.spotId, x])
-  );
+  const spotModeMap = new Map(daySpotModes.map((x) => [x.spotId, x.operationMode]));
+  const hourlyInMap = new Map(hourlyInSessions.map((x) => [x.spotId, x]));
+  const reservationInMap = new Map(reservationInSessions.map((x) => [x.spotId, x]));
   const reservedWaitingMap = new Map(
-    reservedWaiting
-      .filter((x: ReservationItem) => x.spotId)
-      .map((x: ReservationItem) => [String(x.spotId), x] as const)
+    reservedWaiting.filter((x) => x.spotId).map((x) => [String(x.spotId), x] as const)
   );
   const checkedOutMap = new Map(
     checkedOutReservations
-      .filter((x: ReservationItem) => x.spotId)
-      .map((x: ReservationItem) => [String(x.spotId), x] as const)
+      .filter((x) => x.spotId)
+      .map((x) => [String(x.spotId), x] as const)
   );
 
   const spotStatuses: Array<{
@@ -461,7 +350,7 @@ export default async function AdminHomePage({
     spotCode: string;
     spotLabel: string;
     status: SpotStatus;
-  }> = place.spots.map((spot: AdminSpotItem) => {
+  }> = place.spots.map((spot) => {
     const calendarMode = spotModeMap.get(spot.id);
     const effectiveMode =
       spot.operationModeOverride ?? calendarMode ?? place.operationMode;
@@ -602,13 +491,15 @@ export default async function AdminHomePage({
   const availableCount = spotStatuses.filter(
     (x) => x.status.kind === "AVAILABLE"
   ).length;
-  const closedCount = spotStatuses.filter((x) => x.status.kind === "CLOSED").length;
+  const closedCount = spotStatuses.filter(
+    (x) => x.status.kind === "CLOSED"
+  ).length;
 
   const longStayHourly = hourlyInSessions.filter(
-    (x: HourlyInSession) => (minutesDiff(x.checkInAt, now) ?? 0) >= 180
+    (x) => (minutesDiff(x.checkInAt, now) ?? 0) >= 180
   );
   const longStayReservation = reservationInSessions.filter(
-    (x: ReservationInSession) => (minutesDiff(x.checkInAt, now) ?? 0) >= 180
+    (x) => (minutesDiff(x.checkInAt, now) ?? 0) >= 180
   );
 
   const currentAssignment = activeAssignments[0] ?? null;
@@ -637,7 +528,7 @@ export default async function AdminHomePage({
           <div style={fieldStyle}>
             <div style={fieldLabelStyle}>対象 Place</div>
             <select name="placeId" defaultValue={place.id} style={inputStyle}>
-              {activePlaces.map((p: AdminPlaceItem) => (
+              {activePlaces.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.name}
                   {p.slug ? ` (${p.slug})` : ""}
@@ -674,9 +565,7 @@ export default async function AdminHomePage({
         <SummaryCard
           title="当日の売上"
           value={fmtYen(salesTargetDay)}
-          sub={`予約 ${fmtYen(reservationSalesTargetDay)} / 時間貸し ${fmtYen(
-            hourlySalesTargetDay
-          )}`}
+          sub={`予約 ${fmtYen(reservationSalesTargetDay)} / 時間貸し ${fmtYen(hourlySalesTargetDay)}`}
         />
         <SummaryCard
           title="現在利用中"
@@ -836,11 +725,11 @@ export default async function AdminHomePage({
             <div style={infoListStyle}>
               <InfoRow
                 label="オーナー"
-                value={currentAssignment?.owner?.name ?? place.owner?.name ?? "未設定"}
+                value={currentAssignment?.Owner?.name ?? place.owner?.name ?? "未設定"}
               />
               <InfoRow
                 label="代理店"
-                value={currentAssignment?.agent?.name ?? "未設定"}
+                value={currentAssignment?.Agent?.name ?? "未設定"}
               />
               <InfoRow
                 label="Owner率"

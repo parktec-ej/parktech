@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import crypto from "crypto";
 import { prisma } from "@/lib/db";
 import { stripe } from "@/lib/stripe";
 import { sendReservationCanceledMail } from "@/lib/mail";
@@ -30,7 +31,6 @@ function calcCancellationPolicy(price: number, useDate: string) {
   const diffMs = useDateObj.getTime() - today.getTime();
   const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
 
-  // 2日前まで
   if (diffDays >= 2) {
     const cancelFee = Math.floor(price * 0.5);
     const refundAmount = Math.max(0, price - cancelFee - refundFee);
@@ -43,7 +43,6 @@ function calcCancellationPolicy(price: number, useDate: string) {
     };
   }
 
-  // 前日〜当日
   return {
     rule: "day_before_or_same_day",
     cancelFee: price,
@@ -58,14 +57,8 @@ function calcDeltaAmounts(
   agentRateBps: number,
   platformRateBps: number
 ) {
-  const ownerDeltaAmount = -Math.round(
-    (refundAmount * ownerRateBps) / 10000
-  );
-
-  const agentDeltaAmount = -Math.round(
-    (refundAmount * agentRateBps) / 10000
-  );
-
+  const ownerDeltaAmount = -Math.round((refundAmount * ownerRateBps) / 10000);
+  const agentDeltaAmount = -Math.round((refundAmount * agentRateBps) / 10000);
   const platformDeltaAmount =
     -refundAmount - ownerDeltaAmount - agentDeltaAmount;
 
@@ -132,11 +125,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const policy = calcCancellationPolicy(
-      reservation.price,
-      reservation.date
-    );
-
+    const policy = calcCancellationPolicy(reservation.price, reservation.date);
     const canceledAt = new Date();
 
     const payment = await prisma.payment.findFirst({
@@ -157,9 +146,6 @@ export async function POST(req: NextRequest) {
 
     let stripeRefundId: string | null = null;
 
-    /**
-     * Stripe返金
-     */
     if (policy.refundAmount > 0 && payment?.paymentIntentId) {
       try {
         const refund = await stripe.refunds.create({
@@ -181,9 +167,6 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    /**
-     * Reservation更新
-     */
     await prisma.reservation.update({
       where: {
         id: reservation.id,
@@ -197,9 +180,6 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    /**
-     * Payment更新
-     */
     if (payment?.id && refundStatus === "SUCCEEDED") {
       await prisma.payment.update({
         where: {
@@ -210,28 +190,21 @@ export async function POST(req: NextRequest) {
           memo: [
             "AUTO_REFUND",
             `refundAmount=${policy.refundAmount}`,
-            stripeRefundId
-              ? `stripeRefundId=${stripeRefundId}`
-              : null,
+            stripeRefundId ? `stripeRefundId=${stripeRefundId}` : null,
           ]
             .filter(Boolean)
             .join("\n"),
+          updatedAt: canceledAt,
         },
       });
 
-      /**
-       * Adjustment作成
-       */
-      const {
-        ownerDeltaAmount,
-        agentDeltaAmount,
-        platformDeltaAmount,
-      } = calcDeltaAmounts(
-        policy.refundAmount,
-        payment.ownerRateBps,
-        payment.agentRateBps,
-        payment.platformRateBps
-      );
+      const { ownerDeltaAmount, agentDeltaAmount, platformDeltaAmount } =
+        calcDeltaAmounts(
+          policy.refundAmount,
+          payment.ownerRateBps,
+          payment.agentRateBps,
+          payment.platformRateBps
+        );
 
       const recognizedDate = new Date();
 
@@ -243,6 +216,8 @@ export async function POST(req: NextRequest) {
 
       await prisma.adjustment.create({
         data: {
+          id: crypto.randomUUID(),
+
           paymentId: payment.id,
 
           kind:
@@ -270,13 +245,13 @@ export async function POST(req: NextRequest) {
           ].join("\n"),
 
           createdBy: "system",
+
+          createdAt: recognizedDate,
+          updatedAt: recognizedDate,
         },
       });
     }
 
-    /**
-     * メール送信
-     */
     if (reservation.email) {
       try {
         await sendReservationCanceledMail({

@@ -1,16 +1,9 @@
 import { NextResponse } from "next/server";
-import type { Prisma } from "@prisma/client";
+import crypto from "crypto";
 import { prisma } from "@/lib/db";
 import { getAdminSession } from "@/lib/admin-auth";
 
-type SettlementItemRow = {
-  paymentId: string | null;
-};
-
-type SettlementPayoutRow = {
-  id: string;
-  payoutTarget: string;
-};
+export const runtime = "nodejs";
 
 export async function POST(
   req: Request,
@@ -31,12 +24,12 @@ export async function POST(
     const settlement = await prisma.settlement.findUnique({
       where: { id },
       include: {
-        items: {
+        SettlementItem: {
           select: {
             paymentId: true,
           },
         },
-        payouts: {
+        Payout: {
           select: {
             id: true,
             payoutTarget: true,
@@ -64,26 +57,25 @@ export async function POST(
       );
     }
 
-    const paymentIds = (settlement.items as SettlementItemRow[])
-      .map((x: SettlementItemRow) => x.paymentId)
-      .filter((x: string | null): x is string => Boolean(x));
+    const paymentIds = settlement.SettlementItem.map((x) => x.paymentId).filter(
+      (x): x is string => Boolean(x)
+    );
 
     const now = new Date();
 
-    await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-      const payouts = settlement.payouts as SettlementPayoutRow[];
-
-      const hasOwnerPayout = payouts.some(
-        (p: SettlementPayoutRow) => p.payoutTarget === "OWNER"
+    await prisma.$transaction(async (tx) => {
+      const hasOwnerPayout = settlement.Payout.some(
+        (p) => p.payoutTarget === "OWNER"
       );
 
-      const hasAgentPayout = payouts.some(
-        (p: SettlementPayoutRow) => p.payoutTarget === "AGENT"
+      const hasAgentPayout = settlement.Payout.some(
+        (p) => p.payoutTarget === "AGENT"
       );
 
       if (!hasOwnerPayout && settlement.finalOwnerPayoutAmount > 0) {
         await tx.payout.create({
           data: {
+            id: crypto.randomUUID(),
             settlementId: settlement.id,
             placeId: settlement.placeId ?? null,
             ownerId: settlement.ownerId,
@@ -96,6 +88,8 @@ export async function POST(
             approvedAt: now,
             executedAt: now,
             note: `Manual payout by ${admin.email}`,
+            createdAt: now,
+            updatedAt: now,
           },
         });
       }
@@ -107,6 +101,7 @@ export async function POST(
       ) {
         await tx.payout.create({
           data: {
+            id: crypto.randomUUID(),
             settlementId: settlement.id,
             placeId: settlement.placeId ?? null,
             ownerId: settlement.ownerId,
@@ -119,6 +114,8 @@ export async function POST(
             approvedAt: now,
             executedAt: now,
             note: `Manual payout by ${admin.email}`,
+            createdAt: now,
+            updatedAt: now,
           },
         });
       }
@@ -128,6 +125,7 @@ export async function POST(
         data: {
           status: "PAID",
           paidAt: now,
+          updatedAt: now,
         },
       });
 
@@ -142,6 +140,7 @@ export async function POST(
             status: "SETTLED",
             settlementLock: "LOCKED",
             settledAt: now,
+            updatedAt: now,
           },
         });
       }
@@ -160,7 +159,11 @@ export async function POST(
     const message = e instanceof Error ? e.message : String(e);
 
     return NextResponse.json(
-      { ok: false, error: "server_error", message },
+      {
+        ok: false,
+        error: "server_error",
+        message,
+      },
       { status: 500 }
     );
   }

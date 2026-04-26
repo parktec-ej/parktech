@@ -15,8 +15,12 @@ function asNullableString(v: FormDataEntryValue | null) {
 
 export async function POST(req: Request) {
   const admin = await getAdminSession();
+
   if (!admin) {
-    return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
+    return NextResponse.json(
+      { ok: false, error: "unauthorized" },
+      { status: 401 }
+    );
   }
 
   try {
@@ -58,7 +62,11 @@ export async function POST(req: Request) {
       );
     }
 
-    if (!Number.isFinite(defaultAgentRateBps) || defaultAgentRateBps < 0 || defaultAgentRateBps > 10000) {
+    if (
+      !Number.isFinite(defaultAgentRateBps) ||
+      defaultAgentRateBps < 0 ||
+      defaultAgentRateBps > 10000
+    ) {
       return NextResponse.json(
         { ok: false, error: "invalid_defaultAgentRateBps" },
         { status: 400 }
@@ -79,10 +87,12 @@ export async function POST(req: Request) {
       }
     }
 
+    const now = new Date();
     const code = `AG-${randomUUID().slice(0, 8).toUpperCase()}`;
 
     await prisma.agent.create({
       data: {
+        id: randomUUID(),
         code,
         name,
         displayName,
@@ -101,15 +111,24 @@ export async function POST(req: Request) {
         bankAccountType,
         bankAccountNo,
         notes,
+        registeredAt: now,
+        createdAt: now,
+        updatedAt: now,
       },
     });
 
     return NextResponse.redirect(new URL("/admin/agents?created=1", req.url), {
       status: 303,
     });
-  } catch (e: any) {
+  } catch (e: unknown) {
+    const message = e instanceof Error ? e.message : String(e);
+
     return NextResponse.json(
-      { ok: false, error: "server_error", message: String(e?.message ?? e) },
+      {
+        ok: false,
+        error: "server_error",
+        message,
+      },
       { status: 500 }
     );
   }

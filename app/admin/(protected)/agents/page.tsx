@@ -14,9 +14,7 @@ type AgentItem = {
   registeredAt: Date;
   bankName: string | null;
   bankBranchName: string | null;
-  _count: {
-    assignments: number;
-  };
+  assignmentCount?: number;
 };
 
 export default async function AgentsPage({
@@ -27,7 +25,7 @@ export default async function AgentsPage({
   await requireAdmin();
   const sp = (await searchParams) ?? {};
 
-  const agents: AgentItem[] = await prisma.agent.findMany({
+  const rawAgents = await prisma.agent.findMany({
     orderBy: { registeredAt: "desc" },
     select: {
       id: true,
@@ -40,13 +38,13 @@ export default async function AgentsPage({
       registeredAt: true,
       bankName: true,
       bankBranchName: true,
-      _count: {
-        select: {
-          assignments: true,
-        },
-      },
     },
   });
+
+  const agents: AgentItem[] = rawAgents.map((agent) => ({
+    ...agent,
+    assignmentCount: 0,
+  }));
 
   return (
     <div style={pageStyle}>
@@ -92,7 +90,7 @@ export default async function AgentsPage({
                   </td>
                 </tr>
               ) : (
-                agents.map((agent: AgentItem) => (
+                agents.map((agent) => (
                   <tr key={agent.id}>
                     <td style={tdStyle}>{formatDate(agent.registeredAt)}</td>
                     <td style={tdStyle}>{agent.code || "-"}</td>
@@ -108,7 +106,7 @@ export default async function AgentsPage({
                         .filter(Boolean)
                         .join(" ") || "-"}
                     </td>
-                    <td style={tdStyle}>{agent._count.assignments}</td>
+                    <td style={tdStyle}>{agent.assignmentCount ?? 0}</td>
                     <td style={tdStyle}>
                       <Link
                         href={`/admin/agents/${agent.id}`}

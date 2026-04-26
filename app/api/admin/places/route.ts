@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import type { Prisma } from "@prisma/client";
+import crypto from "crypto";
 import { prisma } from "@/lib/db";
 import { getAdminSession } from "@/lib/admin-auth";
 
@@ -40,9 +41,44 @@ function isValidYearMonth(value: string | null | undefined) {
   return /^\d{4}-\d{2}$/.test(value);
 }
 
+function normalizeAssignmentForResponse(
+  assignment: {
+    id: string;
+    ownerId: string;
+    agentId: string | null;
+    contractType: string;
+    ownerRateBps: number;
+    agentRateBps: number;
+    platformRateBps: number;
+    startsAt: Date;
+    endsAt: Date | null;
+    isActive: boolean;
+    note: string | null;
+    Owner: unknown;
+    Agent: unknown;
+  } | null
+) {
+  if (!assignment) return null;
+
+  return {
+    id: assignment.id,
+    ownerId: assignment.ownerId,
+    agentId: assignment.agentId,
+    contractType: assignment.contractType,
+    ownerRateBps: assignment.ownerRateBps,
+    agentRateBps: assignment.agentRateBps,
+    platformRateBps: assignment.platformRateBps,
+    startsAt: assignment.startsAt,
+    endsAt: assignment.endsAt,
+    isActive: assignment.isActive,
+    note: assignment.note,
+    owner: assignment.Owner,
+    agent: assignment.Agent,
+  };
+}
+
 export async function GET(_req: Request) {
   const admin = await getAdminSession();
-
   if (!admin) {
     return NextResponse.json(
       { ok: false, error: "unauthorized" },
@@ -64,11 +100,11 @@ export async function GET(_req: Request) {
             operationModeOverride: true,
           },
         },
-        assignments: {
+        PlaceAssignment: {
           where: { isActive: true },
           orderBy: { startsAt: "desc" },
           include: {
-            owner: {
+            Owner: {
               select: {
                 id: true,
                 name: true,
@@ -76,7 +112,7 @@ export async function GET(_req: Request) {
                 status: true,
               },
             },
-            agent: {
+            Agent: {
               select: {
                 id: true,
                 code: true,
@@ -87,7 +123,7 @@ export async function GET(_req: Request) {
             },
           },
         },
-        billingPolicies: {
+        PlaceBillingPolicy: {
           where: { isActive: true },
           orderBy: { startMonth: "desc" },
           take: 1,
@@ -95,9 +131,9 @@ export async function GET(_req: Request) {
       },
     });
 
-    const items = places.map((p: any) => {
-      const currentAssignment = p.assignments[0] ?? null;
-      const currentBillingPolicy = p.billingPolicies[0] ?? null;
+    const items = places.map((p) => {
+      const currentAssignment = p.PlaceAssignment[0] ?? null;
+      const currentBillingPolicy = p.PlaceBillingPolicy[0] ?? null;
 
       return {
         id: p.id,
@@ -111,23 +147,7 @@ export async function GET(_req: Request) {
         createdAt: p.createdAt,
         spotCount: p.spots.length,
         spots: p.spots,
-        currentAssignment: currentAssignment
-          ? {
-              id: currentAssignment.id,
-              ownerId: currentAssignment.ownerId,
-              agentId: currentAssignment.agentId,
-              contractType: currentAssignment.contractType,
-              ownerRateBps: currentAssignment.ownerRateBps,
-              agentRateBps: currentAssignment.agentRateBps,
-              platformRateBps: currentAssignment.platformRateBps,
-              startsAt: currentAssignment.startsAt,
-              endsAt: currentAssignment.endsAt,
-              isActive: currentAssignment.isActive,
-              note: currentAssignment.note,
-              owner: currentAssignment.owner,
-              agent: currentAssignment.agent,
-            }
-          : null,
+        currentAssignment: normalizeAssignmentForResponse(currentAssignment),
         currentBillingPolicy: currentBillingPolicy
           ? {
               id: currentBillingPolicy.id,
@@ -137,10 +157,8 @@ export async function GET(_req: Request) {
               taxRateBps: currentBillingPolicy.taxRateBps,
               monthlyMinFeeThreshold:
                 currentBillingPolicy.monthlyMinFeeThreshold,
-              ownerPayoutFeeBurden:
-                currentBillingPolicy.ownerPayoutFeeBurden,
-              agentPayoutFeeBurden:
-                currentBillingPolicy.agentPayoutFeeBurden,
+              ownerPayoutFeeBurden: currentBillingPolicy.ownerPayoutFeeBurden,
+              agentPayoutFeeBurden: currentBillingPolicy.agentPayoutFeeBurden,
               note: currentBillingPolicy.note,
               isActive: currentBillingPolicy.isActive,
             }
@@ -152,15 +170,13 @@ export async function GET(_req: Request) {
       ok: true,
       places: items,
     });
-  } catch (e: any) {
+  } catch (e: unknown) {
+    const message = e instanceof Error ? e.message : String(e);
+
     console.error("[places][GET] error:", e);
 
     return NextResponse.json(
-      {
-        ok: false,
-        error: "server_error",
-        message: String(e?.message ?? e),
-      },
+      { ok: false, error: "server_error", message },
       { status: 500 }
     );
   }
@@ -168,7 +184,6 @@ export async function GET(_req: Request) {
 
 export async function POST(req: Request) {
   const admin = await getAdminSession();
-
   if (!admin) {
     return NextResponse.json(
       { ok: false, error: "unauthorized" },
@@ -178,7 +193,6 @@ export async function POST(req: Request) {
 
   try {
     const body = await req.json().catch(() => null);
-
     if (!body) {
       return NextResponse.json(
         { ok: false, error: "invalid_json" },
@@ -220,15 +234,9 @@ export async function POST(req: Request) {
       ? String(body.policyEndMonth).trim()
       : "";
     const taxRateBps = Number(body.taxRateBps ?? 1000);
-    const monthlyMinFeeThreshold = Number(
-      body.monthlyMinFeeThreshold ?? 300
-    );
-    const ownerPayoutFeeBurden = Boolean(
-      body.ownerPayoutFeeBurden ?? false
-    );
-    const agentPayoutFeeBurden = Boolean(
-      body.agentPayoutFeeBurden ?? false
-    );
+    const monthlyMinFeeThreshold = Number(body.monthlyMinFeeThreshold ?? 300);
+    const ownerPayoutFeeBurden = Boolean(body.ownerPayoutFeeBurden ?? false);
+    const agentPayoutFeeBurden = Boolean(body.agentPayoutFeeBurden ?? false);
     const billingNote = body.billingNote
       ? String(body.billingNote).trim()
       : null;
@@ -255,7 +263,6 @@ export async function POST(req: Request) {
     }
 
     const slug = toSlug(rawSlug);
-
     if (!slug) {
       return NextResponse.json(
         { ok: false, error: "slug_invalid" },
@@ -314,8 +321,7 @@ export async function POST(req: Request) {
     }
 
     if (
-      (contractType === "HQ_BULK" ||
-        contractType === "OWNER_DIRECT") &&
+      (contractType === "HQ_BULK" || contractType === "OWNER_DIRECT") &&
       agentId
     ) {
       return NextResponse.json(
@@ -380,10 +386,7 @@ export async function POST(req: Request) {
       );
     }
 
-    if (
-      !Number.isFinite(monthlyMinFeeThreshold) ||
-      monthlyMinFeeThreshold < 0
-    ) {
+    if (!Number.isFinite(monthlyMinFeeThreshold) || monthlyMinFeeThreshold < 0) {
       return NextResponse.json(
         { ok: false, error: "monthlyMinFeeThreshold_invalid" },
         { status: 400 }
@@ -444,9 +447,10 @@ export async function POST(req: Request) {
 
     const normalizedAgentId =
       contractType === "OWNER_AGENT_PLATFORM" ? agentId : null;
-
     const normalizedAgentRateBps =
       contractType === "OWNER_AGENT_PLATFORM" ? agentRateBps : 0;
+
+    const now = new Date();
 
     const result = await prisma.$transaction(
       async (tx: Prisma.TransactionClient) => {
@@ -464,6 +468,7 @@ export async function POST(req: Request) {
               | "EVENT_ONLY"
               | "CLOSED",
             isActive,
+            updatedAt: now,
           },
         });
 
@@ -482,6 +487,7 @@ export async function POST(req: Request) {
 
         await tx.placeAssignment.create({
           data: {
+            id: crypto.randomUUID(),
             placeId: place.id,
             ownerId,
             agentId: normalizedAgentId,
@@ -496,11 +502,14 @@ export async function POST(req: Request) {
             endsAt,
             isActive: true,
             note: "Place作成時に同時作成",
+            createdAt: now,
+            updatedAt: now,
           },
         });
 
         await tx.placeBillingPolicy.create({
           data: {
+            id: crypto.randomUUID(),
             placeId: place.id,
             startMonth: policyStartMonth,
             endMonth: policyEndMonth || null,
@@ -514,6 +523,8 @@ export async function POST(req: Request) {
             agentPayoutFeeBurden,
             note: billingNote,
             isActive: true,
+            createdAt: now,
+            updatedAt: now,
           },
         });
 
@@ -538,7 +549,7 @@ export async function POST(req: Request) {
             startsAt: "desc",
           },
           include: {
-            owner: {
+            Owner: {
               select: {
                 id: true,
                 name: true,
@@ -546,7 +557,7 @@ export async function POST(req: Request) {
                 status: true,
               },
             },
-            agent: {
+            Agent: {
               select: {
                 id: true,
                 code: true,
@@ -558,23 +569,17 @@ export async function POST(req: Request) {
           },
         });
 
-        const currentBillingPolicy =
-          await tx.placeBillingPolicy.findFirst({
-            where: {
-              placeId: place.id,
-              isActive: true,
-            },
-            orderBy: {
-              startMonth: "desc",
-            },
-          });
+        const currentBillingPolicy = await tx.placeBillingPolicy.findFirst({
+          where: {
+            placeId: place.id,
+            isActive: true,
+          },
+          orderBy: {
+            startMonth: "desc",
+          },
+        });
 
-        return {
-          place,
-          spots,
-          currentAssignment,
-          currentBillingPolicy,
-        };
+        return { place, spots, currentAssignment, currentBillingPolicy };
       }
     );
 
@@ -584,19 +589,19 @@ export async function POST(req: Request) {
         ...result.place,
         spotCount: result.spots.length,
         spots: result.spots,
-        currentAssignment: result.currentAssignment,
+        currentAssignment: normalizeAssignmentForResponse(
+          result.currentAssignment
+        ),
         currentBillingPolicy: result.currentBillingPolicy,
       },
     });
-  } catch (e: any) {
+  } catch (e: unknown) {
+    const message = e instanceof Error ? e.message : String(e);
+
     console.error("[places][POST] error:", e);
 
     return NextResponse.json(
-      {
-        ok: false,
-        error: "server_error",
-        message: String(e?.message ?? e),
-      },
+      { ok: false, error: "server_error", message },
       { status: 500 }
     );
   }

@@ -30,6 +30,7 @@ async function main() {
       address: '宮城県宮城郡利府町',
       operationMode: OPERATION_MODE_RESERVATION_THEN_HOURLY,
       isActive: true,
+      updatedAt: new Date(),
     },
   })
 

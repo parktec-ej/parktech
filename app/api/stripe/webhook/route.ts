@@ -89,13 +89,13 @@ async function buildSettlementSnapshot(params: {
       OR: [{ endsAt: null }, { endsAt: { gte: baseDate } }],
     },
     include: {
-      owner: {
+      Owner: {
         select: {
           id: true,
           name: true,
         },
       },
-      agent: {
+      Agent: {
         select: {
           id: true,
           name: true,
@@ -126,11 +126,11 @@ async function buildSettlementSnapshot(params: {
     placeId: place.id,
     placeNameSnapshot: place.name,
 
-    ownerId: assignment.owner.id,
-    ownerNameSnapshot: assignment.owner.name,
+    ownerId: assignment.Owner.id,
+    ownerNameSnapshot: assignment.Owner.name,
 
-    agentId: assignment.agent?.id ?? null,
-    agentNameSnapshot: assignment.agent?.name ?? null,
+    agentId: assignment.Agent?.id ?? null,
+    agentNameSnapshot: assignment.Agent?.name ?? null,
 
     spotId: spot?.id ?? spotId ?? null,
     spotCodeSnapshot: spot?.code ?? null,
@@ -530,6 +530,8 @@ export async function POST(req: Request) {
 
           await prisma.payment.create({
             data: {
+              id: crypto.randomUUID(),
+              updatedAt: new Date(),
               kind: "RESERVATION",
               status: "CONFIRMED",
               settlementLock: "UNLOCKED",
@@ -880,6 +882,8 @@ export async function POST(req: Request) {
 
           await prisma.payment.create({
             data: {
+              id: crypto.randomUUID(),
+              updatedAt: new Date(),
               kind: "RESERVATION",
               status: "CONFIRMED",
               settlementLock: "UNLOCKED",
@@ -1142,6 +1146,8 @@ export async function POST(req: Request) {
 
           await prisma.payment.create({
             data: {
+              id: crypto.randomUUID(),
+              updatedAt: new Date(),
               kind: "HOURLY",
               status: "CONFIRMED",
               settlementLock: "UNLOCKED",

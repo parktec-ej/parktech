@@ -25,14 +25,14 @@ type CancellationReservationRow = {
     code: string;
     label: string | null;
   } | null;
-  payments: Array<{
+  Payments: Array<{
     id: string;
     paymentRef: string | null;
     paymentIntentId: string | null;
     grossAmount: number;
     refunded: boolean;
     createdAt: Date;
-    adjustments: Array<{
+    Adjustments: Array<{
       id: string;
       kind: string;
       status: string;
@@ -136,61 +136,61 @@ export async function GET(req: NextRequest) {
       where.refundStatus = status;
     }
 
-    const reservations: CancellationReservationRow[] =
-      await prisma.reservation.findMany({
-        where,
-        orderBy: [{ canceledAt: "desc" }, { createdAt: "desc" }],
-        take: limit,
-        include: {
-          place: {
-            select: {
-              id: true,
-              name: true,
-            },
-          },
-          spot: {
-            select: {
-              id: true,
-              code: true,
-              label: true,
-            },
-          },
-          payments: {
+  const reservations =
+  (await prisma.reservation.findMany({
+    where,
+    orderBy: [{ canceledAt: "desc" }, { createdAt: "desc" }],
+    take: limit,
+    include: {
+      place: {
+        select: {
+          id: true,
+          name: true,
+        },
+      },
+      spot: {
+        select: {
+          id: true,
+          code: true,
+          label: true,
+        },
+      },
+      Payment: {
+        orderBy: {
+          createdAt: "desc",
+        },
+        take: 1,
+        select: {
+          id: true,
+          paymentRef: true,
+          paymentIntentId: true,
+          grossAmount: true,
+          refunded: true,
+          createdAt: true,
+          Adjustment: {
             orderBy: {
               createdAt: "desc",
             },
-            take: 1,
             select: {
               id: true,
-              paymentRef: true,
-              paymentIntentId: true,
-              grossAmount: true,
-              refunded: true,
+              kind: true,
+              status: true,
+              grossDeltaAmount: true,
+              recognizedMonth: true,
+              reason: true,
+              note: true,
               createdAt: true,
-              adjustments: {
-                orderBy: {
-                  createdAt: "desc",
-                },
-                select: {
-                  id: true,
-                  kind: true,
-                  status: true,
-                  grossDeltaAmount: true,
-                  recognizedMonth: true,
-                  reason: true,
-                  note: true,
-                  createdAt: true,
-                },
-              },
             },
           },
         },
-      });
+      },
+    },
+  })) as unknown as CancellationReservationRow[];
 
     const rows: CancellationItem[] = reservations.map(
       (r: CancellationReservationRow) => {
-        const payment = r.payments[0] ?? null;
-        const latestAdjustment = payment?.adjustments?.[0] ?? null;
+        const payment = r.Payments[0] ?? null;
+        const latestAdjustment = payment?.Adjustments?.[0] ?? null;
 
         return {
           id: r.id,

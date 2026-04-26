@@ -1,22 +1,10 @@
 import { NextResponse } from "next/server";
+import crypto from "crypto";
 import { prisma } from "@/lib/db";
 import { requireAdmin } from "@/lib/admin-auth";
 
 const TAX_RATE = 0.1;
 const PLATFORM_RATE = 0.2;
-
-type CreateSettlementBody = {
-  month: string;
-  placeId: string;
-};
-
-type PaymentRow = {
-  id: string;
-  grossAmount: number;
-  ownerAmount: number;
-  agentAmount: number | null;
-  platformAmount: number;
-};
 
 function splitTax(gross: number) {
   const net = Math.floor(gross / (1 + TAX_RATE));
@@ -24,7 +12,7 @@ function splitTax(gross: number) {
   return { net, tax };
 }
 
-async function readPostBody(req: Request): Promise<CreateSettlementBody> {
+async function readPostBody(req: Request) {
   const contentType = req.headers.get("content-type") ?? "";
 
   if (contentType.includes("application/json")) {
@@ -66,7 +54,10 @@ export async function POST(req: Request) {
 
     const place = await prisma.place.findUnique({
       where: { id: placeId },
-      select: { id: true, ownerId: true },
+      select: {
+        id: true,
+        ownerId: true,
+      },
     });
 
     if (!place || !place.ownerId) {
@@ -83,6 +74,9 @@ export async function POST(req: Request) {
         month,
         placeId,
       },
+      select: {
+        id: true,
+      },
     });
 
     if (existing) {
@@ -97,7 +91,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const paymentsRaw = await prisma.payment.findMany({
+    const payments = await prisma.payment.findMany({
       where: {
         placeId,
         recognizedMonth: month,
@@ -106,16 +100,7 @@ export async function POST(req: Request) {
         },
         excludedFromSettlement: false,
       },
-      select: {
-        id: true,
-        grossAmount: true,
-        ownerAmount: true,
-        agentAmount: true,
-        platformAmount: true,
-      },
     });
-
-    const payments = paymentsRaw as PaymentRow[];
 
     if (payments.length === 0) {
       return NextResponse.redirect(
@@ -129,11 +114,9 @@ export async function POST(req: Request) {
       );
     }
 
-    const grossTotal = payments.reduce(
-      (sum: number, p: PaymentRow) => sum + p.grossAmount,
-      0
-    );
+    const now = new Date();
 
+    const grossTotal = payments.reduce((sum, p) => sum + p.grossAmount, 0);
     const { net: totalNet, tax: totalTax } = splitTax(grossTotal);
 
     const platformNet = Math.floor(totalNet * PLATFORM_RATE);
@@ -143,75 +126,91 @@ export async function POST(req: Request) {
     const ownerPayout = grossTotal - platformGross;
 
     const totalOwnerAmount = payments.reduce(
-      (sum: number, p: PaymentRow) => sum + p.ownerAmount,
+      (sum, p) => sum + p.ownerAmount,
       0
     );
 
     const totalAgentAmount = payments.reduce(
-      (sum: number, p: PaymentRow) => sum + (p.agentAmount ?? 0),
+      (sum, p) => sum + (p.agentAmount ?? 0),
       0
     );
 
     const totalPlatformAmount = payments.reduce(
-      (sum: number, p: PaymentRow) => sum + p.platformAmount,
+      (sum, p) => sum + p.platformAmount,
       0
     );
 
-    const settlement = await prisma.settlement.create({
-      data: {
-        month,
-        placeId,
-        ownerId,
-        agentId: null,
+    const settlement = await prisma.$transaction(async (tx) => {
+      const createdSettlement = await tx.settlement.create({
+        data: {
+          id: crypto.randomUUID(),
 
-        status: "LOCKED",
-        lockedAt: new Date(),
+          month,
+          placeId,
+          ownerId,
+          agentId: null,
 
-        paymentCount: payments.length,
-        adjustmentCount: 0,
+          status: "LOCKED",
+          lockedAt: now,
 
-        totalGrossAmount: grossTotal,
-        totalNetAmount: totalNet,
-        totalTaxAmount: totalTax,
+          paymentCount: payments.length,
+          adjustmentCount: 0,
 
-        platformFeeNet: platformNet,
-        platformFeeTax: platformTax,
-        platformFeeGross: platformGross,
+          totalGrossAmount: grossTotal,
+          totalNetAmount: totalNet,
+          totalTaxAmount: totalTax,
 
-        ownerPayoutAmount: ownerPayout,
+          platformFeeNet: platformNet,
+          platformFeeTax: platformTax,
+          platformFeeGross: platformGross,
 
-        totalOwnerAmount,
-        totalAgentAmount,
-        totalPlatformAmount,
+          ownerPayoutAmount: ownerPayout,
 
-        finalOwnerPayoutAmount: ownerPayout,
-        finalAgentPayoutAmount: totalAgentAmount,
-      },
-    });
+          totalOwnerAmount,
+          totalAgentAmount,
+          totalPlatformAmount,
 
-    await prisma.payment.updateMany({
-      where: {
-        id: {
-          in: payments.map((p: PaymentRow) => p.id),
+          finalOwnerPayoutAmount: ownerPayout,
+          finalAgentPayoutAmount: totalAgentAmount,
+
+          createdAt: now,
+          updatedAt: now,
         },
-      },
-      data: {
-        status: "SETTLED",
-        settlementLock: "LOCKED",
-        settledAt: new Date(),
-      },
-    });
+      });
 
-    await prisma.settlementItem.createMany({
-      data: payments.map((p: PaymentRow) => ({
-        settlementId: settlement.id,
-        paymentId: p.id,
-        itemType: "PAYMENT",
-        grossAmount: p.grossAmount,
-        ownerAmount: p.ownerAmount,
-        agentAmount: p.agentAmount ?? 0,
-        platformAmount: p.platformAmount,
-      })),
+      await tx.payment.updateMany({
+        where: {
+          id: {
+            in: payments.map((p) => p.id),
+          },
+        },
+        data: {
+          status: "SETTLED",
+          settlementLock: "LOCKED",
+          settledAt: now,
+          updatedAt: now,
+        },
+      });
+
+      await tx.settlementItem.createMany({
+        data: payments.map((p) => ({
+          id: crypto.randomUUID(),
+
+          settlementId: createdSettlement.id,
+          paymentId: p.id,
+          itemType: "PAYMENT",
+
+          grossAmount: p.grossAmount,
+          ownerAmount: p.ownerAmount,
+          agentAmount: p.agentAmount ?? 0,
+          platformAmount: p.platformAmount,
+
+          createdAt: now,
+          updatedAt: now,
+        })),
+      });
+
+      return createdSettlement;
     });
 
     return NextResponse.redirect(
@@ -225,7 +224,7 @@ export async function POST(req: Request) {
       ),
       { status: 303 }
     );
-  } catch (err: unknown) {
+  } catch (err) {
     console.error(err);
 
     return NextResponse.json(

@@ -2,64 +2,6 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getAgentSession } from "@/lib/agent-auth";
 
-type AgentAssignmentRow = {
-  id: string;
-  placeId: string;
-  startsAt: Date | null;
-  endsAt: Date | null;
-  agentRateBps: number;
-  ownerRateBps: number;
-  platformRateBps: number;
-  place: {
-    id: string;
-    slug: string | null;
-    name: string;
-    address: string | null;
-  };
-  owner: {
-    id: string;
-    name: string;
-    displayName: string | null;
-  } | null;
-};
-
-type PaymentRow = {
-  id: string;
-  placeId: string;
-  placeNameSnapshot: string;
-  recognizedDate: Date;
-  grossAmount: number | null;
-  ownerAmount: number | null;
-  agentAmount: number | null;
-  platformAmount: number | null;
-  status: string;
-  settledAt: Date | null;
-  createdAt: Date;
-};
-
-type PlaceSummaryRow = {
-  placeId: string;
-  placeName: string;
-  placeSlug: string | null;
-  address: string | null;
-  ownerId: string | null;
-  ownerName: string | null;
-  ownerDisplayName: string | null;
-  startsAt: Date | null;
-  endsAt: Date | null;
-  gross: number;
-  agentAmount: number;
-  settledAgentAmount: number;
-  paymentCount: number;
-};
-
-type DailySummaryRow = {
-  date: string;
-  gross: number;
-  agentAmount: number;
-  paymentCount: number;
-};
-
 function ymNowJst() {
   const now = new Date();
   const y = now.toLocaleDateString("sv-SE", {
@@ -107,7 +49,7 @@ export async function GET(req: Request) {
         name: true,
         displayName: true,
         email: true,
-        assignments: {
+        PlaceAssignment: {
           where: {
             isActive: true,
           },
@@ -119,7 +61,7 @@ export async function GET(req: Request) {
             agentRateBps: true,
             ownerRateBps: true,
             platformRateBps: true,
-            place: {
+            Place: {
               select: {
                 id: true,
                 slug: true,
@@ -127,7 +69,7 @@ export async function GET(req: Request) {
                 address: true,
               },
             },
-            owner: {
+            Owner: {
               select: {
                 id: true,
                 name: true,
@@ -147,11 +89,8 @@ export async function GET(req: Request) {
       );
     }
 
-    const assignments = agent.assignments as AgentAssignmentRow[];
-
-    const assignedPlaceIds = assignments.map(
-      (a: AgentAssignmentRow) => a.placeId
-    );
+    const assignments = agent.PlaceAssignment;
+    const assignedPlaceIds = assignments.map((a) => a.placeId);
 
     if (assignedPlaceIds.length === 0) {
       return NextResponse.json({
@@ -176,7 +115,7 @@ export async function GET(req: Request) {
       });
     }
 
-    const paymentsRaw = await prisma.payment.findMany({
+    const payments = await prisma.payment.findMany({
       where: {
         placeId: {
           in: assignedPlaceIds,
@@ -199,33 +138,46 @@ export async function GET(req: Request) {
       orderBy: [{ recognizedDate: "asc" }, { createdAt: "asc" }],
     });
 
-    const payments = paymentsRaw as PaymentRow[];
-
     const totalGross = payments.reduce(
-      (sum: number, p: PaymentRow) => sum + (p.grossAmount ?? 0),
+      (sum, p) => sum + (p.grossAmount ?? 0),
       0
     );
-
     const totalAgent = payments.reduce(
-      (sum: number, p: PaymentRow) => sum + (p.agentAmount ?? 0),
+      (sum, p) => sum + (p.agentAmount ?? 0),
       0
     );
-
     const settledAgent = payments
-      .filter((p: PaymentRow) => p.status === "SETTLED")
-      .reduce((sum: number, p: PaymentRow) => sum + (p.agentAmount ?? 0), 0);
+      .filter((p) => p.status === "SETTLED")
+      .reduce((sum, p) => sum + (p.agentAmount ?? 0), 0);
 
-    const placeMap = new Map<string, PlaceSummaryRow>();
+    const placeMap = new Map<
+      string,
+      {
+        placeId: string;
+        placeName: string;
+        placeSlug: string | null;
+        address: string | null;
+        ownerId: string | null;
+        ownerName: string | null;
+        ownerDisplayName: string | null;
+        startsAt: Date | null;
+        endsAt: Date | null;
+        gross: number;
+        agentAmount: number;
+        settledAgentAmount: number;
+        paymentCount: number;
+      }
+    >();
 
     for (const a of assignments) {
       placeMap.set(a.placeId, {
-        placeId: a.place.id,
-        placeName: a.place.name,
-        placeSlug: a.place.slug,
-        address: a.place.address,
-        ownerId: a.owner?.id ?? null,
-        ownerName: a.owner?.name ?? null,
-        ownerDisplayName: a.owner?.displayName ?? null,
+        placeId: a.Place.id,
+        placeName: a.Place.name,
+        placeSlug: a.Place.slug,
+        address: a.Place.address,
+        ownerId: a.Owner?.id ?? null,
+        ownerName: a.Owner?.name ?? null,
+        ownerDisplayName: a.Owner?.displayName ?? null,
         startsAt: a.startsAt,
         endsAt: a.endsAt,
         gross: 0,
@@ -248,12 +200,19 @@ export async function GET(req: Request) {
       }
     }
 
-    const places = Array.from(placeMap.values()).sort(
-      (a: PlaceSummaryRow, b: PlaceSummaryRow) =>
-        a.placeName.localeCompare(b.placeName, "ja")
+    const places = Array.from(placeMap.values()).sort((a, b) =>
+      a.placeName.localeCompare(b.placeName, "ja")
     );
 
-    const dailyMap = new Map<string, DailySummaryRow>();
+    const dailyMap = new Map<
+      string,
+      {
+        date: string;
+        gross: number;
+        agentAmount: number;
+        paymentCount: number;
+      }
+    >();
 
     for (const p of payments) {
       const date = ymdJst(p.recognizedDate);
@@ -271,9 +230,8 @@ export async function GET(req: Request) {
       dailyMap.set(date, current);
     }
 
-    const daily = Array.from(dailyMap.values()).sort(
-      (a: DailySummaryRow, b: DailySummaryRow) =>
-        a.date.localeCompare(b.date, "ja")
+    const daily = Array.from(dailyMap.values()).sort((a, b) =>
+      a.date.localeCompare(b.date, "ja")
     );
 
     return NextResponse.json({
@@ -300,14 +258,12 @@ export async function GET(req: Request) {
         note: "Payment.agentId 未保存のため、担当Placeベースで集計中",
       },
     });
-  } catch (e: unknown) {
-    const message = e instanceof Error ? e.message : String(e);
-
+  } catch (e: any) {
     return NextResponse.json(
       {
         ok: false,
         error: "server_error",
-        message,
+        message: String(e?.message ?? e),
       },
       { status: 500 }
     );

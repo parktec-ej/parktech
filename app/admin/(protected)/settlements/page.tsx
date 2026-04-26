@@ -13,97 +13,6 @@ type SearchParams = Promise<{
   id?: string;
 }>;
 
-type SettlementPlaceItem = {
-  id: string;
-  slug: string;
-  name: string;
-  address: string | null;
-  ownerId: string | null;
-  owner: {
-    id: string;
-    name: string;
-    displayName: string | null;
-  } | null;
-};
-
-type SettlementRow = {
-  id: string;
-  status: string;
-  createdAt: Date;
-  updatedAt: Date;
-  lockedAt: Date | null;
-  approvedAt: Date | null;
-  paidAt: Date | null;
-  paymentCount: number;
-  adjustmentCount: number;
-  totalGrossAmount: number;
-  totalOwnerAmount: number;
-  totalAgentAmount: number;
-  totalPlatformAmount: number;
-  monthlyMinFeeAdjustment: number;
-  finalOwnerPayoutAmount: number;
-  finalAgentPayoutAmount: number;
-  owner: {
-    name: string;
-    displayName: string | null;
-  } | null;
-  agent: {
-    name: string;
-    displayName: string | null;
-  } | null;
-  place: {
-    id: string;
-    slug: string;
-    name: string;
-    address: string | null;
-  };
-};
-
-type SettlementPaymentItem = {
-  id: string;
-  kind: string;
-  status: string;
-  recognizedDate: Date;
-  createdAt: Date;
-  serviceDate: string | null;
-  paymentRef: string | null;
-  customerNameSnapshot: string | null;
-  plateSnapshot: string | null;
-  grossAmount: number;
-  ownerAmount: number;
-  agentAmount: number;
-  platformAmount: number;
-  refunded: boolean;
-};
-
-type SettlementAdjustmentItem = {
-  id: string;
-  kind: string;
-  reason: string;
-  grossDeltaAmount: number;
-  ownerDeltaAmount: number;
-  agentDeltaAmount: number;
-  platformDeltaAmount: number;
-  recognizedDate: Date;
-  createdAt: Date;
-  payment: {
-    id: string;
-    paymentRef: string | null;
-    recognizedDate: Date;
-    customerNameSnapshot: string | null;
-    plateSnapshot: string | null;
-  } | null;
-};
-
-type OwnerMonthPayment = {
-  platformAmount: number;
-};
-
-type OwnerMonthAdjustment = {
-  platformDeltaAmount: number;
-};
-
-
 const MIN_PLATFORM_FEE_YEN = 300;
 
 function ymNowJst() {
@@ -230,24 +139,24 @@ export default async function SettlementsPage({
   const params = await searchParams;
   const month = normalizeMonth(params.month);
 
-  const places: SettlementPlaceItem[] = await prisma.place.findMany({
-    where: { isActive: true },
-    select: {
-      id: true,
-      slug: true,
-      name: true,
-      address: true,
-      ownerId: true,
-      owner: {
-        select: {
-          id: true,
-          name: true,
-          displayName: true,
-        },
+  const places = await prisma.place.findMany({
+  where: { isActive: true },
+  select: {
+    id: true,
+    name: true,
+    slug: true,
+    address: true,
+    ownerId: true,
+    owner: {
+      select: {
+        id: true,
+        name: true,
+        displayName: true,
       },
     },
-    orderBy: [{ createdAt: "asc" }],
-  });
+  },
+  orderBy: [{ createdAt: "asc" }],
+});
 
   if (places.length === 0) {
     return (
@@ -258,50 +167,50 @@ export default async function SettlementsPage({
     );
   }
 
-  const selectedPlace =
-    places.find((p: SettlementPlaceItem) => p.id === params.placeId) ?? places[0];
+  const selectedPlace = places.find((p) => p.id === params.placeId) ?? places[0];
 
   if (!selectedPlace) {
     redirect("/admin");
   }
 
-  const settlements: SettlementRow[] = await prisma.settlement.findMany({
-    where: {
-      placeId: selectedPlace.id,
-      month,
-      status: {
-        not: "CANCELLED",
+ const settlements = await prisma.settlement.findMany({
+  where: {
+    placeId: selectedPlace.id,
+    month,
+    status: {
+      not: "CANCELLED",
+    },
+  },
+  include: {
+    Owner: {
+      select: {
+        id: true,
+        name: true,
+        displayName: true,
       },
     },
-    include: {
-      owner: {
-        select: {
-          name: true,
-          displayName: true,
-        },
-      },
-      agent: {
-        select: {
-          name: true,
-          displayName: true,
-        },
-      },
-      place: {
-        select: {
-          id: true,
-          slug: true,
-          name: true,
-          address: true,
-        },
+    Agent: {
+      select: {
+        name: true,
+        displayName: true,
       },
     },
-    orderBy: [{ createdAt: "desc" }],
-  });
+    Place: {
+      select: {
+        id: true,
+        slug: true,
+        name: true,
+        address: true,
+      },
+    },
+  },
+  orderBy: [{ createdAt: "desc" }],
+});
 
   const latestSettlement = settlements[0] ?? null;
   const hasSettlement = settlements.length > 0;
 
-  const payments: SettlementPaymentItem[] = await prisma.payment.findMany({
+  const payments = await prisma.payment.findMany({
     where: {
       placeId: selectedPlace.id,
       recognizedMonth: month,
@@ -327,16 +236,16 @@ export default async function SettlementsPage({
     orderBy: [{ recognizedDate: "desc" }, { createdAt: "desc" }],
   });
 
-  const adjustments: SettlementAdjustmentItem[] = await prisma.adjustment.findMany({
+  const adjustments = await prisma.adjustment.findMany({
     where: {
       recognizedMonth: month,
       status: { in: ["CONFIRMED", "SETTLED"] },
-      payment: {
+      Payment: {
         placeId: selectedPlace.id,
       },
     },
     include: {
-      payment: {
+      Payment: {
         select: {
           id: true,
           paymentRef: true,
@@ -352,37 +261,25 @@ export default async function SettlementsPage({
   const paymentCount = payments.length;
   const adjustmentCount = adjustments.length;
 
-  const totalGrossAmount = payments.reduce(
-    (sum: number, p: SettlementPaymentItem) => sum + p.grossAmount,
-    0
-  );
-  const totalOwnerAmount = payments.reduce(
-    (sum: number, p: SettlementPaymentItem) => sum + p.ownerAmount,
-    0
-  );
-  const totalAgentAmount = payments.reduce(
-    (sum: number, p: SettlementPaymentItem) => sum + p.agentAmount,
-    0
-  );
-  const totalPlatformAmount = payments.reduce(
-    (sum: number, p: SettlementPaymentItem) => sum + p.platformAmount,
-    0
-  );
+  const totalGrossAmount = payments.reduce((sum, p) => sum + p.grossAmount, 0);
+  const totalOwnerAmount = payments.reduce((sum, p) => sum + p.ownerAmount, 0);
+  const totalAgentAmount = payments.reduce((sum, p) => sum + p.agentAmount, 0);
+  const totalPlatformAmount = payments.reduce((sum, p) => sum + p.platformAmount, 0);
 
   const totalGrossDeltaAmount = adjustments.reduce(
-    (sum: number, a: SettlementAdjustmentItem) => sum + a.grossDeltaAmount,
+    (sum, a) => sum + a.grossDeltaAmount,
     0
   );
   const totalOwnerDeltaAmount = adjustments.reduce(
-    (sum: number, a: SettlementAdjustmentItem) => sum + a.ownerDeltaAmount,
+    (sum, a) => sum + a.ownerDeltaAmount,
     0
   );
   const totalAgentDeltaAmount = adjustments.reduce(
-    (sum: number, a: SettlementAdjustmentItem) => sum + a.agentDeltaAmount,
+    (sum, a) => sum + a.agentDeltaAmount,
     0
   );
   const totalPlatformDeltaAmount = adjustments.reduce(
-    (sum: number, a: SettlementAdjustmentItem) => sum + a.platformDeltaAmount,
+    (sum, a) => sum + a.platformDeltaAmount,
     0
   );
 
@@ -393,7 +290,7 @@ export default async function SettlementsPage({
   const netPlatformAmountBeforeMinFee =
     totalPlatformAmount + totalPlatformDeltaAmount;
 
-  const ownerMonthPayments: OwnerMonthPayment[] = selectedPlace.ownerId
+  const ownerMonthPayments = selectedPlace.ownerId
     ? await prisma.payment.findMany({
         where: {
           ownerId: selectedPlace.ownerId,
@@ -407,12 +304,12 @@ export default async function SettlementsPage({
       })
     : [];
 
-  const ownerMonthAdjustments: OwnerMonthAdjustment[] = selectedPlace.ownerId
+  const ownerMonthAdjustments = selectedPlace.ownerId
     ? await prisma.adjustment.findMany({
         where: {
           recognizedMonth: month,
           status: { in: ["CONFIRMED", "SETTLED"] },
-          payment: {
+          Payment: {
             ownerId: selectedPlace.ownerId,
           },
         },
@@ -423,14 +320,8 @@ export default async function SettlementsPage({
     : [];
 
   const ownerMonthPlatformRaw =
-    ownerMonthPayments.reduce(
-      (sum: number, p: OwnerMonthPayment) => sum + p.platformAmount,
-      0
-    ) +
-    ownerMonthAdjustments.reduce(
-      (sum: number, a: OwnerMonthAdjustment) => sum + a.platformDeltaAmount,
-      0
-    );
+    ownerMonthPayments.reduce((sum, p) => sum + p.platformAmount, 0) +
+    ownerMonthAdjustments.reduce((sum, a) => sum + a.platformDeltaAmount, 0);
 
   const monthlyMinFeeAdjustment =
     latestSettlement?.monthlyMinFeeAdjustment ??
@@ -632,7 +523,7 @@ export default async function SettlementsPage({
                     </tr>
                   </thead>
                   <tbody>
-                    {settlements.map((s: SettlementRow) => (
+                    {settlements.map((s) => (
                       <tr key={s.id}>
                         <td style={tdStyle}>
                           <span style={statusBadgeStyle(s.status)}>
@@ -675,7 +566,7 @@ export default async function SettlementsPage({
                     </tr>
                   </thead>
                   <tbody>
-                    {recentAdjustments.map((a: SettlementAdjustmentItem) => (
+                    {recentAdjustments.map((a) => (
                       <tr key={a.id}>
                         <td style={tdStyle}>{fmtDateTime(a.createdAt)}</td>
                         <td style={tdStyle}>{a.kind}</td>
@@ -716,7 +607,7 @@ export default async function SettlementsPage({
                     </tr>
                   </thead>
                   <tbody>
-                    {recentPayments.map((p: SettlementPaymentItem) => (
+                    {recentPayments.map((p) => (
                       <tr key={p.id}>
                         <td style={tdStyle}>{fmtDateTime(p.createdAt)}</td>
                         <td style={tdStyle}>{p.serviceDate ?? fmtDate(p.recognizedDate)}</td>
@@ -745,7 +636,7 @@ export default async function SettlementsPage({
                 defaultValue={selectedPlace.id}
                 style={inputStyle}
               >
-                {places.map((place: SettlementPlaceItem) => (
+                {places.map((place) => (
                   <option key={place.id} value={place.id}>
                     {place.name} ({place.slug})
                   </option>

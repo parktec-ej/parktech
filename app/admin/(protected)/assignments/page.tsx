@@ -1,127 +1,142 @@
-import type { CSSProperties } from "react";
 import Link from "next/link";
+import type { CSSProperties } from "react";
 import { prisma } from "@/lib/db";
 import { requireAdmin } from "@/lib/admin-auth";
 
 type AssignmentRow = {
   id: string;
+  placeId: string;
+  ownerId: string;
+  agentId: string | null;
   ownerRateBps: number;
   agentRateBps: number;
   platformRateBps: number;
   startsAt: Date;
   endsAt: Date | null;
   isActive: boolean;
-  place: {
+  note: string | null;
+
+  Place: {
     id: string;
     name: string;
     slug: string;
   };
-  owner: {
+
+  Owner: {
     id: string;
     name: string;
   };
-  agent: {
+
+  Agent: {
     id: string;
-    name: string;
+    name: string | null;
   } | null;
 };
 
-function fmtPct(bps: number) {
+function ymd(date: Date | null) {
+  if (!date) return "-";
+  return new Date(date).toLocaleDateString("ja-JP");
+}
+
+function rate(bps: number) {
   return `${(bps / 100).toFixed(2)}%`;
 }
 
-function fmtDate(d: Date | null | undefined) {
-  if (!d) return "-";
-  return new Date(d).toLocaleDateString("sv-SE", { timeZone: "Asia/Tokyo" });
-}
-
-export default async function AssignmentsPage({
-  searchParams,
-}: {
-  searchParams?: Promise<{ created?: string; updated?: string }>;
-}) {
+export default async function AssignmentsPage() {
   await requireAdmin();
-  const sp = (await searchParams) ?? {};
 
-  const rows: AssignmentRow[] = await prisma.placeAssignment.findMany({
+  const rows = (await prisma.placeAssignment.findMany({
     include: {
-      place: { select: { id: true, name: true, slug: true } },
-      owner: { select: { id: true, name: true } },
-      agent: { select: { id: true, name: true } },
+      Place: {
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+        },
+      },
+      Owner: {
+        select: {
+          id: true,
+          name: true,
+        },
+      },
+      Agent: {
+        select: {
+          id: true,
+          name: true,
+        },
+      },
     },
-    orderBy: [{ placeId: "asc" }, { startsAt: "desc" }],
-  });
+    orderBy: [{ isActive: "desc" }, { startsAt: "desc" }],
+  })) as AssignmentRow[];
 
   return (
-    <main style={pageStyle}>
+    <div style={pageStyle}>
       <div style={headerStyle}>
         <div>
-          <h1 style={titleStyle}>料率・帰属設定</h1>
-          <div style={subStyle}>Placeごとの Owner / Agent / 率の適用ルール</div>
+          <h1 style={titleStyle}>配分契約管理</h1>
+          <p style={subStyle}>駐車場ごとのオーナー・代理店・本部配分設定</p>
         </div>
-        <Link href="/admin/assignments/new" style={primaryLinkStyle}>
-          新規登録
+
+        <Link href="/admin/assignments/new" style={buttonStyle}>
+          新規契約登録
         </Link>
       </div>
 
-      {(sp.created === "1" || sp.updated === "1") && (
-        <div style={noticeStyle}>
-          {sp.created === "1" && <div>PlaceAssignment を作成しました。</div>}
-          {sp.updated === "1" && <div>PlaceAssignment を更新しました。</div>}
-        </div>
-      )}
+      <div style={cardStyle}>
+        <table style={tableStyle}>
+          <thead>
+            <tr>
+              <th style={th}>状態</th>
+              <th style={th}>駐車場</th>
+              <th style={th}>オーナー</th>
+              <th style={th}>代理店</th>
+              <th style={th}>オーナー率</th>
+              <th style={th}>代理店率</th>
+              <th style={th}>本部率</th>
+              <th style={th}>開始日</th>
+              <th style={th}>終了日</th>
+              <th style={th}>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr key={row.id}>
+                <td style={td}>{row.isActive ? "有効" : "停止"}</td>
+                <td style={td}>{row.Place.name}</td>
+                <td style={td}>{row.Owner.name}</td>
+                <td style={td}>{row.Agent?.name ?? "-"}</td>
+                <td style={td}>{rate(row.ownerRateBps)}</td>
+                <td style={td}>{rate(row.agentRateBps)}</td>
+                <td style={td}>{rate(row.platformRateBps)}</td>
+                <td style={td}>{ymd(row.startsAt)}</td>
+                <td style={td}>{ymd(row.endsAt)}</td>
+                <td style={td}>
+                  <Link
+                    href={`/admin/assignments/${row.id}`}
+                    style={miniButton}
+                  >
+                    編集
+                  </Link>
+                </td>
+              </tr>
+            ))}
 
-      <section style={cardStyle}>
-        {rows.length === 0 ? (
-          <div style={{ color: "#666" }}>まだ設定がありません。</div>
-        ) : (
-          <div style={{ overflowX: "auto" }}>
-            <table style={tableStyle}>
-              <thead>
-                <tr>
-                  <th style={thStyle}>Place</th>
-                  <th style={thStyle}>Owner</th>
-                  <th style={thStyle}>Agent</th>
-                  <th style={thStyle}>Owner率</th>
-                  <th style={thStyle}>Agent率</th>
-                  <th style={thStyle}>本部率</th>
-                  <th style={thStyle}>開始日</th>
-                  <th style={thStyle}>終了日</th>
-                  <th style={thStyle}>状態</th>
-                  <th style={thStyle}>編集</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((row: AssignmentRow) => (
-                  <tr key={row.id}>
-                    <td style={tdStyle}>{row.place.name}</td>
-                    <td style={tdStyle}>{row.owner.name}</td>
-                    <td style={tdStyle}>{row.agent?.name ?? "-"}</td>
-                    <td style={tdStyle}>{fmtPct(row.ownerRateBps)}</td>
-                    <td style={tdStyle}>{fmtPct(row.agentRateBps)}</td>
-                    <td style={tdStyle}>{fmtPct(row.platformRateBps)}</td>
-                    <td style={tdStyle}>{fmtDate(row.startsAt)}</td>
-                    <td style={tdStyle}>{fmtDate(row.endsAt)}</td>
-                    <td style={tdStyle}>{row.isActive ? "有効" : "無効"}</td>
-                    <td style={tdStyle}>
-                      <Link href={`/admin/assignments/${row.id}`} style={smallLinkStyle}>
-                        編集
-                      </Link>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
-    </main>
+            {rows.length === 0 && (
+              <tr>
+                <td colSpan={10} style={emptyStyle}>
+                  契約データがありません
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
   );
 }
 
 const pageStyle: CSSProperties = {
-  maxWidth: 1100,
-  margin: "0 auto",
   padding: 24,
 };
 
@@ -134,26 +149,22 @@ const headerStyle: CSSProperties = {
 };
 
 const titleStyle: CSSProperties = {
-  fontSize: 30,
-  fontWeight: 900,
-  marginBottom: 6,
+  fontSize: 28,
+  fontWeight: 800,
+  margin: 0,
 };
 
 const subStyle: CSSProperties = {
-  color: "#666",
+  color: "#6b7280",
+  marginTop: 8,
 };
 
 const cardStyle: CSSProperties = {
   background: "#fff",
-  border: "1px solid #e5e7eb",
   borderRadius: 16,
+  border: "1px solid #e5e7eb",
   padding: 16,
-};
-
-const noticeStyle: CSSProperties = {
-  ...cardStyle,
-  marginBottom: 16,
-  background: "#f8fafc",
+  overflowX: "auto",
 };
 
 const tableStyle: CSSProperties = {
@@ -161,36 +172,39 @@ const tableStyle: CSSProperties = {
   borderCollapse: "collapse",
 };
 
-const thStyle: CSSProperties = {
+const th: CSSProperties = {
   textAlign: "left",
-  fontSize: 13,
-  color: "#666",
+  padding: 12,
   borderBottom: "1px solid #e5e7eb",
-  padding: "10px 12px",
-  whiteSpace: "nowrap",
+  color: "#6b7280",
+  fontSize: 13,
 };
 
-const tdStyle: CSSProperties = {
-  fontSize: 14,
+const td: CSSProperties = {
+  padding: 12,
   borderBottom: "1px solid #f1f5f9",
-  padding: "12px",
-  whiteSpace: "nowrap",
 };
 
-const primaryLinkStyle: CSSProperties = {
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
-  borderRadius: 10,
-  padding: "10px 14px",
+const buttonStyle: CSSProperties = {
   background: "#111827",
   color: "#fff",
-  fontWeight: 700,
+  padding: "12px 16px",
+  borderRadius: 12,
   textDecoration: "none",
+  fontWeight: 700,
 };
 
-const smallLinkStyle: CSSProperties = {
-  color: "#111827",
-  fontWeight: 700,
+const miniButton: CSSProperties = {
+  background: "#111827",
+  color: "#fff",
+  padding: "8px 12px",
+  borderRadius: 10,
   textDecoration: "none",
+  fontWeight: 700,
+};
+
+const emptyStyle: CSSProperties = {
+  textAlign: "center",
+  padding: 24,
+  color: "#6b7280",
 };

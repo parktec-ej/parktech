@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import crypto from "crypto";
 import { prisma } from "@/lib/db";
 import { getAdminSession } from "@/lib/admin-auth";
 
@@ -14,7 +15,7 @@ function asDate(value: FormDataEntryValue | null) {
 
   const d = new Date(`${s}T00:00:00+09:00`);
 
-  if (isNaN(d.getTime())) {
+  if (Number.isNaN(d.getTime())) {
     return null;
   }
 
@@ -23,6 +24,7 @@ function asDate(value: FormDataEntryValue | null) {
 
 export async function POST(req: Request) {
   const admin = await getAdminSession();
+
   if (!admin) {
     return NextResponse.json(
       { ok: false, error: "unauthorized" },
@@ -32,12 +34,6 @@ export async function POST(req: Request) {
 
   try {
     const fd = await req.formData();
-
-    console.log("DEBUG placeId =", fd.get("placeId"));
-console.log("DEBUG ownerId =", fd.get("ownerId"));
-console.log("DEBUG agentId =", fd.get("agentId"));
-console.log("DEBUG startsAt =", fd.get("startsAt"));
-console.log("DEBUG endsAt =", fd.get("endsAt"));
 
     const placeId = String(fd.get("placeId") ?? "").trim();
     const ownerId = String(fd.get("ownerId") ?? "").trim();
@@ -51,19 +47,19 @@ console.log("DEBUG endsAt =", fd.get("endsAt"));
     const startsAt = asDate(fd.get("startsAt"));
     const endsAt = asDate(fd.get("endsAt"));
 
-    if (!startsAt) {
-      return NextResponse.json(
-        { ok: false, error: "invalid_startsAt" },
-        { status: 400 }
-      );
-    }
-
     const isActive = String(fd.get("isActive") ?? "") === "on";
     const note = String(fd.get("note") ?? "").trim() || null;
 
     if (!placeId || !ownerId) {
       return NextResponse.json(
         { ok: false, error: "missing_required_fields" },
+        { status: 400 }
+      );
+    }
+
+    if (!startsAt) {
+      return NextResponse.json(
+        { ok: false, error: "invalid_startsAt" },
         { status: 400 }
       );
     }
@@ -141,8 +137,11 @@ console.log("DEBUG endsAt =", fd.get("endsAt"));
       );
     }
 
+    const now = new Date();
+
     await prisma.placeAssignment.create({
       data: {
+        id: crypto.randomUUID(),
         placeId,
         ownerId,
         agentId,
@@ -153,6 +152,8 @@ console.log("DEBUG endsAt =", fd.get("endsAt"));
         endsAt,
         isActive,
         note,
+        createdAt: now,
+        updatedAt: now,
       },
     });
 
@@ -160,9 +161,15 @@ console.log("DEBUG endsAt =", fd.get("endsAt"));
       new URL("/admin/assignments?created=1", req.url),
       { status: 303 }
     );
-  } catch (e: any) {
+  } catch (e: unknown) {
+    const message = e instanceof Error ? e.message : String(e);
+
     return NextResponse.json(
-      { ok: false, error: "server_error", message: String(e?.message ?? e) },
+      {
+        ok: false,
+        error: "server_error",
+        message,
+      },
       { status: 500 }
     );
   }

@@ -20,9 +20,9 @@ export default async function AssignmentDetailPage({
     prisma.placeAssignment.findUnique({
       where: { id },
       include: {
-        place: { select: { id: true, name: true, slug: true } },
-        owner: { select: { id: true, name: true } },
-        agent: { select: { id: true, name: true } },
+        Place: { select: { id: true, name: true, slug: true } },
+        Owner: { select: { id: true, name: true } },
+        Agent: { select: { id: true, name: true } },
       },
     }),
     prisma.place.findMany({

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import type { Prisma } from "@prisma/client";
+import crypto from "crypto";
 import { prisma } from "@/lib/db";
 import { getAdminSession } from "@/lib/admin-auth";
 
@@ -36,8 +37,12 @@ export async function GET(
   context: { params: Promise<{ id: string }> }
 ) {
   const admin = await getAdminSession();
+
   if (!admin) {
-    return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
+    return NextResponse.json(
+      { ok: false, error: "unauthorized" },
+      { status: 401 }
+    );
   }
 
   try {
@@ -46,12 +51,12 @@ export async function GET(
     const place = await prisma.place.findUnique({
       where: { id },
       include: {
-        assignments: {
+        PlaceAssignment: {
           where: { isActive: true },
           orderBy: { startsAt: "desc" },
           take: 1,
           include: {
-            owner: {
+            Owner: {
               select: {
                 id: true,
                 name: true,
@@ -59,7 +64,7 @@ export async function GET(
                 status: true,
               },
             },
-            agent: {
+            Agent: {
               select: {
                 id: true,
                 code: true,
@@ -80,7 +85,7 @@ export async function GET(
             operationModeOverride: true,
           },
         },
-        billingPolicies: {
+        PlaceBillingPolicy: {
           where: { isActive: true },
           orderBy: { startMonth: "desc" },
           take: 1,
@@ -90,7 +95,11 @@ export async function GET(
 
     if (!place) {
       return NextResponse.json(
-        { ok: false, error: "not_found", message: "Place が見つかりません" },
+        {
+          ok: false,
+          error: "not_found",
+          message: "Place が見つかりません",
+        },
         { status: 404 }
       );
     }
@@ -99,14 +108,21 @@ export async function GET(
       ok: true,
       place: {
         ...place,
-        currentAssignment: place.assignments[0] ?? null,
-        currentBillingPolicy: place.billingPolicies[0] ?? null,
+        currentAssignment: place.PlaceAssignment[0] ?? null,
+        currentBillingPolicy: place.PlaceBillingPolicy[0] ?? null,
       },
     });
-  } catch (e: any) {
+  } catch (e: unknown) {
+    const message = e instanceof Error ? e.message : String(e);
+
     console.error("[places/:id][GET] error:", e);
+
     return NextResponse.json(
-      { ok: false, error: "server_error", message: String(e?.message ?? e) },
+      {
+        ok: false,
+        error: "server_error",
+        message,
+      },
       { status: 500 }
     );
   }
@@ -117,8 +133,12 @@ export async function PATCH(
   context: { params: Promise<{ id: string }> }
 ) {
   const admin = await getAdminSession();
+
   if (!admin) {
-    return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
+    return NextResponse.json(
+      { ok: false, error: "unauthorized" },
+      { status: 401 }
+    );
   }
 
   try {
@@ -126,14 +146,21 @@ export async function PATCH(
     const body = await req.json().catch(() => null);
 
     if (!body) {
-      return NextResponse.json({ ok: false, error: "invalid_json" }, { status: 400 });
+      return NextResponse.json(
+        { ok: false, error: "invalid_json" },
+        { status: 400 }
+      );
     }
 
     const name = String(body.name ?? "").trim();
     const rawSlug = String(body.slug ?? "").trim();
     const address = body.address ? String(body.address).trim() : null;
-    const googleMapUrl = body.googleMapUrl ? String(body.googleMapUrl).trim() : null;
-    const operationMode = String(body.operationMode ?? "RESERVATION_THEN_HOURLY").trim();
+    const googleMapUrl = body.googleMapUrl
+      ? String(body.googleMapUrl).trim()
+      : null;
+    const operationMode = String(
+      body.operationMode ?? "RESERVATION_THEN_HOURLY"
+    ).trim();
 
     const assignmentId = body.assignmentId ? String(body.assignmentId).trim() : "";
     const ownerId = body.ownerId ? String(body.ownerId).trim() : "";
@@ -141,7 +168,9 @@ export async function PATCH(
     const agentIdRaw = body.agentId ? String(body.agentId).trim() : "";
     const agentId = agentIdRaw || null;
 
-    const contractType = String(body.contractType ?? "OWNER_AGENT_PLATFORM").trim();
+    const contractType = String(
+      body.contractType ?? "OWNER_AGENT_PLATFORM"
+    ).trim();
 
     const ownerRateBps = Number(body.ownerRateBps ?? NaN);
     const agentRateBps = Number(body.agentRateBps ?? NaN);
@@ -151,16 +180,26 @@ export async function PATCH(
     const endsAtRaw = body.endsAt ? String(body.endsAt).trim() : "";
 
     if (!name) {
-      return NextResponse.json({ ok: false, error: "name_required" }, { status: 400 });
+      return NextResponse.json(
+        { ok: false, error: "name_required" },
+        { status: 400 }
+      );
     }
 
     if (!rawSlug) {
-      return NextResponse.json({ ok: false, error: "slug_required" }, { status: 400 });
+      return NextResponse.json(
+        { ok: false, error: "slug_required" },
+        { status: 400 }
+      );
     }
 
     const slug = toSlug(rawSlug);
+
     if (!slug) {
-      return NextResponse.json({ ok: false, error: "slug_invalid" }, { status: 400 });
+      return NextResponse.json(
+        { ok: false, error: "slug_invalid" },
+        { status: 400 }
+      );
     }
 
     if (!isValidOperationMode(operationMode)) {
@@ -172,7 +211,11 @@ export async function PATCH(
 
     if (!ownerId) {
       return NextResponse.json(
-        { ok: false, error: "owner_required", message: "オーナーを選択してください。" },
+        {
+          ok: false,
+          error: "owner_required",
+          message: "オーナーを選択してください。",
+        },
         { status: 400 }
       );
     }
@@ -194,7 +237,11 @@ export async function PATCH(
       !Number.isFinite(platformRateBps)
     ) {
       return NextResponse.json(
-        { ok: false, error: "invalid_rate", message: "配分率が不正です。" },
+        {
+          ok: false,
+          error: "invalid_rate",
+          message: "配分率が不正です。",
+        },
         { status: 400 }
       );
     }
@@ -221,7 +268,10 @@ export async function PATCH(
       );
     }
 
-    if ((contractType === "HQ_BULK" || contractType === "OWNER_DIRECT") && agentId) {
+    if (
+      (contractType === "HQ_BULK" || contractType === "OWNER_DIRECT") &&
+      agentId
+    ) {
       return NextResponse.json(
         {
           ok: false,
@@ -275,7 +325,11 @@ export async function PATCH(
 
     if (!current) {
       return NextResponse.json(
-        { ok: false, error: "not_found", message: "Place が見つかりません" },
+        {
+          ok: false,
+          error: "not_found",
+          message: "Place が見つかりません",
+        },
         { status: 404 }
       );
     }
@@ -302,14 +356,22 @@ export async function PATCH(
 
     if (!owner) {
       return NextResponse.json(
-        { ok: false, error: "owner_not_found", message: "オーナーが見つかりません。" },
+        {
+          ok: false,
+          error: "owner_not_found",
+          message: "オーナーが見つかりません。",
+        },
         { status: 404 }
       );
     }
 
     if (owner.status !== "ACTIVE") {
       return NextResponse.json(
-        { ok: false, error: "owner_not_active", message: "有効なオーナーを選択してください。" },
+        {
+          ok: false,
+          error: "owner_not_active",
+          message: "有効なオーナーを選択してください。",
+        },
         { status: 400 }
       );
     }
@@ -322,14 +384,22 @@ export async function PATCH(
 
       if (!agent) {
         return NextResponse.json(
-          { ok: false, error: "agent_not_found", message: "代理店が見つかりません。" },
+          {
+            ok: false,
+            error: "agent_not_found",
+            message: "代理店が見つかりません。",
+          },
           { status: 404 }
         );
       }
 
       if (agent.status !== "ACTIVE") {
         return NextResponse.json(
-          { ok: false, error: "agent_not_active", message: "有効な代理店を選択してください。" },
+          {
+            ok: false,
+            error: "agent_not_active",
+            message: "有効な代理店を選択してください。",
+          },
           { status: 400 }
         );
       }
@@ -374,11 +444,15 @@ export async function PATCH(
               platformRateBps,
               startsAt,
               endsAt,
+              updatedAt: new Date(),
             },
           });
         } else {
+          const now = new Date();
+
           await tx.placeAssignment.create({
             data: {
+              id: crypto.randomUUID(),
               placeId: id,
               ownerId,
               agentId: normalizedAgentId,
@@ -393,6 +467,8 @@ export async function PATCH(
               endsAt,
               isActive: true,
               note: "Place編集時に作成",
+              createdAt: now,
+              updatedAt: now,
             },
           });
         }
@@ -406,7 +482,7 @@ export async function PATCH(
             startsAt: "desc",
           },
           include: {
-            owner: {
+            Owner: {
               select: {
                 id: true,
                 name: true,
@@ -414,7 +490,7 @@ export async function PATCH(
                 status: true,
               },
             },
-            agent: {
+            Agent: {
               select: {
                 id: true,
                 code: true,
@@ -446,10 +522,17 @@ export async function PATCH(
       currentAssignment: result.currentAssignment,
       currentBillingPolicy: result.currentBillingPolicy,
     });
-  } catch (e: any) {
+  } catch (e: unknown) {
+    const message = e instanceof Error ? e.message : String(e);
+
     console.error("[places/:id][PATCH] error:", e);
+
     return NextResponse.json(
-      { ok: false, error: "server_error", message: String(e?.message ?? e) },
+      {
+        ok: false,
+        error: "server_error",
+        message,
+      },
       { status: 500 }
     );
   }

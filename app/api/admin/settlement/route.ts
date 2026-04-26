@@ -56,7 +56,7 @@ type AdjustmentRow = {
   reason: string | null;
   note: string | null;
   createdAt: Date;
-  payment: {
+  Payment: {
     id: string;
     kind: string;
     paymentRef: string | null;
@@ -156,7 +156,7 @@ export async function GET(req: NextRequest) {
         },
         orderBy: [{ recognizedDate: "desc" }, { createdAt: "desc" }],
         include: {
-          payment: {
+          Payment: {
             select: {
               id: true,
               kind: true,
@@ -191,7 +191,7 @@ export async function GET(req: NextRequest) {
         ownerAmount: 0,
         agentAmount: 0,
         platformAmount: 0,
-      } as PaymentSummary
+      }
     );
 
     const adjustmentSummary = adjustments.reduce(
@@ -209,7 +209,7 @@ export async function GET(req: NextRequest) {
         ownerDeltaAmount: 0,
         agentDeltaAmount: 0,
         platformDeltaAmount: 0,
-      } as AdjustmentSummary
+      }
     );
 
     const netSummary = {
@@ -250,7 +250,6 @@ export async function GET(req: NextRequest) {
       }
 
       const row = byPlaceMap.get(key);
-
       if (!row) continue;
 
       row.paymentCount += 1;
@@ -261,12 +260,12 @@ export async function GET(req: NextRequest) {
     }
 
     for (const a of adjustments) {
-      const key = a.payment.placeId;
+      const key = a.Payment.placeId;
 
       if (!byPlaceMap.has(key)) {
         byPlaceMap.set(key, {
-          placeId: a.payment.placeId,
-          placeName: a.payment.placeNameSnapshot,
+          placeId: a.Payment.placeId,
+          placeName: a.Payment.placeNameSnapshot,
           paymentCount: 0,
           adjustmentCount: 0,
           grossAmount: 0,
@@ -285,7 +284,6 @@ export async function GET(req: NextRequest) {
       }
 
       const row = byPlaceMap.get(key);
-
       if (!row) continue;
 
       row.adjustmentCount += 1;
@@ -309,25 +307,27 @@ export async function GET(req: NextRequest) {
 
     const recentPayments = payments.slice(0, 50);
 
-    const recentAdjustments = adjustments.slice(0, 50).map((a: AdjustmentRow) => ({
-      id: a.id,
-      paymentId: a.paymentId,
-      paymentRef: a.payment.paymentRef,
-      placeName: a.payment.placeNameSnapshot,
-      ownerName: a.payment.ownerNameSnapshot,
-      agentName: a.payment.agentNameSnapshot,
-      kind: a.kind,
-      status: a.status,
-      recognizedMonth: a.recognizedMonth,
-      recognizedDate: a.recognizedDate,
-      grossDeltaAmount: a.grossDeltaAmount,
-      ownerDeltaAmount: a.ownerDeltaAmount,
-      agentDeltaAmount: a.agentDeltaAmount,
-      platformDeltaAmount: a.platformDeltaAmount,
-      reason: a.reason,
-      note: a.note,
-      createdAt: a.createdAt,
-    }));
+    const recentAdjustments = adjustments
+      .slice(0, 50)
+      .map((a: AdjustmentRow) => ({
+        id: a.id,
+        paymentId: a.paymentId,
+        paymentRef: a.Payment.paymentRef,
+        placeName: a.Payment.placeNameSnapshot,
+        ownerName: a.Payment.ownerNameSnapshot,
+        agentName: a.Payment.agentNameSnapshot,
+        kind: a.kind,
+        status: a.status,
+        recognizedMonth: a.recognizedMonth,
+        recognizedDate: a.recognizedDate,
+        grossDeltaAmount: a.grossDeltaAmount,
+        ownerDeltaAmount: a.ownerDeltaAmount,
+        agentDeltaAmount: a.agentDeltaAmount,
+        platformDeltaAmount: a.platformDeltaAmount,
+        reason: a.reason,
+        note: a.note,
+        createdAt: a.createdAt,
+      }));
 
     return NextResponse.json({
       ok: true,
