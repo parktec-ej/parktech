@@ -42,6 +42,7 @@ export async function POST(req: Request) {
       where: { id: reservationId },
       select: {
         id: true,
+        checkedIn: true,
         checkedOutAt: true,
       },
     });
@@ -57,6 +58,10 @@ export async function POST(req: Request) {
         reservationId,
         checkedOutAt: reservation.checkedOutAt.toISOString(),
       });
+    }
+
+    if (!reservation.checkedIn) {
+      return jsonError("not_checked_in", 409);
     }
 
     const now = new Date();
@@ -75,8 +80,8 @@ export async function POST(req: Request) {
           checkOutAt: null,
         },
         data: {
-          status: "OUT",
           checkOutAt: now,
+          status: "OUT",
         },
       });
     });
@@ -89,6 +94,8 @@ export async function POST(req: Request) {
     });
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : String(e);
+
+    console.error("POST /api/admin/reservations/force-checkout error:", e);
 
     return jsonError("server_error", 500, message);
   }

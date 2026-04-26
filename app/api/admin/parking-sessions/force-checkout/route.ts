@@ -1,10 +1,9 @@
 import { NextResponse } from "next/server";
-import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { getAdminSession } from "@/lib/admin-auth";
 
 type ForceCheckoutBody = {
-  reservationId?: unknown;
+  parkingSessionId?: unknown;
 };
 
 function jsonError(error: string, status: number, message?: string) {
@@ -32,70 +31,57 @@ export async function POST(req: Request) {
       return jsonError("invalid_json", 400);
     }
 
-    const reservationId = String(body.reservationId ?? "").trim();
+    const parkingSessionId = String(body.parkingSessionId ?? "").trim();
 
-    if (!reservationId) {
-      return jsonError("reservation_id_required", 400);
+    if (!parkingSessionId) {
+      return jsonError("parking_session_id_required", 400);
     }
 
-    const reservation = await prisma.reservation.findUnique({
-      where: { id: reservationId },
+    const session = await prisma.parkingSession.findUnique({
+      where: { id: parkingSessionId },
       select: {
         id: true,
-        checkedIn: true,
-        checkedInAt: true,
-        checkedOutAt: true,
+        status: true,
+        checkOutAt: true,
+        paid: true,
+        reservationId: true,
       },
     });
 
-    if (!reservation) {
-      return jsonError("reservation_not_found", 404);
+    if (!session) {
+      return jsonError("parking_session_not_found", 404);
     }
 
-    if (reservation.checkedOutAt) {
-      return NextResponse.json(
-        {
-          ok: true,
-          status: "already_checked_out",
-          reservationId,
-          checkedOutAt: reservation.checkedOutAt.toISOString(),
-        },
-        { status: 200 }
-      );
+    if (session.status === "OUT" || session.checkOutAt) {
+      return NextResponse.json({
+        ok: true,
+        status: "already_checked_out",
+        parkingSessionId,
+        checkedOutAt: session.checkOutAt?.toISOString() ?? null,
+      });
     }
 
     const now = new Date();
 
-    await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-      await tx.reservation.update({
-        where: { id: reservationId },
-        data: {
-          checkedOutAt: now,
-        },
-      });
-
-      await tx.parkingSession.updateMany({
-        where: {
-          reservationId,
-          checkOutAt: null,
-        },
-        data: {
-          status: "OUT",
-          checkOutAt: now,
-        },
-      });
+    await prisma.parkingSession.update({
+      where: { id: parkingSessionId },
+      data: {
+        status: "OUT",
+        checkOutAt: now,
+      },
     });
 
     return NextResponse.json({
       ok: true,
       status: "forced_checked_out",
-      reservationId,
+      parkingSessionId,
       checkedOutAt: now.toISOString(),
+      note: "駐車状態のみ終了。精算完了ではありません。",
     });
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : String(e);
 
-    console.error("POST /api/admin/reservations/force-checkout error:", e);
+    console.error("POST /api/admin/parking-sessions/force-checkout error:", e);
 
     return jsonError("server_error", 500, message);
   }
