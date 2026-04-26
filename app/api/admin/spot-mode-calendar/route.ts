@@ -1,6 +1,36 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 
+type OperationMode =
+  | "RESERVATION_ONLY"
+  | "HOURLY_ONLY"
+  | "RESERVATION_THEN_HOURLY"
+  | "EVENT_ONLY"
+  | "CLOSED";
+
+type SpotRow = {
+  id: string;
+  code: string;
+  label: string | null;
+  operationModeOverride: OperationMode | null;
+};
+
+type SpotModeCalendarRow = {
+  id: string;
+  spotId: string;
+  date: string | Date;
+  operationMode: OperationMode;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+type SpotModeCalendarBody = {
+  placeId?: unknown;
+  spotId?: unknown;
+  date?: unknown;
+  operationMode?: unknown;
+};
+
 function normalizeDate(input: string): string {
   const v = String(input ?? "").trim();
 
@@ -17,7 +47,7 @@ function isValidDate(v: string) {
   return /^\d{4}-\d{2}-\d{2}$/.test(v);
 }
 
-function isValidOperationMode(v: string) {
+function isValidOperationMode(v: string): v is OperationMode {
   return [
     "RESERVATION_ONLY",
     "HOURLY_ONLY",
@@ -38,7 +68,7 @@ function jsonError(
       ok: false,
       error,
       message,
-      ...(extra ? { extra } : {}),
+      ...(extra !== undefined ? { extra } : {}),
     },
     { status }
   );
@@ -48,20 +78,14 @@ export async function GET(req: Request) {
   try {
     const url = new URL(req.url);
 
-    const placeKey = String(
-      url.searchParams.get("placeId") ?? ""
-    ).trim();
+    const placeKey = String(url.searchParams.get("placeId") ?? "").trim();
 
     const date = normalizeDate(
       String(url.searchParams.get("date") ?? "").trim()
     );
 
     if (!placeKey) {
-      return jsonError(
-        "missing_place_id",
-        "placeId は必須です",
-        400
-      );
+      return jsonError("missing_place_id", "placeId は必須です", 400);
     }
 
     if (!date || !isValidDate(date)) {
@@ -84,14 +108,10 @@ export async function GET(req: Request) {
     });
 
     if (!place) {
-      return jsonError(
-        "place_not_found",
-        "place が見つかりません",
-        404
-      );
+      return jsonError("place_not_found", "place が見つかりません", 404);
     }
 
-    const spots = await prisma.spot.findMany({
+    const spotsRaw = await prisma.spot.findMany({
       where: {
         placeId: place.id,
         isActive: true,
@@ -107,27 +127,29 @@ export async function GET(req: Request) {
       },
     });
 
-    const calendars =
-      await prisma.spotModeCalendar.findMany({
-        where: {
-          placeId: place.id,
-          date,
-        },
-        select: {
-          id: true,
-          spotId: true,
-          date: true,
-          operationMode: true,
-          createdAt: true,
-          updatedAt: true,
-        },
-      });
+    const calendarsRaw = await prisma.spotModeCalendar.findMany({
+      where: {
+        placeId: place.id,
+        date,
+      },
+      select: {
+        id: true,
+        spotId: true,
+        date: true,
+        operationMode: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
 
-    const calendarMap = new Map(
-      calendars.map((x) => [x.spotId, x])
+    const spots = spotsRaw as SpotRow[];
+    const calendars = calendarsRaw as SpotModeCalendarRow[];
+
+    const calendarMap = new Map<string, SpotModeCalendarRow>(
+      calendars.map((x: SpotModeCalendarRow) => [x.spotId, x])
     );
 
-    const rows = spots.map((spot) => {
+    const rows = spots.map((spot: SpotRow) => {
       const day = calendarMap.get(spot.id);
 
       return {
@@ -136,8 +158,7 @@ export async function GET(req: Request) {
         label: spot.label,
         date,
         operationMode: day?.operationMode ?? null,
-        inheritedOperationMode:
-          spot.operationModeOverride ?? null,
+        inheritedOperationMode: spot.operationModeOverride ?? null,
         calendarId: day?.id ?? null,
         createdAt: day?.createdAt ?? null,
         updatedAt: day?.updatedAt ?? null,
@@ -154,57 +175,34 @@ export async function GET(req: Request) {
       date,
       items: rows,
     });
-  } catch (e: any) {
-    return jsonError(
-      "server_error",
-      String(e?.message ?? e),
-      500
-    );
+  } catch (e: unknown) {
+    const message = e instanceof Error ? e.message : String(e);
+
+    return jsonError("server_error", message, 500);
   }
 }
 
 export async function POST(req: Request) {
   try {
-    const body = await req.json().catch(() => null);
+    const body = (await req.json().catch(() => null)) as
+      | SpotModeCalendarBody
+      | null;
 
-    if (!body) {
-      return jsonError(
-        "invalid_json",
-        "JSONが壊れています",
-        400
-      );
+    if (!body || typeof body !== "object") {
+      return jsonError("invalid_json", "JSONが壊れています", 400);
     }
 
-    const placeKey = String(
-      body.placeId ?? ""
-    ).trim();
-
-    const spotId = String(
-      body.spotId ?? ""
-    ).trim();
-
-    const date = normalizeDate(
-      String(body.date ?? "").trim()
-    );
-
-    const operationMode = String(
-      body.operationMode ?? ""
-    ).trim();
+    const placeKey = String(body.placeId ?? "").trim();
+    const spotId = String(body.spotId ?? "").trim();
+    const date = normalizeDate(String(body.date ?? "").trim());
+    const operationMode = String(body.operationMode ?? "").trim();
 
     if (!placeKey) {
-      return jsonError(
-        "missing_place_id",
-        "placeId は必須です",
-        400
-      );
+      return jsonError("missing_place_id", "placeId は必須です", 400);
     }
 
     if (!spotId) {
-      return jsonError(
-        "missing_spot_id",
-        "spotId は必須です",
-        400
-      );
+      return jsonError("missing_spot_id", "spotId は必須です", 400);
     }
 
     if (!date || !isValidDate(date)) {
@@ -216,11 +214,7 @@ export async function POST(req: Request) {
     }
 
     if (!isValidOperationMode(operationMode)) {
-      return jsonError(
-        "invalid_operation_mode",
-        "operationMode が不正です",
-        400
-      );
+      return jsonError("invalid_operation_mode", "operationMode が不正です", 400);
     }
 
     const place = await prisma.place.findFirst({
@@ -235,11 +229,7 @@ export async function POST(req: Request) {
     });
 
     if (!place) {
-      return jsonError(
-        "place_not_found",
-        "place が見つかりません",
-        404
-      );
+      return jsonError("place_not_found", "place が見つかりません", 404);
     }
 
     const spot = await prisma.spot.findFirst({
@@ -256,42 +246,35 @@ export async function POST(req: Request) {
     });
 
     if (!spot) {
-      return jsonError(
-        "spot_not_found",
-        "spot が見つかりません",
-        404
-      );
+      return jsonError("spot_not_found", "spot が見つかりません", 404);
     }
 
-    const saved =
-      await prisma.spotModeCalendar.upsert({
-        where: {
-          spotId_date: {
-            spotId: spot.id,
-            date,
-          },
-        },
-        update: {
-          operationMode:
-            operationMode as any,
-        },
-        create: {
-          placeId: place.id,
+    const saved = await prisma.spotModeCalendar.upsert({
+      where: {
+        spotId_date: {
           spotId: spot.id,
           date,
-          operationMode:
-            operationMode as any,
         },
-        select: {
-          id: true,
-          placeId: true,
-          spotId: true,
-          date: true,
-          operationMode: true,
-          createdAt: true,
-          updatedAt: true,
-        },
-      });
+      },
+      update: {
+        operationMode,
+      },
+      create: {
+        placeId: place.id,
+        spotId: spot.id,
+        date,
+        operationMode,
+      },
+      select: {
+        id: true,
+        placeId: true,
+        spotId: true,
+        date: true,
+        operationMode: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
 
     return NextResponse.json({
       ok: true,
@@ -307,53 +290,33 @@ export async function POST(req: Request) {
         label: spot.label,
       },
     });
-  } catch (e: any) {
-    return jsonError(
-      "server_error",
-      String(e?.message ?? e),
-      500
-    );
+  } catch (e: unknown) {
+    const message = e instanceof Error ? e.message : String(e);
+
+    return jsonError("server_error", message, 500);
   }
 }
 
 export async function DELETE(req: Request) {
   try {
-    const body = await req.json().catch(() => null);
+    const body = (await req.json().catch(() => null)) as
+      | SpotModeCalendarBody
+      | null;
 
-    if (!body) {
-      return jsonError(
-        "invalid_json",
-        "JSONが壊れています",
-        400
-      );
+    if (!body || typeof body !== "object") {
+      return jsonError("invalid_json", "JSONが壊れています", 400);
     }
 
-    const placeKey = String(
-      body.placeId ?? ""
-    ).trim();
-
-    const spotId = String(
-      body.spotId ?? ""
-    ).trim();
-
-    const date = normalizeDate(
-      String(body.date ?? "").trim()
-    );
+    const placeKey = String(body.placeId ?? "").trim();
+    const spotId = String(body.spotId ?? "").trim();
+    const date = normalizeDate(String(body.date ?? "").trim());
 
     if (!placeKey) {
-      return jsonError(
-        "missing_place_id",
-        "placeId は必須です",
-        400
-      );
+      return jsonError("missing_place_id", "placeId は必須です", 400);
     }
 
     if (!spotId) {
-      return jsonError(
-        "missing_spot_id",
-        "spotId は必須です",
-        400
-      );
+      return jsonError("missing_spot_id", "spotId は必須です", 400);
     }
 
     if (!date || !isValidDate(date)) {
@@ -374,11 +337,7 @@ export async function DELETE(req: Request) {
     });
 
     if (!place) {
-      return jsonError(
-        "place_not_found",
-        "place が見つかりません",
-        404
-      );
+      return jsonError("place_not_found", "place が見つかりません", 404);
     }
 
     const spot = await prisma.spot.findFirst({
@@ -393,32 +352,26 @@ export async function DELETE(req: Request) {
     });
 
     if (!spot) {
-      return jsonError(
-        "spot_not_found",
-        "spot が見つかりません",
-        404
-      );
+      return jsonError("spot_not_found", "spot が見つかりません", 404);
     }
 
-    const existing =
-      await prisma.spotModeCalendar.findUnique({
-        where: {
-          spotId_date: {
-            spotId: spot.id,
-            date,
-          },
+    const existing = await prisma.spotModeCalendar.findUnique({
+      where: {
+        spotId_date: {
+          spotId: spot.id,
+          date,
         },
-        select: {
-          id: true,
-        },
-      });
+      },
+      select: {
+        id: true,
+      },
+    });
 
     if (!existing) {
       return NextResponse.json({
         ok: true,
         deleted: false,
-        message:
-          "対象データは存在しませんでした",
+        message: "対象データは存在しませんでした",
       });
     }
 
@@ -437,11 +390,9 @@ export async function DELETE(req: Request) {
       spotId: spot.id,
       date,
     });
-  } catch (e: any) {
-    return jsonError(
-      "server_error",
-      String(e?.message ?? e),
-      500
-    );
+  } catch (e: unknown) {
+    const message = e instanceof Error ? e.message : String(e);
+
+    return jsonError("server_error", message, 500);
   }
 }
