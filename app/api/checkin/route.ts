@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 
 function normalizeSlot(input: string): string {
@@ -17,10 +18,13 @@ function normalizeSlot(input: string): string {
 
 function normalizeDate(input: string): string {
   const v = String(input ?? "").trim();
+
   if (!v) return "";
+
   if (/^\d{8}$/.test(v)) {
     return `${v.slice(0, 4)}-${v.slice(4, 6)}-${v.slice(6, 8)}`;
   }
+
   return v;
 }
 
@@ -165,48 +169,50 @@ export async function POST(req: Request) {
 
     const now = new Date();
 
-    const updated = await prisma.$transaction(async (tx) => {
-      const updatedReservation = await tx.reservation.update({
-        where: { id: reservation.id },
-        data: {
-          checkedIn: true,
-          checkedInAt: now,
-        },
-        select: {
-          id: true,
-          checkedInAt: true,
-        },
-      });
-
-      const existingOpenSession = await tx.parkingSession.findFirst({
-        where: {
-          reservationId: reservation.id,
-          placeId: resolvedPlaceId,
-          spotId: spot.id,
-          sessionType: "RESERVATION",
-          status: "IN",
-          checkOutAt: null,
-        },
-        select: {
-          id: true,
-        },
-      });
-
-      if (!existingOpenSession) {
-        await tx.parkingSession.create({
+    const updated = await prisma.$transaction(
+      async (tx: Prisma.TransactionClient) => {
+        const updatedReservation = await tx.reservation.update({
+          where: { id: reservation.id },
           data: {
+            checkedIn: true,
+            checkedInAt: now,
+          },
+          select: {
+            id: true,
+            checkedInAt: true,
+          },
+        });
+
+        const existingOpenSession = await tx.parkingSession.findFirst({
+          where: {
             reservationId: reservation.id,
             placeId: resolvedPlaceId,
             spotId: spot.id,
             sessionType: "RESERVATION",
-            checkInAt: now,
             status: "IN",
+            checkOutAt: null,
+          },
+          select: {
+            id: true,
           },
         });
-      }
 
-      return updatedReservation;
-    });
+        if (!existingOpenSession) {
+          await tx.parkingSession.create({
+            data: {
+              reservationId: reservation.id,
+              placeId: resolvedPlaceId,
+              spotId: spot.id,
+              sessionType: "RESERVATION",
+              checkInAt: now,
+              status: "IN",
+            },
+          });
+        }
+
+        return updatedReservation;
+      }
+    );
 
     return NextResponse.json({
       ok: true,
@@ -219,12 +225,14 @@ export async function POST(req: Request) {
       date,
       slot,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+
     return NextResponse.json(
       {
         ok: false,
         error: "server_error",
-        message: String(error?.message ?? error),
+        message,
       },
       { status: 500 }
     );
