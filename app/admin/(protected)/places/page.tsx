@@ -560,6 +560,13 @@ export default function AdminPlacesPage() {
                         >
                           {busySpotId === spot.id ? "処理中..." : "停止"}
                         </button>
+
+                        <Link
+                          href={`/admin/qr?place=${encodeURIComponent(place.slug)}&slot=${encodeURIComponent(spot.code)}`}
+                          style={qrButtonStyle}
+                        >
+                          QR
+                        </Link>
                       </div>
                     </div>
                   ))}
@@ -865,6 +872,19 @@ const inactiveTitleStyle: React.CSSProperties = {
   fontSize: 16,
   fontWeight: 900,
   marginBottom: 10,
+};
+
+const qrButtonStyle: React.CSSProperties = {
+  display: "inline-block",
+  textDecoration: "none",
+  padding: "10px 16px",
+  borderRadius: 10,
+  border: "1px solid #7c3aed",
+  background: "#fff",
+  color: "#7c3aed",
+  fontWeight: 800,
+  minWidth: 84,
+  textAlign: "center",
 };
 
 const inactiveSpotRowStyle: React.CSSProperties = {
