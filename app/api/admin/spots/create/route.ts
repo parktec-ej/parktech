@@ -1,7 +1,13 @@
 import { NextResponse } from "next/server";
-import { OperationMode } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { requireAdmin } from "@/lib/admin-auth";
+
+type OperationMode =
+  | "RESERVATION_ONLY"
+  | "HOURLY_ONLY"
+  | "RESERVATION_THEN_HOURLY"
+  | "EVENT_ONLY"
+  | "CLOSED";
 
 export async function POST(req: Request) {
   try {
@@ -23,6 +29,7 @@ export async function POST(req: Request) {
       rawOperationModeOverride === "RESERVATION_ONLY" ||
       rawOperationModeOverride === "HOURLY_ONLY" ||
       rawOperationModeOverride === "RESERVATION_THEN_HOURLY" ||
+      rawOperationModeOverride === "EVENT_ONLY" ||
       rawOperationModeOverride === "CLOSED"
         ? rawOperationModeOverride
         : null;
@@ -53,8 +60,9 @@ export async function POST(req: Request) {
     });
 
     return NextResponse.json({ ok: true, spot: created });
-  } catch (err) {
+  } catch (err: unknown) {
     console.error(err);
+
     return NextResponse.json(
       { ok: false, error: "server_error" },
       { status: 500 }
