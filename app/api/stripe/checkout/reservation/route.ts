@@ -184,8 +184,9 @@ export async function POST(req: NextRequest) {
 
     const price = await getReservationFixedPrice(place.id, date);
 
-    const appUrl =
-      process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+    const appUrl = (
+      process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"
+    ).trim();
 
     const session = await stripe.checkout.sessions.create({
       mode: "payment",

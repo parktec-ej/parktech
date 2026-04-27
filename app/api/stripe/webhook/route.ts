@@ -364,8 +364,9 @@ export async function POST(req: Request) {
         let slotLabelForReceipt = slot;
         let googleMapUrlForMail: string | null = null;
 
-        const appUrl =
-          process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+        const appUrl = (
+          process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"
+        ).trim();
 
         if (existingByPayment) {
           reservationId = existingByPayment.id;
@@ -705,8 +706,9 @@ export async function POST(req: Request) {
         let slotLabelForReceipt = slot;
         let googleMapUrlForMail: string | null = null;
 
-        const appUrl =
-          process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+        const appUrl = (
+          process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"
+        ).trim();
 
         if (existingByPayment) {
           reservationId = existingByPayment.id;

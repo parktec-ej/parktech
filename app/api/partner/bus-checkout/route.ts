@@ -235,10 +235,11 @@ export async function POST(req: Request) {
       );
     }
 
-    const appUrl =
+    const appUrl = (
       process.env.NEXT_PUBLIC_APP_URL ||
       process.env.NEXT_PUBLIC_BASE_URL ||
-      "http://localhost:3000";
+      "http://localhost:3000"
+    ).trim();
 
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
