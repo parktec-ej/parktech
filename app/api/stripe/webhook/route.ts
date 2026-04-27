@@ -513,135 +513,143 @@ export async function POST(req: Request) {
         });
 
         if (!hasPayment) {
-          const snapshot = await buildSettlementSnapshot({
-            placeId,
-            spotId: spotId || null,
-            baseDate: toJstDateStart(date),
-          });
+          try {
+            const snapshot = await buildSettlementSnapshot({
+              placeId,
+              spotId: spotId || null,
+              baseDate: toJstDateStart(date),
+            });
 
-          const recognizedDate = toJstDateStart(date);
-          const recognizedMonth = getRecognizedMonthFromYmd(date);
+            const recognizedDate = toJstDateStart(date);
+            const recognizedMonth = getRecognizedMonthFromYmd(date);
 
-          const { ownerAmount, agentAmount, platformAmount } = calcSplitAmounts(
-            price,
-            snapshot.ownerRateBps,
-            snapshot.agentRateBps,
-            snapshot.platformRateBps
-          );
+            const { ownerAmount, agentAmount, platformAmount } = calcSplitAmounts(
+              price,
+              snapshot.ownerRateBps,
+              snapshot.agentRateBps,
+              snapshot.platformRateBps
+            );
 
-          await prisma.payment.create({
-            data: {
-              id: crypto.randomUUID(),
-              updatedAt: new Date(),
-              kind: "RESERVATION",
-              status: "CONFIRMED",
-              settlementLock: "UNLOCKED",
+            await prisma.payment.create({
+              data: {
+                id: crypto.randomUUID(),
+                updatedAt: new Date(),
+                kind: "RESERVATION",
+                status: "CONFIRMED",
+                settlementLock: "UNLOCKED",
 
-              reservationId,
-              parkingSessionId: null,
+                reservationId,
+                parkingSessionId: null,
 
-              paymentRef,
-              paymentIntentId,
-              checkoutSessionId: session.id,
-              stripeChargeId: null,
+                paymentRef,
+                paymentIntentId,
+                checkoutSessionId: session.id,
+                stripeChargeId: null,
 
-              placeId: snapshot.placeId,
-              spotId: snapshot.spotId,
-              ownerId: snapshot.ownerId,
-              agentId: snapshot.agentId,
+                placeId: snapshot.placeId,
+                spotId: snapshot.spotId,
+                ownerId: snapshot.ownerId,
+                agentId: snapshot.agentId,
 
-              placeNameSnapshot: snapshot.placeNameSnapshot,
-              spotCodeSnapshot: snapshot.spotCodeSnapshot,
-              spotLabelSnapshot: snapshot.spotLabelSnapshot,
+                placeNameSnapshot: snapshot.placeNameSnapshot,
+                spotCodeSnapshot: snapshot.spotCodeSnapshot,
+                spotLabelSnapshot: snapshot.spotLabelSnapshot,
 
-              ownerNameSnapshot: snapshot.ownerNameSnapshot,
-              agentNameSnapshot: snapshot.agentNameSnapshot,
+                ownerNameSnapshot: snapshot.ownerNameSnapshot,
+                agentNameSnapshot: snapshot.agentNameSnapshot,
 
-              recognizedDate,
-              recognizedMonth,
-              serviceDate: date,
-              eventDate: null,
-              checkedOutAt: null,
+                recognizedDate,
+                recognizedMonth,
+                serviceDate: date,
+                eventDate: null,
+                checkedOutAt: null,
 
-              customerNameSnapshot: name,
-              plateSnapshot: plate,
+                customerNameSnapshot: name,
+                plateSnapshot: plate,
 
-              currency: "JPY",
-              grossAmount: price,
+                currency: "JPY",
+                grossAmount: price,
 
-              ownerRateBps: snapshot.ownerRateBps,
-              agentRateBps: snapshot.agentRateBps,
-              platformRateBps: snapshot.platformRateBps,
+                ownerRateBps: snapshot.ownerRateBps,
+                agentRateBps: snapshot.agentRateBps,
+                platformRateBps: snapshot.platformRateBps,
 
-              ownerAmount,
-              agentAmount,
-              platformAmount,
+                ownerAmount,
+                agentAmount,
+                platformAmount,
 
-              stripeFeeAmount: 0,
-              connectFeeAmount: 0,
-              payoutFeeAmount: 0,
+                stripeFeeAmount: 0,
+                connectFeeAmount: 0,
+                payoutFeeAmount: 0,
 
-              freeOfCharge: false,
-              manualAdjustment: false,
-              refunded: false,
-              dispute: false,
-              excludedFromSettlement: false,
+                freeOfCharge: false,
+                manualAdjustment: false,
+                refunded: false,
+                dispute: false,
+                excludedFromSettlement: false,
 
-              adjustmentReason: null,
-              memo: null,
+                adjustmentReason: null,
+                memo: null,
 
-              confirmedAt: new Date(),
-            },
-          });
+                confirmedAt: new Date(),
+              },
+            });
+          } catch (paymentErr) {
+            console.error("Payment/settlement creation skipped:", paymentErr);
+          }
         }
 
         const hasReceipt = await receiptExists(paymentRef, paymentIntentId);
 
         if (!hasReceipt) {
-          const { subtotal, tax, total, taxRate } = calcTax(price);
-          const receiptNo = buildReceiptNo("R");
+          try {
+            const { subtotal, tax, total, taxRate } = calcTax(price);
+            const receiptNo = buildReceiptNo("R");
 
-          const pdfBuffer = buildReservationReceiptBuffer({
-            receiptNo,
-            parkingName: placeNameForReceipt,
-            useDate: date,
-            slot: slotLabelForReceipt,
-            customerName: name,
-            plate,
-            subtotal,
-            tax,
-            total,
-          });
-
-          const filePath = await uploadReceiptPdf(
-            pdfBuffer,
-            `receipt_${reservationId}_v1.pdf`
-          );
-
-          await prisma.receipt.create({
-            data: {
+            const pdfBuffer = buildReservationReceiptBuffer({
               receiptNo,
-              reservationId,
-              paymentRef,
-              paymentIntentId,
-              issuedAt: new Date(),
-              useDate: date,
               parkingName: placeNameForReceipt,
+              useDate: date,
               slot: slotLabelForReceipt,
               customerName: name,
               plate,
               subtotal,
               tax,
               total,
-              taxRate,
-              issuerName: ISSUER_NAME,
-              issuerInvoiceNo: ISSUER_INVOICE_NO,
-              invoiceStatus: "issued",
-              receiptRequested: false,
-              pdfPath: filePath,
-              version: 1,
-            },
-          });
+            });
+
+            const filePath = await uploadReceiptPdf(
+              pdfBuffer,
+              `receipt_${reservationId}_v1.pdf`
+            );
+
+            await prisma.receipt.create({
+              data: {
+                receiptNo,
+                reservationId,
+                paymentRef,
+                paymentIntentId,
+                issuedAt: new Date(),
+                useDate: date,
+                parkingName: placeNameForReceipt,
+                slot: slotLabelForReceipt,
+                customerName: name,
+                plate,
+                subtotal,
+                tax,
+                total,
+                taxRate,
+                issuerName: ISSUER_NAME,
+                issuerInvoiceNo: ISSUER_INVOICE_NO,
+                invoiceStatus: "issued",
+                receiptRequested: false,
+                pdfPath: filePath,
+                version: 1,
+              },
+            });
+          } catch (receiptErr) {
+            console.error("Receipt creation skipped:", receiptErr);
+          }
         }
 
         return NextResponse.json({
@@ -855,146 +863,154 @@ export async function POST(req: Request) {
         });
 
         if (!hasPayment) {
-          const snapshot = await buildSettlementSnapshot({
-            placeId,
-            spotId: spotId || null,
-            baseDate: toJstDateStart(date),
-          });
+          try {
+            const snapshot = await buildSettlementSnapshot({
+              placeId,
+              spotId: spotId || null,
+              baseDate: toJstDateStart(date),
+            });
 
-          const recognizedDate = toJstDateStart(date);
-          const recognizedMonth = getRecognizedMonthFromYmd(date);
+            const recognizedDate = toJstDateStart(date);
+            const recognizedMonth = getRecognizedMonthFromYmd(date);
 
-          const { ownerAmount, agentAmount, platformAmount } = calcSplitAmounts(
-            price,
-            snapshot.ownerRateBps,
-            snapshot.agentRateBps,
-            snapshot.platformRateBps
-          );
+            const { ownerAmount, agentAmount, platformAmount } = calcSplitAmounts(
+              price,
+              snapshot.ownerRateBps,
+              snapshot.agentRateBps,
+              snapshot.platformRateBps
+            );
 
-          const busMemo = [
-            "BUS_RESERVATION",
-            companyName ? `companyName=${companyName}` : null,
-            contactName ? `contactName=${contactName}` : null,
-            phone ? `phone=${phone}` : null,
-            arrivalTime ? `arrivalTime=${arrivalTime}` : null,
-            note ? `note=${note}` : null,
-          ]
-            .filter(Boolean)
-            .join("\n");
+            const busMemo = [
+              "BUS_RESERVATION",
+              companyName ? `companyName=${companyName}` : null,
+              contactName ? `contactName=${contactName}` : null,
+              phone ? `phone=${phone}` : null,
+              arrivalTime ? `arrivalTime=${arrivalTime}` : null,
+              note ? `note=${note}` : null,
+            ]
+              .filter(Boolean)
+              .join("\n");
 
-          await prisma.payment.create({
-            data: {
-              id: crypto.randomUUID(),
-              updatedAt: new Date(),
-              kind: "RESERVATION",
-              status: "CONFIRMED",
-              settlementLock: "UNLOCKED",
+            await prisma.payment.create({
+              data: {
+                id: crypto.randomUUID(),
+                updatedAt: new Date(),
+                kind: "RESERVATION",
+                status: "CONFIRMED",
+                settlementLock: "UNLOCKED",
 
-              reservationId,
-              parkingSessionId: null,
+                reservationId,
+                parkingSessionId: null,
 
-              paymentRef,
-              paymentIntentId,
-              checkoutSessionId: session.id,
-              stripeChargeId: null,
+                paymentRef,
+                paymentIntentId,
+                checkoutSessionId: session.id,
+                stripeChargeId: null,
 
-              placeId: snapshot.placeId,
-              spotId: snapshot.spotId,
-              ownerId: snapshot.ownerId,
-              agentId: snapshot.agentId,
+                placeId: snapshot.placeId,
+                spotId: snapshot.spotId,
+                ownerId: snapshot.ownerId,
+                agentId: snapshot.agentId,
 
-              placeNameSnapshot: snapshot.placeNameSnapshot,
-              spotCodeSnapshot: snapshot.spotCodeSnapshot,
-              spotLabelSnapshot: snapshot.spotLabelSnapshot,
+                placeNameSnapshot: snapshot.placeNameSnapshot,
+                spotCodeSnapshot: snapshot.spotCodeSnapshot,
+                spotLabelSnapshot: snapshot.spotLabelSnapshot,
 
-              ownerNameSnapshot: snapshot.ownerNameSnapshot,
-              agentNameSnapshot: snapshot.agentNameSnapshot,
+                ownerNameSnapshot: snapshot.ownerNameSnapshot,
+                agentNameSnapshot: snapshot.agentNameSnapshot,
 
-              recognizedDate,
-              recognizedMonth,
-              serviceDate: date,
-              eventDate: null,
-              checkedOutAt: null,
+                recognizedDate,
+                recognizedMonth,
+                serviceDate: date,
+                eventDate: null,
+                checkedOutAt: null,
 
-              customerNameSnapshot: reservationName,
-              plateSnapshot: plate,
+                customerNameSnapshot: reservationName,
+                plateSnapshot: plate,
 
-              currency: "JPY",
-              grossAmount: price,
+                currency: "JPY",
+                grossAmount: price,
 
-              ownerRateBps: snapshot.ownerRateBps,
-              agentRateBps: snapshot.agentRateBps,
-              platformRateBps: snapshot.platformRateBps,
+                ownerRateBps: snapshot.ownerRateBps,
+                agentRateBps: snapshot.agentRateBps,
+                platformRateBps: snapshot.platformRateBps,
 
-              ownerAmount,
-              agentAmount,
-              platformAmount,
+                ownerAmount,
+                agentAmount,
+                platformAmount,
 
-              stripeFeeAmount: 0,
-              connectFeeAmount: 0,
-              payoutFeeAmount: 0,
+                stripeFeeAmount: 0,
+                connectFeeAmount: 0,
+                payoutFeeAmount: 0,
 
-              freeOfCharge: false,
-              manualAdjustment: false,
-              refunded: false,
-              dispute: false,
-              excludedFromSettlement: false,
+                freeOfCharge: false,
+                manualAdjustment: false,
+                refunded: false,
+                dispute: false,
+                excludedFromSettlement: false,
 
-              adjustmentReason: null,
-              memo: busMemo || null,
+                adjustmentReason: null,
+                memo: busMemo || null,
 
-              confirmedAt: new Date(),
-            },
-          });
+                confirmedAt: new Date(),
+              },
+            });
+          } catch (paymentErr) {
+            console.error("Bus payment/settlement creation skipped:", paymentErr);
+          }
         }
 
         const hasReceipt = await receiptExists(paymentRef, paymentIntentId);
 
         if (!hasReceipt) {
-          const { subtotal, tax, total, taxRate } = calcTax(price);
-          const receiptNo = buildReceiptNo("R");
+          try {
+            const { subtotal, tax, total, taxRate } = calcTax(price);
+            const receiptNo = buildReceiptNo("R");
 
-          const pdfBuffer = buildReservationReceiptBuffer({
-            receiptNo,
-            parkingName: placeNameForReceipt,
-            useDate: date,
-            slot: slotLabelForReceipt,
-            customerName: reservationName,
-            plate,
-            subtotal,
-            tax,
-            total,
-          });
-
-          const filePath = await uploadReceiptPdf(
-            pdfBuffer,
-            `receipt_${reservationId}_v1.pdf`
-          );
-
-          await prisma.receipt.create({
-            data: {
+            const pdfBuffer = buildReservationReceiptBuffer({
               receiptNo,
-              reservationId,
-              paymentRef,
-              paymentIntentId,
-              issuedAt: new Date(),
-              useDate: date,
               parkingName: placeNameForReceipt,
+              useDate: date,
               slot: slotLabelForReceipt,
               customerName: reservationName,
               plate,
               subtotal,
               tax,
               total,
-              taxRate,
-              issuerName: ISSUER_NAME,
-              issuerInvoiceNo: ISSUER_INVOICE_NO,
-              invoiceStatus: "issued",
-              receiptRequested: false,
-              pdfPath: filePath,
-              version: 1,
-            },
-          });
+            });
+
+            const filePath = await uploadReceiptPdf(
+              pdfBuffer,
+              `receipt_${reservationId}_v1.pdf`
+            );
+
+            await prisma.receipt.create({
+              data: {
+                receiptNo,
+                reservationId,
+                paymentRef,
+                paymentIntentId,
+                issuedAt: new Date(),
+                useDate: date,
+                parkingName: placeNameForReceipt,
+                slot: slotLabelForReceipt,
+                customerName: reservationName,
+                plate,
+                subtotal,
+                tax,
+                total,
+                taxRate,
+                issuerName: ISSUER_NAME,
+                issuerInvoiceNo: ISSUER_INVOICE_NO,
+                invoiceStatus: "issued",
+                receiptRequested: false,
+                pdfPath: filePath,
+                version: 1,
+              },
+            });
+          } catch (receiptErr) {
+            console.error("Bus receipt creation skipped:", receiptErr);
+          }
         }
 
         return NextResponse.json({
