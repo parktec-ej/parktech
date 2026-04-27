@@ -226,11 +226,7 @@ export async function POST(req: NextRequest) {
     });
   } catch (error) {
     console.error(error);
-
-    return jsonError(
-      "Stripe Checkout の作成に失敗しました",
-      500,
-      "server_error"
-    );
+    const msg = error instanceof Error ? error.message : String(error);
+    return NextResponse.json({ ok: false, error: "server_error", message: msg }, { status: 500 });
   }
 }
