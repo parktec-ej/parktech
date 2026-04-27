@@ -54,6 +54,12 @@ function CheckoutInner() {
   const [completed, setCompleted] = useState(false);
   const [error, setError] = useState("");
   const [result, setResult] = useState<CheckoutResponse | null>(null);
+  const [closeBlocked, setCloseBlocked] = useState(false);
+
+  function handleClose() {
+    window.close();
+    setTimeout(() => setCloseBlocked(true), 400);
+  }
 
   const missingParams = !placeId || !slot || !date;
 
@@ -131,10 +137,7 @@ function CheckoutInner() {
       {completed ? (
         <>
           <div style={cardStyle}>
-            <div style={successMessageStyle}>
-              出庫が完了しました。ありがとうございました。
-            </div>
-
+            <div style={successTitleStyle}>出庫が完了しました ✓</div>
             <div style={normalTextStyle}>
               コーンを元の位置に戻してお帰りください。
             </div>
@@ -173,13 +176,21 @@ function CheckoutInner() {
             </div>
           </div>
 
-          <button
-            type="button"
-            style={secondaryButtonStyle}
-            onClick={() => router.push("/")}
-          >
-            完了（画面を閉じる）
-          </button>
+          <div style={{ display: "grid", gap: 12 }}>
+            <button type="button" style={primaryButtonStyle} onClick={handleClose}>
+              このページを閉じる
+            </button>
+
+            {closeBlocked && (
+              <div style={closeHintStyle}>
+                ブラウザの「戻る」ボタンまたは×ボタンで画面を閉じてください
+              </div>
+            )}
+
+            <button type="button" style={secondaryButtonStyle} onClick={() => router.push("/")}>
+              トップに戻る
+            </button>
+          </div>
         </>
       ) : (
         <div style={cardStyle}>
@@ -322,11 +333,20 @@ const errorStyle: React.CSSProperties = {
   fontSize: 14,
 };
 
-const successMessageStyle: React.CSSProperties = {
-  fontSize: 18,
-  fontWeight: 700,
-  marginBottom: 8,
-  color: "#333",
+const successTitleStyle: React.CSSProperties = {
+  fontSize: 28,
+  fontWeight: 900,
+  marginBottom: 12,
+};
+
+const closeHintStyle: React.CSSProperties = {
+  padding: "12px 14px",
+  borderRadius: 12,
+  background: "#f3f4f6",
+  color: "#374151",
+  fontSize: 14,
+  lineHeight: 1.7,
+  textAlign: "center",
 };
 
 const normalTextStyle: React.CSSProperties = {
