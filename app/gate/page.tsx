@@ -193,7 +193,7 @@ function GateInner() {
 
     switch (mode) {
       case "need_pin_checkin":
-        return "予約者の方は PINコードを入力して入庫してください。";
+        return "このスロットは予約済みです。予約者はPINコードを入力してください。";
       case "can_checkout":
         return "予約車両が利用中です。出庫される方は下のボタンからお進みください。";
       case "already_checked_out":

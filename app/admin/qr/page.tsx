@@ -14,7 +14,7 @@ function QrContent() {
 
   const checkinUrl = useMemo(() => {
     if (!place || !slot) return "";
-    return `${APP_URL}/checkin?place=${encodeURIComponent(place)}&slot=${encodeURIComponent(slot)}`;
+    return `${APP_URL}/gate?placeId=${encodeURIComponent(place)}&slot=${encodeURIComponent(slot)}`;
   }, [place, slot]);
 
   const [dataUrl, setDataUrl] = useState("");

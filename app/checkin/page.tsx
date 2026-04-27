@@ -124,16 +124,8 @@ function CheckinInner() {
 
             <div style={successMessageStyle}>チェックイン完了しました。</div>
 
-            <div style={normalTextStyle}>
-              駐車してコーンを戻してください。
-            </div>
-
-            <div style={normalTextStyle}>
-              このまま画面を閉じてください。
-            </div>
-
             <div style={{ ...normalTextStyle, marginBottom: 0 }}>
-              出庫する際は再度QRコードを読み込んでください。
+              駐車してコーンを戻してください。出庫時は再度QRコードを読み込んでください。
             </div>
           </div>
 
