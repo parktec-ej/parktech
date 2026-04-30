@@ -1,5 +1,7 @@
 "use client";
 
+export const revalidate = 60;
+
 import Link from "next/link";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
