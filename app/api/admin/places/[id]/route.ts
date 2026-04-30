@@ -2,6 +2,7 @@ export const runtime = "nodejs";
 export const preferredRegion = "hnd1";
 
 import { NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import type { Prisma } from "@prisma/client";
 import crypto from "crypto";
 import { prisma } from "@/lib/db";
@@ -518,6 +519,9 @@ export async function PATCH(
         return { place, currentAssignment, currentBillingPolicy };
       }
     );
+
+    revalidatePath("/api/public/places");
+    revalidatePath("/reserve");
 
     return NextResponse.json({
       ok: true,
