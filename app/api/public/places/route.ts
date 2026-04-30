@@ -1,3 +1,5 @@
+export const runtime = "nodejs";
+export const preferredRegion = "hnd1";
 export const revalidate = 60;
 
 import { NextResponse } from "next/server";
