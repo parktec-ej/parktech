@@ -1,3 +1,6 @@
+export const runtime = "nodejs";
+export const preferredRegion = "hnd1";
+
 import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import crypto from "node:crypto";

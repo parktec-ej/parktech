@@ -1,3 +1,6 @@
+export const runtime = "nodejs";
+export const preferredRegion = "hnd1";
+
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { prisma } from "@/lib/db";

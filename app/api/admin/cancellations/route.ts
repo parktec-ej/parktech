@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 
 export const runtime = "nodejs";
+export const preferredRegion = "hnd1";
 
 type CancellationReservationRow = {
   id: string;
