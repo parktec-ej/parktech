@@ -118,6 +118,8 @@ function canReserve(
 }
 
 export async function GET(req: NextRequest) {
+  const startedAt = Date.now();
+  console.log("[reservations] start GET");
   try {
     const url = new URL(req.url);
 
@@ -275,10 +277,14 @@ export async function GET(req: NextRequest) {
       500,
       "server_error"
     );
+  } finally {
+    console.log("[reservations] done GET", { ms: Date.now() - startedAt });
   }
 }
 
 export async function POST(req: NextRequest) {
+  const startedAt = Date.now();
+  console.log("[reservations] start POST");
   try {
     const body = await req.json();
 
@@ -469,5 +475,7 @@ export async function POST(req: NextRequest) {
       500,
       "server_error"
     );
+  } finally {
+    console.log("[reservations] done POST", { ms: Date.now() - startedAt });
   }
 }

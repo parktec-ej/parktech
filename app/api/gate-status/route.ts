@@ -97,6 +97,8 @@ function isHourlyAllowed(
 }
 
 export async function GET(req: NextRequest) {
+  const startedAt = Date.now();
+  console.log("[gate-status] start");
   try {
     const url = new URL(req.url);
 
@@ -388,5 +390,7 @@ export async function GET(req: NextRequest) {
   } catch (error: unknown) {
     console.error("gate-status error:", error);
     return jsonError("ゲート状態の取得に失敗しました", 500, "server_error");
+  } finally {
+    console.log("[gate-status] done", { ms: Date.now() - startedAt });
   }
 }

@@ -32,6 +32,8 @@ function normalizeDate(input: string): string {
 }
 
 export async function POST(req: Request) {
+  const startedAt = Date.now();
+  console.log("[checkin] start");
   try {
     const body = await req.json();
 
@@ -239,5 +241,7 @@ export async function POST(req: Request) {
       },
       { status: 500 }
     );
+  } finally {
+    console.log("[checkin] done", { ms: Date.now() - startedAt });
   }
 }

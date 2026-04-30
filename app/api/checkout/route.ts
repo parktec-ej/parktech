@@ -72,6 +72,8 @@ function jsonError(
 }
 
 export async function POST(req: Request) {
+  const startedAt = Date.now();
+  console.log("[checkout] start");
   try {
     const body = await req.json().catch(() => null);
 
@@ -450,6 +452,8 @@ export async function POST(req: Request) {
       },
       { status: 500 }
     );
+  } finally {
+    console.log("[checkout] done", { ms: Date.now() - startedAt });
   }
 }
 

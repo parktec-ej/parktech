@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 
 export async function GET() {
+  const startedAt = Date.now();
+  console.log("[public/places] start");
   try {
     const hiddenSlugs = [process.env.PARTNER_BUS_PLACE_SLUG]
       .map((s) => (typeof s === "string" ? s.trim() : s))
@@ -37,5 +39,7 @@ export async function GET() {
       },
       { status: 500 }
     );
+  } finally {
+    console.log("[public/places] done", { ms: Date.now() - startedAt });
   }
 }
