@@ -5,6 +5,7 @@ import { stripe } from "@/lib/stripe";
 import { sendReservationCanceledMail } from "@/lib/mail";
 
 export const runtime = "nodejs";
+export const preferredRegion = "hnd1";
 
 function formatJst(date: Date) {
   return date.toLocaleString("ja-JP", {

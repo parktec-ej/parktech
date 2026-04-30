@@ -1,3 +1,6 @@
+export const runtime = "nodejs";
+export const preferredRegion = "hnd1";
+
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requirePartner } from "@/lib/partner-auth";

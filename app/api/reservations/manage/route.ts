@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 
 export const runtime = "nodejs";
+export const preferredRegion = "hnd1";
 
 function parseYmdAsJstDate(ymd: string) {
   const [y, m, d] = ymd.split("-").map(Number);

@@ -5,6 +5,7 @@ import {
 } from "@/lib/partner-auth";
 
 export const runtime = "nodejs";
+export const preferredRegion = "hnd1";
 
 export async function POST(req: Request) {
   try {

@@ -1,3 +1,6 @@
+export const runtime = "nodejs";
+export const preferredRegion = "hnd1";
+
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getAgentSession } from "@/lib/agent-auth";

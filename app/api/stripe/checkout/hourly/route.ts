@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { stripe } from "@/lib/stripe";
 
 export const runtime = "nodejs";
+export const preferredRegion = "hnd1";
 
 function normalizeSlot(input: string): string {
   if (!input) return "";

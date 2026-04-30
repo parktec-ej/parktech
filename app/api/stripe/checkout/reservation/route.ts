@@ -9,6 +9,7 @@ import {
 } from "@/lib/pricing-core";
 
 export const runtime = "nodejs";
+export const preferredRegion = "hnd1";
 
 function jsonError(message: string, status = 400, error?: string) {
   return NextResponse.json(
