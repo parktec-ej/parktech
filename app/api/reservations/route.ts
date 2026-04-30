@@ -177,26 +177,31 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const place = await resolveActivePlace({
-      placeId: inputPlaceId,
-      placeSlug: inputPlaceSlug,
-    });
-
-    if (!place) {
-      return jsonError(
-        "place が見つかりません",
-        404,
-        "place_not_found"
-      );
-    }
+    const placeWhere: { id?: string; slug?: string; isActive: boolean } = {
+      isActive: true,
+    };
+    if (inputPlaceId) placeWhere.id = inputPlaceId;
+    else if (inputPlaceSlug) placeWhere.slug = inputPlaceSlug;
 
     const targetUtcDate = ymdToUtcDate(date);
 
-    const [eventDayRaw, spotsRaw, reservationsRaw, dayModesRaw] =
+    const [placeRaw, eventDayRaw, spotsRaw, reservationsRaw, dayModesRaw] =
       await Promise.all([
+        prisma.place.findFirst({
+          where: placeWhere,
+          orderBy: { createdAt: "asc" },
+          select: {
+            id: true,
+            slug: true,
+            name: true,
+            address: true,
+            operationMode: true,
+          },
+        }),
+
         prisma.eventDay.findFirst({
           where: {
-            placeId: place.id,
+            place: placeWhere,
             date: targetUtcDate,
             isActive: true,
           },
@@ -208,7 +213,7 @@ export async function GET(req: NextRequest) {
 
         prisma.spot.findMany({
           where: {
-            placeId: place.id,
+            place: placeWhere,
             isActive: true,
           },
           orderBy: [{ code: "asc" }],
@@ -222,7 +227,7 @@ export async function GET(req: NextRequest) {
 
         prisma.reservation.findMany({
           where: {
-            placeId: place.id,
+            place: placeWhere,
             date,
             status: "CONFIRMED",
           },
@@ -241,7 +246,7 @@ export async function GET(req: NextRequest) {
 
         prisma.spotModeCalendar.findMany({
           where: {
-            placeId: place.id,
+            place: placeWhere,
             date,
           },
           select: {
@@ -250,6 +255,11 @@ export async function GET(req: NextRequest) {
           },
         }),
       ]);
+
+    const place = placeRaw;
+    if (!place) {
+      return jsonError("place が見つかりません", 404, "place_not_found");
+    }
 
     const eventDay = eventDayRaw as EventDayLite | null;
     const reservationOpen = computeReservationOpen(eventDay, date);
