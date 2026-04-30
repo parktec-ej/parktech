@@ -20,6 +20,19 @@ function cleanText(value: unknown, max = 200) {
   return String(value ?? "").trim().slice(0, max);
 }
 
+const partnerSelect = {
+  id: true,
+  name: true,
+  companyPhone: true,
+  address: true,
+  contact: true,
+  phone: true,
+  email: true,
+  isActive: true,
+  createdAt: true,
+  updatedAt: true,
+} as const;
+
 export async function PATCH(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -30,17 +43,13 @@ export async function PATCH(
   }
 
   const { id } = await params;
-
   if (!id) return jsonError("id が必要です", 400, "id_required");
 
   const existing = await prisma.busPartner.findUnique({
     where: { id },
     select: { id: true },
   });
-
-  if (!existing) {
-    return jsonError("業者が見つかりません", 404, "not_found");
-  }
+  if (!existing) return jsonError("業者が見つかりません", 404, "not_found");
 
   try {
     const body = await req.json().catch(() => null);
@@ -52,6 +61,8 @@ export async function PATCH(
       phone?: string;
       email?: string;
       isActive?: boolean;
+      companyPhone?: string | null;
+      address?: string | null;
     } = {};
 
     if (body.name !== undefined) {
@@ -66,7 +77,7 @@ export async function PATCH(
     }
     if (body.phone !== undefined) {
       const v = cleanText(body.phone, 60);
-      if (!v) return jsonError("電話番号は必須です", 400, "phone_required");
+      if (!v) return jsonError("担当者電話番号は必須です", 400, "phone_required");
       data.phone = v;
     }
     if (body.email !== undefined) {
@@ -75,6 +86,14 @@ export async function PATCH(
         return jsonError("メールアドレスが不正です", 400, "email_invalid");
       }
       data.email = v;
+    }
+    if (body.companyPhone !== undefined) {
+      const v = cleanText(body.companyPhone, 60);
+      data.companyPhone = v || null;
+    }
+    if (body.address !== undefined) {
+      const v = cleanText(body.address, 200);
+      data.address = v || null;
     }
     if (body.isActive !== undefined) {
       data.isActive = Boolean(body.isActive);
@@ -87,19 +106,37 @@ export async function PATCH(
     const partner = await prisma.busPartner.update({
       where: { id },
       data,
-      select: {
-        id: true,
-        name: true,
-        contact: true,
-        phone: true,
-        email: true,
-        isActive: true,
-        createdAt: true,
-        updatedAt: true,
-      },
+      select: partnerSelect,
     });
 
     return NextResponse.json({ ok: true, partner });
+  } catch (e: unknown) {
+    const message = e instanceof Error ? e.message : String(e);
+    return jsonError(message, 500, "server_error");
+  }
+}
+
+export async function DELETE(
+  _req: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const admin = await getAdminSession();
+  if (!admin) {
+    return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
+  }
+
+  const { id } = await params;
+  if (!id) return jsonError("id が必要です", 400, "id_required");
+
+  const existing = await prisma.busPartner.findUnique({
+    where: { id },
+    select: { id: true },
+  });
+  if (!existing) return jsonError("業者が見つかりません", 404, "not_found");
+
+  try {
+    await prisma.busPartner.delete({ where: { id } });
+    return NextResponse.json({ ok: true });
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : String(e);
     return jsonError(message, 500, "server_error");

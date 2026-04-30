@@ -5,6 +5,8 @@ import { useEffect, useState, type CSSProperties } from "react";
 type BusPartner = {
   id: string;
   name: string;
+  companyPhone: string | null;
+  address: string | null;
   contact: string;
   phone: string;
   email: string;
@@ -27,7 +29,23 @@ type SinglePartnerResponse = {
   message?: string;
 };
 
-const emptyForm = { name: "", contact: "", phone: "", email: "" };
+type FormState = {
+  name: string;
+  companyPhone: string;
+  address: string;
+  contact: string;
+  phone: string;
+  email: string;
+};
+
+const emptyForm: FormState = {
+  name: "",
+  companyPhone: "",
+  address: "",
+  contact: "",
+  phone: "",
+  email: "",
+};
 
 export default function BusPartnersPage() {
   const [partners, setPartners] = useState<BusPartner[]>([]);
@@ -35,12 +53,13 @@ export default function BusPartnersPage() {
   const [err, setErr] = useState("");
   const [notice, setNotice] = useState("");
 
-  const [createForm, setCreateForm] = useState(emptyForm);
+  const [createForm, setCreateForm] = useState<FormState>(emptyForm);
   const [creating, setCreating] = useState(false);
 
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editForm, setEditForm] = useState(emptyForm);
+  const [editForm, setEditForm] = useState<FormState>(emptyForm);
   const [savingId, setSavingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   async function loadPartners() {
     setLoading(true);
@@ -93,6 +112,8 @@ export default function BusPartnersPage() {
     setEditingId(p.id);
     setEditForm({
       name: p.name,
+      companyPhone: p.companyPhone ?? "",
+      address: p.address ?? "",
       contact: p.contact,
       phone: p.phone,
       email: p.email,
@@ -152,12 +173,40 @@ export default function BusPartnersPage() {
     }
   }
 
+  async function deletePartner(p: BusPartner) {
+    if (!confirm(`「${p.name}」を削除します。よろしいですか？\nこの操作は取り消せません。`)) {
+      return;
+    }
+    setErr("");
+    setNotice("");
+    setDeletingId(p.id);
+    try {
+      const res = await fetch(`/api/admin/bus-partners/${p.id}`, {
+        method: "DELETE",
+      });
+      const json: { ok: boolean; error?: string; message?: string } =
+        await res.json();
+      if (!res.ok || !json.ok) {
+        setErr(json.message || json.error || "削除に失敗しました");
+        return;
+      }
+      setNotice("業者を削除しました");
+      if (editingId === p.id) {
+        setEditingId(null);
+        setEditForm(emptyForm);
+      }
+      loadPartners();
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
   return (
     <div style={pageStyle}>
       <div style={headerRowStyle}>
         <div>
           <h1 style={titleStyle}>バス業者管理</h1>
-          <p style={subtitleStyle}>業者の登録・編集・有効/無効切替</p>
+          <p style={subtitleStyle}>業者の登録・編集・有効/無効切替・削除</p>
         </div>
       </div>
 
@@ -168,7 +217,7 @@ export default function BusPartnersPage() {
         <h2 style={sectionTitleStyle}>新規追加</h2>
         <form onSubmit={handleCreate} style={formGridStyle}>
           <div style={fieldStyle}>
-            <label style={labelStyle}>会社名</label>
+            <label style={labelStyle}>会社名 <span style={requiredStyle}>必須</span></label>
             <input
               value={createForm.name}
               onChange={(e) =>
@@ -179,7 +228,29 @@ export default function BusPartnersPage() {
             />
           </div>
           <div style={fieldStyle}>
-            <label style={labelStyle}>担当者名</label>
+            <label style={labelStyle}>業者電話番号</label>
+            <input
+              value={createForm.companyPhone}
+              onChange={(e) =>
+                setCreateForm({ ...createForm, companyPhone: e.target.value })
+              }
+              style={inputStyle}
+              placeholder="例: 022-345-6789"
+            />
+          </div>
+          <div style={fieldStyle}>
+            <label style={labelStyle}>住所</label>
+            <input
+              value={createForm.address}
+              onChange={(e) =>
+                setCreateForm({ ...createForm, address: e.target.value })
+              }
+              style={inputStyle}
+              placeholder="例: 宮城県宮城郡利府町..."
+            />
+          </div>
+          <div style={fieldStyle}>
+            <label style={labelStyle}>担当者名 <span style={requiredStyle}>必須</span></label>
             <input
               value={createForm.contact}
               onChange={(e) =>
@@ -190,18 +261,18 @@ export default function BusPartnersPage() {
             />
           </div>
           <div style={fieldStyle}>
-            <label style={labelStyle}>電話番号</label>
+            <label style={labelStyle}>担当者電話番号 <span style={requiredStyle}>必須</span></label>
             <input
               value={createForm.phone}
               onChange={(e) =>
                 setCreateForm({ ...createForm, phone: e.target.value })
               }
               style={inputStyle}
-              placeholder="例: 022-345-6789"
+              placeholder="例: 090-1234-5678"
             />
           </div>
           <div style={fieldStyle}>
-            <label style={labelStyle}>メールアドレス</label>
+            <label style={labelStyle}>メールアドレス <span style={requiredStyle}>必須</span></label>
             <input
               type="email"
               value={createForm.email}
@@ -227,8 +298,10 @@ export default function BusPartnersPage() {
             <thead>
               <tr>
                 <th style={thStyle}>会社名</th>
+                <th style={thStyle}>業者電話</th>
+                <th style={thStyle}>住所</th>
                 <th style={thStyle}>担当者</th>
-                <th style={thStyle}>電話</th>
+                <th style={thStyle}>担当者電話</th>
                 <th style={thStyle}>メール</th>
                 <th style={thStyle}>状態</th>
                 <th style={thStyle}>操作</th>
@@ -238,16 +311,17 @@ export default function BusPartnersPage() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td style={emptyStyle} colSpan={6}>読み込み中...</td>
+                  <td style={emptyStyle} colSpan={8}>読み込み中...</td>
                 </tr>
               ) : partners.length === 0 ? (
                 <tr>
-                  <td style={emptyStyle} colSpan={6}>業者が登録されていません</td>
+                  <td style={emptyStyle} colSpan={8}>業者が登録されていません</td>
                 </tr>
               ) : (
                 partners.map((p) => {
                   const isEditing = editingId === p.id;
                   const isSaving = savingId === p.id;
+                  const isDeleting = deletingId === p.id;
 
                   return (
                     <tr
@@ -261,6 +335,30 @@ export default function BusPartnersPage() {
                               value={editForm.name}
                               onChange={(e) =>
                                 setEditForm({ ...editForm, name: e.target.value })
+                              }
+                              style={editInputStyle}
+                            />
+                          </td>
+                          <td style={tdStyle}>
+                            <input
+                              value={editForm.companyPhone}
+                              onChange={(e) =>
+                                setEditForm({
+                                  ...editForm,
+                                  companyPhone: e.target.value,
+                                })
+                              }
+                              style={editInputStyle}
+                            />
+                          </td>
+                          <td style={tdStyle}>
+                            <input
+                              value={editForm.address}
+                              onChange={(e) =>
+                                setEditForm({
+                                  ...editForm,
+                                  address: e.target.value,
+                                })
                               }
                               style={editInputStyle}
                             />
@@ -327,6 +425,8 @@ export default function BusPartnersPage() {
                       ) : (
                         <>
                           <td style={tdStyle}>{p.name}</td>
+                          <td style={tdStyle}>{p.companyPhone || "-"}</td>
+                          <td style={tdStyle}>{p.address || "-"}</td>
                           <td style={tdStyle}>{p.contact}</td>
                           <td style={tdStyle}>{p.phone}</td>
                           <td style={tdStyle}>{p.email}</td>
@@ -361,6 +461,14 @@ export default function BusPartnersPage() {
                                 }
                               >
                                 {isSaving ? "..." : p.isActive ? "無効化" : "有効化"}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => deletePartner(p)}
+                                disabled={isDeleting}
+                                style={smallDeleteButtonStyle}
+                              >
+                                {isDeleting ? "削除中..." : "削除"}
                               </button>
                             </div>
                           </td>
@@ -434,6 +542,17 @@ const labelStyle: CSSProperties = {
   fontSize: 13,
   fontWeight: 700,
   color: "#374151",
+  display: "flex",
+  alignItems: "center",
+  gap: 6,
+};
+const requiredStyle: CSSProperties = {
+  fontSize: 11,
+  fontWeight: 700,
+  color: "#fff",
+  background: "#dc2626",
+  borderRadius: 4,
+  padding: "1px 6px",
 };
 const inputStyle: CSSProperties = {
   width: "100%",
@@ -469,7 +588,7 @@ const tableWrapStyle: CSSProperties = { overflowX: "auto" };
 const tableStyle: CSSProperties = {
   width: "100%",
   borderCollapse: "collapse",
-  minWidth: 840,
+  minWidth: 1080,
 };
 const thStyle: CSSProperties = {
   textAlign: "left",
@@ -499,7 +618,7 @@ const badgeStyle: CSSProperties = {
   fontSize: 12,
   fontWeight: 800,
 };
-const buttonRowStyle: CSSProperties = { display: "flex", gap: 8 };
+const buttonRowStyle: CSSProperties = { display: "flex", gap: 8, flexWrap: "wrap" };
 const smallPrimaryButtonStyle: CSSProperties = {
   borderRadius: 8,
   padding: "6px 12px",
@@ -526,6 +645,16 @@ const smallDangerButtonStyle: CSSProperties = {
   background: "#fff",
   color: "#b91c1c",
   border: "1px solid #fecaca",
+  fontWeight: 700,
+  fontSize: 13,
+  cursor: "pointer",
+};
+const smallDeleteButtonStyle: CSSProperties = {
+  borderRadius: 8,
+  padding: "6px 12px",
+  background: "#dc2626",
+  color: "#fff",
+  border: "none",
   fontWeight: 700,
   fontSize: 13,
   cursor: "pointer",

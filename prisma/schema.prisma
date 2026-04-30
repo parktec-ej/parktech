@@ -557,14 +557,16 @@ model SettlementItem {
 }
 
 model BusPartner {
-  id        String   @id @default(uuid())
-  name      String
-  contact   String
-  phone     String
-  email     String
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id           String   @id @default(uuid())
+  name         String
+  companyPhone String?
+  address      String?
+  contact      String
+  phone        String
+  email        String
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   @@index([isActive])
 }
