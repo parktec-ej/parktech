@@ -98,7 +98,7 @@ export async function getPartnerSession() {
 export async function requirePartner() {
   const session = await getPartnerSession();
   if (!session) {
-    redirect("/partner/login");
+    redirect("/bus-admin/login");
   }
   return session;
 }

@@ -3,9 +3,15 @@ import { prisma } from "@/lib/db";
 
 export async function GET() {
   try {
+    const hiddenSlugs = [process.env.PARTNER_BUS_PLACE_SLUG]
+      .filter((s): s is string => typeof s === "string" && s.length > 0);
+
     const places = await prisma.place.findMany({
       where: {
         isActive: true,
+        ...(hiddenSlugs.length > 0
+          ? { slug: { notIn: hiddenSlugs } }
+          : {}),
       },
       orderBy: [{ createdAt: "asc" }],
       select: {
