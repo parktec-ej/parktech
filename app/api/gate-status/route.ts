@@ -1,9 +1,10 @@
+export const runtime = "nodejs";
+export const preferredRegion = "hnd1";
+
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { resolveActivePlace } from "@/lib/place-resolver";
 import { ymdToUtcDate } from "@/lib/pricing-core";
-
-export const runtime = "nodejs";
 
 type OperationMode =
   | "RESERVATION_ONLY"
