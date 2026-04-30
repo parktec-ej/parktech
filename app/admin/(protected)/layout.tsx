@@ -107,6 +107,11 @@ function AdminTabs() {
         label="料率設定"
         current={pathname.startsWith("/admin/assignments")}
       />
+      <NavLink
+        href="/admin/bus-partners"
+        label="バス業者管理"
+        current={pathname.startsWith("/admin/bus-partners")}
+      />
     </div>
   );
 }
