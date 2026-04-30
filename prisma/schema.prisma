@@ -556,6 +556,19 @@ model SettlementItem {
   @@index([settlementId])
 }
 
+model BusPartner {
+  id        String   @id @default(uuid())
+  name      String
+  contact   String
+  phone     String
+  email     String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([isActive])
+}
+
 enum SessionType {
   RESERVATION
   HOURLY

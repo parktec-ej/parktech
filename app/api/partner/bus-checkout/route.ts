@@ -91,10 +91,7 @@ export async function POST(req: Request) {
     }
 
     const date = normalizeDate(body.date);
-    const companyName = cleanText(body.companyName, 120);
-    const contactName = cleanText(body.contactName, 120);
-    const phone = cleanText(body.phone, 60);
-    const email = cleanText(body.email, 160);
+    const busPartnerId = cleanText(body.busPartnerId, 64);
     const plate = cleanText(body.plate, 40);
     const arrivalTime = cleanText(body.arrivalTime, 20);
     const note = cleanText(body.note, 500);
@@ -107,20 +104,36 @@ export async function POST(req: Request) {
       );
     }
 
-    if (!companyName) {
-      return jsonError("会社名は必須です。", 400, "companyName_required");
+    if (!busPartnerId) {
+      return jsonError("業者を選択してください。", 400, "busPartnerId_required");
     }
 
-    if (!contactName) {
-      return jsonError("担当者名は必須です。", 400, "contactName_required");
+    const busPartner = await prisma.busPartner.findFirst({
+      where: { id: busPartnerId, isActive: true },
+      select: {
+        id: true,
+        name: true,
+        contact: true,
+        phone: true,
+        email: true,
+      },
+    });
+
+    if (!busPartner) {
+      return jsonError("業者が見つかりません。", 404, "busPartner_not_found");
     }
 
-    if (!phone) {
-      return jsonError("電話番号は必須です。", 400, "phone_required");
-    }
+    const companyName = busPartner.name;
+    const contactName = busPartner.contact;
+    const phone = busPartner.phone;
+    const email = busPartner.email;
 
-    if (!email || !isEmailLike(email)) {
-      return jsonError("メールアドレスが不正です。", 400, "email_invalid");
+    if (!isEmailLike(email)) {
+      return jsonError(
+        "業者のメールアドレスが不正です。",
+        400,
+        "email_invalid"
+      );
     }
 
     if (!plate) {

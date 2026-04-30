@@ -145,10 +145,55 @@ async function main() {
     },
   })
 
+  const busPartners = [
+    {
+      name: 'ホテル利府',
+      contact: '田中 太郎',
+      phone: '022-345-6789',
+      email: 'tanaka@hotel-rifu.example.com',
+    },
+    {
+      name: '仙台観光バス',
+      contact: '佐藤 花子',
+      phone: '022-123-4567',
+      email: 'sato@sendai-bus.example.com',
+    },
+    {
+      name: 'みちのく旅行社',
+      contact: '鈴木 一郎',
+      phone: '022-987-6543',
+      email: 'suzuki@michinoku-travel.example.com',
+    },
+  ]
+
+  for (const partner of busPartners) {
+    const existing = await prisma.busPartner.findFirst({
+      where: { name: partner.name },
+      select: { id: true },
+    })
+
+    if (existing) {
+      await prisma.busPartner.update({
+        where: { id: existing.id },
+        data: {
+          contact: partner.contact,
+          phone: partner.phone,
+          email: partner.email,
+          isActive: true,
+        },
+      })
+    } else {
+      await prisma.busPartner.create({
+        data: partner,
+      })
+    }
+  }
+
   console.log('Seed completed')
   console.log(`Place ID: ${place.id}`)
   console.log(`Operation Mode: ${place.operationMode}`)
   console.log(`Admin Email: ${adminEmail}`)
+  console.log(`Bus Partners: ${busPartners.length} entries`)
 }
 
 main()

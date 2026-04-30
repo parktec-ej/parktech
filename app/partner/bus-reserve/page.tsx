@@ -52,6 +52,21 @@ type CheckoutResponse = {
   message?: string;
 };
 
+type BusPartner = {
+  id: string;
+  name: string;
+  contact: string;
+  phone: string;
+  email: string;
+};
+
+type PartnersResponse = {
+  ok: boolean;
+  partners?: BusPartner[];
+  error?: string;
+  message?: string;
+};
+
 function ymdTodayJst() {
   return new Date().toLocaleDateString("sv-SE", {
     timeZone: "Asia/Tokyo",
@@ -97,10 +112,8 @@ function PartnerBusReservePageInner() {
 
   const [date, setDate] = useState(initialDate);
 
-  const [companyName, setCompanyName] = useState("");
-  const [contactName, setContactName] = useState("");
-  const [phone, setPhone] = useState("");
-  const [email, setEmail] = useState("");
+  const [partners, setPartners] = useState<BusPartner[]>([]);
+  const [busPartnerId, setBusPartnerId] = useState("");
   const [plate, setPlate] = useState("");
   const [arrivalTime, setArrivalTime] = useState("");
   const [note, setNote] = useState("");
@@ -112,6 +125,46 @@ function PartnerBusReservePageInner() {
   const [availability, setAvailability] = useState<AvailabilityResponse | null>(
     null
   );
+
+  const selectedPartner = useMemo(
+    () => partners.find((p) => p.id === busPartnerId) ?? null,
+    [partners, busPartnerId]
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadPartners() {
+      try {
+        const { res, json } = await fetchJson("/api/partner/bus-partners", {
+          cache: "no-store",
+        });
+
+        if (cancelled) return;
+
+        if (res.status === 401) {
+          window.location.href = "/bus-admin/login";
+          return;
+        }
+
+        if (!res.ok || !json?.ok) {
+          setPartners([]);
+          return;
+        }
+
+        const data = json as PartnersResponse;
+        setPartners(Array.isArray(data.partners) ? data.partners : []);
+      } catch {
+        if (!cancelled) setPartners([]);
+      }
+    }
+
+    loadPartners();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -171,23 +224,8 @@ function PartnerBusReservePageInner() {
       return;
     }
 
-    if (!companyName.trim()) {
-      setErr("会社名を入力してください");
-      return;
-    }
-
-    if (!contactName.trim()) {
-      setErr("担当者名を入力してください");
-      return;
-    }
-
-    if (!phone.trim()) {
-      setErr("電話番号を入力してください");
-      return;
-    }
-
-    if (!email.trim()) {
-      setErr("メールアドレスを入力してください");
+    if (!busPartnerId) {
+      setErr("業者を選択してください");
       return;
     }
 
@@ -206,10 +244,7 @@ function PartnerBusReservePageInner() {
         },
         body: JSON.stringify({
           date,
-          companyName,
-          contactName,
-          phone,
-          email,
+          busPartnerId,
           plate,
           arrivalTime,
           note,
@@ -348,45 +383,52 @@ function PartnerBusReservePageInner() {
 
             <form onSubmit={submit} style={formStyle}>
               <div style={fieldStyle}>
-                <label style={labelStyle}>会社名</label>
-                <input
-                  value={companyName}
-                  onChange={(e) => setCompanyName(e.target.value)}
+                <label style={labelStyle}>業者を選択</label>
+                <select
+                  value={busPartnerId}
+                  onChange={(e) => setBusPartnerId(e.target.value)}
                   style={inputStyle}
-                  placeholder="例: ○○ホテル"
-                />
+                >
+                  <option value="">-- 業者を選んでください --</option>
+                  {partners.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
+                {partners.length === 0 ? (
+                  <div style={helpTextStyle}>
+                    登録済み業者がありません。管理者にお問い合わせください。
+                  </div>
+                ) : null}
               </div>
 
-              <div style={fieldStyle}>
-                <label style={labelStyle}>担当者名</label>
-                <input
-                  value={contactName}
-                  onChange={(e) => setContactName(e.target.value)}
-                  style={inputStyle}
-                  placeholder="例: 田中 太郎"
-                />
-              </div>
-
-              <div style={fieldStyle}>
-                <label style={labelStyle}>電話番号</label>
-                <input
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  style={inputStyle}
-                  placeholder="例: 090-1234-5678"
-                />
-              </div>
-
-              <div style={fieldStyle}>
-                <label style={labelStyle}>メールアドレス</label>
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  style={inputStyle}
-                  placeholder="例: hotel@example.com"
-                />
-              </div>
+              {selectedPartner ? (
+                <div style={summaryBoxStyle}>
+                  <div style={summaryRowStyle}>
+                    <span style={summaryLabelStyle}>会社名</span>
+                    <span style={summaryValueStyle}>{selectedPartner.name}</span>
+                  </div>
+                  <div style={summaryRowStyle}>
+                    <span style={summaryLabelStyle}>担当者</span>
+                    <span style={summaryValueStyle}>
+                      {selectedPartner.contact}
+                    </span>
+                  </div>
+                  <div style={summaryRowStyle}>
+                    <span style={summaryLabelStyle}>電話番号</span>
+                    <span style={summaryValueStyle}>
+                      {selectedPartner.phone}
+                    </span>
+                  </div>
+                  <div style={summaryRowStyle}>
+                    <span style={summaryLabelStyle}>メール</span>
+                    <span style={summaryValueStyle}>
+                      {selectedPartner.email}
+                    </span>
+                  </div>
+                </div>
+              ) : null}
 
               <div style={fieldStyle}>
                 <label style={labelStyle}>車両ナンバー</label>
