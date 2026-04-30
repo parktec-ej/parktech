@@ -6,9 +6,43 @@ import { prisma } from "@/lib/db";
 import { resolveActivePlace } from "@/lib/place-resolver";
 import {
   getReservationFixedPrice,
+  getReservationOpenAtJst,
   isReservationOpen,
   ymdToUtcDate,
 } from "@/lib/pricing-core";
+
+type EventDayLite = {
+  id: string;
+  reservationOpenDaysBefore: number | null;
+};
+
+function computeReservationOpen(
+  eventDay: EventDayLite | null,
+  ymd: string
+): {
+  ok: boolean;
+  openDaysBefore: number;
+  openAt: Date | null;
+  eventDay: EventDayLite | null;
+} {
+  if (!eventDay) {
+    return { ok: true, openDaysBefore: 0, openAt: null, eventDay: null };
+  }
+
+  const openDaysBefore = Number(eventDay.reservationOpenDaysBefore ?? 0);
+
+  if (openDaysBefore <= 0) {
+    return { ok: true, openDaysBefore: 0, openAt: null, eventDay };
+  }
+
+  const openAt = getReservationOpenAtJst(ymd, openDaysBefore);
+  return {
+    ok: new Date() >= openAt,
+    openDaysBefore,
+    openAt,
+    eventDay,
+  };
+}
 
 function jsonError(message: string, status = 400, error?: string) {
   return NextResponse.json(
@@ -156,18 +190,22 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const reservationOpen = await isReservationOpen(
-      place.id,
-      date
-    );
+    const targetUtcDate = ymdToUtcDate(date);
 
-    const eventDayActive = await isActiveEventDay(
-      place.id,
-      date
-    );
-
-    const [spotsRaw, reservationsRaw, dayModesRaw] =
+    const [eventDayRaw, spotsRaw, reservationsRaw, dayModesRaw] =
       await Promise.all([
+        prisma.eventDay.findFirst({
+          where: {
+            placeId: place.id,
+            date: targetUtcDate,
+            isActive: true,
+          },
+          select: {
+            id: true,
+            reservationOpenDaysBefore: true,
+          },
+        }),
+
         prisma.spot.findMany({
           where: {
             placeId: place.id,
@@ -212,6 +250,10 @@ export async function GET(req: NextRequest) {
           },
         }),
       ]);
+
+    const eventDay = eventDayRaw as EventDayLite | null;
+    const reservationOpen = computeReservationOpen(eventDay, date);
+    const eventDayActive = Boolean(eventDay);
 
     const spots = spotsRaw as SpotRow[];
     const reservations = reservationsRaw as ReservationRow[];
