@@ -44,3 +44,11 @@ next-env.d.ts
 
 # Claude Code
 .claude/
+
+# DB migration / export artifacts
+*_export*.sql
+*_export*.sql.bak
+*_export*.log
+import.log
+.env.singapore-backup
+.env.*backup
