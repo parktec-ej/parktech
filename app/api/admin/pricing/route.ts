@@ -60,6 +60,7 @@ type EventDayInput = {
   date: string;
   fixedYenOverride?: number | string | null;
   hourlyYenOverride?: number | string | null;
+  dailyYenOverride?: number | string | null;
   busFixedYen?: number | string | null;
   reservationOpenDaysBefore?: number | string | null;
   label?: string | null;
@@ -71,6 +72,7 @@ type EventDayRow = {
   label: string | null;
   fixedYenOverride: number | null;
   hourlyYenOverride: number | null;
+  dailyYenOverride: number | null;
   busFixedYen: number | null;
   reservationOpenDaysBefore: number | null;
 };
@@ -81,6 +83,7 @@ type NormalizedEventDay = {
   label: string | null;
   fixedYenOverride: number | null;
   hourlyYenOverride: number | null;
+  dailyYenOverride: number | null;
   busFixedYen: number | null;
   reservationOpenDaysBefore: number;
 };
@@ -133,6 +136,7 @@ export async function GET(req: NextRequest) {
         select: {
           id: true,
           hourlyYen: true,
+          dailyYen: true,
           createdAt: true,
         },
       }),
@@ -148,6 +152,7 @@ export async function GET(req: NextRequest) {
           label: true,
           fixedYenOverride: true,
           hourlyYenOverride: true,
+          dailyYenOverride: true,
           busFixedYen: true,
           reservationOpenDaysBefore: true,
         },
@@ -161,12 +166,14 @@ export async function GET(req: NextRequest) {
       place,
       reservationFixedYen: reservationRule?.fixedYen ?? 3000,
       hourlyYen: hourlyRule?.hourlyYen ?? 500,
+      dailyYen: hourlyRule?.dailyYen ?? null,
       eventDays: eventDayRows.map((d: EventDayRow) => ({
         id: d.id,
         date: d.date.toISOString().slice(0, 10),
         label: d.label ?? "",
         fixedYenOverride: d.fixedYenOverride,
         hourlyYenOverride: d.hourlyYenOverride,
+        dailyYenOverride: d.dailyYenOverride,
         busFixedYen: d.busFixedYen,
         reservationOpenDaysBefore: d.reservationOpenDaysBefore ?? 0,
       })),
@@ -200,12 +207,14 @@ export async function POST(req: NextRequest) {
       placeId?: unknown;
       reservationFixedYen?: unknown;
       hourlyYen?: unknown;
+      dailyYen?: unknown;
       eventDays?: unknown;
     };
 
     const placeId = String(bodyObj.placeId ?? "").trim();
     const reservationFixedYen = toInt(bodyObj.reservationFixedYen, 3000);
     const hourlyYen = toInt(bodyObj.hourlyYen, 500);
+    const dailyYen = toNullableInt(bodyObj.dailyYen);
 
     const rawEventDays: EventDayInput[] = Array.isArray(bodyObj.eventDays)
       ? (bodyObj.eventDays as EventDayInput[])
@@ -215,6 +224,7 @@ export async function POST(req: NextRequest) {
     console.log("ADMIN PRICING values:", {
       reservationFixedYen,
       hourlyYen,
+      dailyYen,
       rawEventDays,
     });
 
@@ -258,6 +268,7 @@ export async function POST(req: NextRequest) {
           label: String(row?.label ?? "").trim() || null,
           fixedYenOverride: toNullableInt(row?.fixedYenOverride),
           hourlyYenOverride: toNullableInt(row?.hourlyYenOverride),
+          dailyYenOverride: toNullableInt(row?.dailyYenOverride),
           busFixedYen: toNullableInt(row?.busFixedYen),
           reservationOpenDaysBefore,
         };
@@ -322,6 +333,7 @@ export async function POST(req: NextRequest) {
             where: { id: hourlyRule.id },
             data: {
               hourlyYen,
+              dailyYen,
               isActive: true,
             },
             select: { id: true },
@@ -334,6 +346,7 @@ export async function POST(req: NextRequest) {
               placeId,
               pricingType: "HOURLY",
               hourlyYen,
+              dailyYen,
               isActive: true,
             },
             select: { id: true },
@@ -368,6 +381,7 @@ export async function POST(req: NextRequest) {
                 label: row.label,
                 fixedYenOverride: row.fixedYenOverride,
                 hourlyYenOverride: row.hourlyYenOverride,
+                dailyYenOverride: row.dailyYenOverride,
                 busFixedYen: row.busFixedYen,
                 reservationOpenDaysBefore: row.reservationOpenDaysBefore,
                 isActive: true,
@@ -384,6 +398,7 @@ export async function POST(req: NextRequest) {
                 label: row.label,
                 fixedYenOverride: row.fixedYenOverride,
                 hourlyYenOverride: row.hourlyYenOverride,
+                dailyYenOverride: row.dailyYenOverride,
                 busFixedYen: row.busFixedYen,
                 reservationOpenDaysBefore: row.reservationOpenDaysBefore,
                 isActive: true,

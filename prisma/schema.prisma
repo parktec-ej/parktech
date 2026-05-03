@@ -204,6 +204,7 @@ model PricingRule {
   placeId      String
   pricingType  PricingType
   hourlyYen    Int?
+  dailyYen     Int?
   fixedYen     Int?
   roundingType RoundingType @default(CEIL_HOUR)
   isActive     Boolean      @default(true)
@@ -221,6 +222,7 @@ model EventDay {
   date                      DateTime
   label                     String?
   hourlyYenOverride         Int?
+  dailyYenOverride          Int?
   fixedYenOverride          Int?
   isActive                  Boolean  @default(true)
   createdAt                 DateTime @default(now())

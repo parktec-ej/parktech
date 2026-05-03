@@ -31,6 +31,7 @@ export async function getEventDayConfig(placeId: string, ymd: string) {
       label: true,
       fixedYenOverride: true,
       hourlyYenOverride: true,
+      dailyYenOverride: true,
       busFixedYen: true,
       reservationOpenDaysBefore: true,
     },
@@ -134,4 +135,44 @@ export async function getBusReservationFixedPrice(
 
   const normal = await getReservationFixedPrice(placeId, ymd);
   return normal;
+}
+
+export async function getDailyRate(
+  placeId: string,
+  ymd: string
+): Promise<number | null> {
+  const eventDay = await getEventDayConfig(placeId, ymd);
+
+  if (eventDay?.dailyYenOverride != null) {
+    return eventDay.dailyYenOverride;
+  }
+
+  const rule = await prisma.pricingRule.findFirst({
+    where: {
+      placeId,
+      pricingType: "HOURLY",
+      isActive: true,
+    },
+    orderBy: { createdAt: "desc" },
+    select: {
+      dailyYen: true,
+    },
+  });
+
+  return rule?.dailyYen ?? null;
+}
+
+export function calcHourlyFee(
+  totalMinutes: number,
+  hourlyYen: number,
+  dailyYen: number | null
+): number {
+  const totalHours = Math.ceil(totalMinutes / 60);
+  if (!dailyYen) {
+    return totalHours * hourlyYen;
+  }
+  const days = Math.floor(totalHours / 24);
+  const remainingHours = totalHours % 24;
+  const remainingFee = Math.min(remainingHours * hourlyYen, dailyYen);
+  return days * dailyYen + remainingFee;
 }

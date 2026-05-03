@@ -9,6 +9,7 @@ type EventDayRow = {
   label?: string;
   fixedYenOverride: number | null;
   hourlyYenOverride: number | null;
+  dailyYenOverride: number | null;
   busFixedYen: number | null;
   reservationOpenDaysBefore: number;
 };
@@ -21,6 +22,7 @@ function emptyEventDay(): EventDayRow {
     label: "",
     fixedYenOverride: null,
     hourlyYenOverride: null,
+    dailyYenOverride: null,
     busFixedYen: null,
     reservationOpenDaysBefore: 0,
   };
@@ -45,6 +47,7 @@ function AdminPricingPageInner() {
 
   const [reservationFixedYen, setReservationFixedYen] = useState<number>(3000);
   const [hourlyYen, setHourlyYen] = useState<number>(500);
+  const [dailyYen, setDailyYen] = useState<number | null>(null);
 
   const [eventDays, setEventDays] = useState<EventDayRow[]>([]);
 
@@ -80,6 +83,11 @@ function AdminPricingPageInner() {
       setPlaceName(json.place?.name ?? "");
       setReservationFixedYen(Number(json.reservationFixedYen ?? 3000));
       setHourlyYen(Number(json.hourlyYen ?? 500));
+      setDailyYen(
+        json.dailyYen === null || json.dailyYen === undefined
+          ? null
+          : Number(json.dailyYen)
+      );
 
       const rows: EventDayRow[] = Array.isArray(json.eventDays)
         ? json.eventDays.map((d: any) => ({
@@ -94,6 +102,10 @@ function AdminPricingPageInner() {
               d.hourlyYenOverride === null || d.hourlyYenOverride === undefined
                 ? null
                 : Number(d.hourlyYenOverride),
+            dailyYenOverride:
+              d.dailyYenOverride === null || d.dailyYenOverride === undefined
+                ? null
+                : Number(d.dailyYenOverride),
             busFixedYen:
               d.busFixedYen === null || d.busFixedYen === undefined
                 ? null
@@ -149,6 +161,7 @@ function AdminPricingPageInner() {
           label: row.label?.trim() || "",
           fixedYenOverride: row.fixedYenOverride,
           hourlyYenOverride: row.hourlyYenOverride,
+          dailyYenOverride: row.dailyYenOverride,
           busFixedYen: row.busFixedYen,
           reservationOpenDaysBefore: row.reservationOpenDaysBefore,
         }))
@@ -189,6 +202,7 @@ function AdminPricingPageInner() {
           placeId,
           reservationFixedYen,
           hourlyYen,
+          dailyYen,
           eventDays: cleanedRows,
         }),
       });
@@ -231,7 +245,7 @@ function AdminPricingPageInner() {
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "1fr 1fr",
+                gridTemplateColumns: "1fr 1fr 1fr",
                 gap: 12,
               }}
             >
@@ -255,6 +269,22 @@ function AdminPricingPageInner() {
                   onChange={(e) => setHourlyYen(Number(e.target.value))}
                   style={inputStyle}
                 />
+              </label>
+
+              <label>
+                <div style={{ fontWeight: 700, marginBottom: 6 }}>
+                  1日料金上限（円）
+                </div>
+                <input
+                  type="number"
+                  value={dailyYen ?? ""}
+                  onChange={(e) => setDailyYen(toNullableNumber(e.target.value))}
+                  placeholder="空欄: 上限なし"
+                  style={inputStyle}
+                />
+                <div style={{ fontSize: 12, opacity: 0.7, marginTop: 4 }}>
+                  空欄の場合は時間貸し料金に上限なし
+                </div>
               </label>
             </div>
 
@@ -295,6 +325,7 @@ function AdminPricingPageInner() {
                     <th style={thStyle}>ラベル</th>
                     <th style={thStyle}>一般予約料金</th>
                     <th style={thStyle}>イベント時間貸し料金</th>
+                    <th style={thStyle}>1日料金上限</th>
                     <th style={thStyle}>バス予約料金</th>
                     <th style={thStyle}>予約開放</th>
                     <th style={thStyle}>操作</th>
@@ -342,6 +373,19 @@ function AdminPricingPageInner() {
                             })
                           }
                           placeholder="イベント時間貸し料金"
+                          style={inputStyle}
+                        />
+                      </td>
+                      <td style={tdStyle}>
+                        <input
+                          type="number"
+                          value={row.dailyYenOverride ?? ""}
+                          onChange={(e) =>
+                            updateRow(index, {
+                              dailyYenOverride: toNullableNumber(e.target.value),
+                            })
+                          }
+                          placeholder="空欄: 上限なし"
                           style={inputStyle}
                         />
                       </td>

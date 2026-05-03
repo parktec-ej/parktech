@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { stripe } from "@/lib/stripe";
+import { calcHourlyFee, getDailyRate, getHourlyRate } from "@/lib/pricing-core";
 
 export const runtime = "nodejs";
 export const preferredRegion = "hnd1";
@@ -119,39 +120,8 @@ export async function POST(req: Request) {
       });
     }
 
-    const pricingRule = await prisma.pricingRule.findFirst({
-      where: {
-        placeId: place.id,
-        pricingType: "HOURLY",
-        isActive: true,
-      },
-      orderBy: {
-        createdAt: "desc",
-      },
-      select: {
-        hourlyYen: true,
-      },
-    });
-
-    let hourlyYen = pricingRule?.hourlyYen ?? 0;
-
-    const eventDay = await prisma.eventDay.findFirst({
-      where: {
-        placeId: place.id,
-        isActive: true,
-        date: {
-          gte: new Date(`${date}T00:00:00+09:00`),
-          lte: new Date(`${date}T23:59:59.999+09:00`),
-        },
-      },
-      select: {
-        hourlyYenOverride: true,
-      },
-    });
-
-    if (eventDay?.hourlyYenOverride != null) {
-      hourlyYen = eventDay.hourlyYenOverride;
-    }
+    const hourlyYen = await getHourlyRate(place.id, date);
+    const dailyYen = await getDailyRate(place.id, date);
 
     if (!hourlyYen || hourlyYen <= 0) {
       return jsonError("時間貸し料金が設定されていません", 500);
@@ -163,7 +133,7 @@ export async function POST(req: Request) {
       Math.ceil((now.getTime() - session.checkInAt.getTime()) / 60000)
     );
     const billedHours = Math.ceil(totalMinutes / 60);
-    const totalYen = billedHours * hourlyYen;
+    const totalYen = calcHourlyFee(totalMinutes, hourlyYen, dailyYen);
 
     const checkout = await stripe.checkout.sessions.create({
       mode: "payment",
@@ -197,6 +167,7 @@ export async function POST(req: Request) {
         phone: session.phone ?? "",
         customerName: session.customerName ?? "",
         hourlyYen: String(hourlyYen),
+        dailyYen: dailyYen != null ? String(dailyYen) : "",
         totalMinutes: String(totalMinutes),
         billedHours: String(billedHours),
         totalYen: String(totalYen),
