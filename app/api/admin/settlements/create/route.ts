@@ -5,15 +5,7 @@ import { NextResponse } from "next/server";
 import crypto from "crypto";
 import { prisma } from "@/lib/db";
 import { requireAdmin } from "@/lib/admin-auth";
-
-const TAX_RATE = 0.1;
-const PLATFORM_RATE = 0.2;
-
-function splitTax(gross: number) {
-  const net = Math.floor(gross / (1 + TAX_RATE));
-  const tax = gross - net;
-  return { net, tax };
-}
+import { calcSettlementTotals } from "@/lib/settlement-math";
 
 async function readPostBody(req: Request) {
   const contentType = req.headers.get("content-type") ?? "";
@@ -120,13 +112,14 @@ export async function POST(req: Request) {
     const now = new Date();
 
     const grossTotal = payments.reduce((sum, p) => sum + p.grossAmount, 0);
-    const { net: totalNet, tax: totalTax } = splitTax(grossTotal);
-
-    const platformNet = Math.floor(totalNet * PLATFORM_RATE);
-    const platformTax = Math.round(platformNet * TAX_RATE);
-    const platformGross = platformNet + platformTax;
-
-    const ownerPayout = grossTotal - platformGross;
+    const {
+      totalNet,
+      totalTax,
+      platformNet,
+      platformTax,
+      platformGross,
+      ownerPayout,
+    } = calcSettlementTotals(grossTotal);
 
     const totalOwnerAmount = payments.reduce(
       (sum, p) => sum + p.ownerAmount,

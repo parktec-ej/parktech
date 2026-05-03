@@ -4,6 +4,8 @@ import { prisma } from "@/lib/db";
 import { stripe } from "@/lib/stripe";
 import { sendReservationPinMail, sendCheckoutThanksMail } from "@/lib/mail";
 import { uploadReceiptPdf } from "@/lib/receipt-storage";
+import { calcSplitAmounts, calcTax } from "@/lib/settlement-math";
+import { buildSettlementSnapshot } from "@/lib/settlement-snapshot";
 import crypto from "crypto";
 
 export const runtime = "nodejs";
@@ -12,10 +14,6 @@ const ISSUER_NAME =
   process.env.ISSUER_NAME || "パークテック イーストジャパン";
 const ISSUER_INVOICE_NO =
   process.env.ISSUER_INVOICE_NO || "T5810943607466";
-
-function roundYen(value: number) {
-  return Math.round(value);
-}
 
 function toJstDateStart(ymd: string) {
   return new Date(`${ymd}T00:00:00+09:00`);
@@ -31,117 +29,6 @@ function getRecognizedMonthFromDate(d: Date) {
   }).slice(0, 7);
 }
 
-function calcSplitAmounts(
-  grossAmount: number,
-  ownerRateBps: number,
-  agentRateBps: number,
-  platformRateBps: number
-) {
-  const ownerAmount = roundYen((grossAmount * ownerRateBps) / 10000);
-  const agentAmount = roundYen((grossAmount * agentRateBps) / 10000);
-  const platformAmount = grossAmount - ownerAmount - agentAmount;
-
-  return {
-    ownerAmount,
-    agentAmount,
-    platformAmount,
-  };
-}
-
-async function buildSettlementSnapshot(params: {
-  placeId: string;
-  spotId?: string | null;
-  baseDate?: Date;
-}) {
-  const { placeId, spotId } = params;
-  const baseDate = params.baseDate ?? new Date();
-
-  const place = await prisma.place.findUnique({
-    where: { id: placeId },
-    select: {
-      id: true,
-      name: true,
-    },
-  });
-
-  if (!place) {
-    throw new Error(`Place not found: ${placeId}`);
-  }
-
-  const spot = spotId
-    ? await prisma.spot.findUnique({
-        where: { id: spotId },
-        select: {
-          id: true,
-          code: true,
-          label: true,
-        },
-      })
-    : null;
-
-  const assignment = await prisma.placeAssignment.findFirst({
-    where: {
-      placeId,
-      isActive: true,
-      startsAt: {
-        lte: baseDate,
-      },
-      OR: [{ endsAt: null }, { endsAt: { gte: baseDate } }],
-    },
-    include: {
-      Owner: {
-        select: {
-          id: true,
-          name: true,
-        },
-      },
-      Agent: {
-        select: {
-          id: true,
-          name: true,
-        },
-      },
-    },
-    orderBy: {
-      startsAt: "desc",
-    },
-  });
-
-  if (!assignment) {
-    throw new Error(
-      `PlaceAssignment not found for placeId=${placeId} at ${baseDate.toISOString()}`
-    );
-  }
-
-  const totalRate =
-    assignment.ownerRateBps +
-    assignment.agentRateBps +
-    assignment.platformRateBps;
-
-  if (totalRate !== 10000) {
-    throw new Error(`Invalid rate total: ${totalRate} (must be 10000)`);
-  }
-
-  return {
-    placeId: place.id,
-    placeNameSnapshot: place.name,
-
-    ownerId: assignment.Owner.id,
-    ownerNameSnapshot: assignment.Owner.name,
-
-    agentId: assignment.Agent?.id ?? null,
-    agentNameSnapshot: assignment.Agent?.name ?? null,
-
-    spotId: spot?.id ?? spotId ?? null,
-    spotCodeSnapshot: spot?.code ?? null,
-    spotLabelSnapshot: spot?.label ?? null,
-
-    ownerRateBps: assignment.ownerRateBps,
-    agentRateBps: assignment.agentRateBps,
-    platformRateBps: assignment.platformRateBps,
-  };
-}
-
 function genPin4() {
   return String(Math.floor(Math.random() * 10000)).padStart(4, "0");
 }
@@ -154,12 +41,6 @@ function formatJst(d: Date | null | undefined) {
 function formatYmdJst(d: Date | null | undefined) {
   if (!d) return "";
   return d.toLocaleDateString("sv-SE", { timeZone: "Asia/Tokyo" });
-}
-
-function calcTax(total: number, taxRate = 0.1) {
-  const subtotal = Math.floor(total / (1 + taxRate));
-  const tax = total - subtotal;
-  return { subtotal, tax, total, taxRate };
 }
 
 function buildReceiptNo(prefix = "R") {
