@@ -55,8 +55,9 @@ export async function sendReservationPinMail(params: {
         </div>
 
         <p style="margin-top:20px">
-          <strong>入庫方法</strong><br />
-          現地のQRコードを読み取り、以下のPINコードを入力してください。
+          <strong>入庫・出庫方法</strong><br />
+          入庫・出庫の両方で同じPINコードを使用します。<br />
+          現地のQRコードを読み取り、PINコードを入力してください。
         </p>
 
         <div style="font-size:28px;font-weight:bold;letter-spacing:4px;padding:12px 16px;border:2px solid #111;display:inline-block;border-radius:8px">
@@ -98,6 +99,9 @@ ParkTechをご利用いただきありがとうございます。
 利用時間: ${safe(slot)}
 車両ナンバー: ${safe(plate)}
 お支払い金額: ${safe(price)} 円
+
+入庫・出庫の両方で同じPINコードを使用します。
+現地のQRコードを読み取り、PINコードを入力してください。
 
 PINコード: ${safe(pin)}
 ${googleMapUrl ? `Google Map: ${googleMapUrl}` : ""}

@@ -3,6 +3,7 @@ export const preferredRegion = "hnd1";
 
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { calcTax } from "@/lib/settlement-math";
 
 function yen(v: number) {
   return Number(v || 0).toLocaleString("ja-JP");
@@ -18,12 +19,6 @@ function formatYmd(v: Date | string | null | undefined) {
   if (!v) return "";
   if (typeof v === "string") return v;
   return v.toLocaleDateString("sv-SE", { timeZone: "Asia/Tokyo" });
-}
-
-function taxCalc(total: number) {
-  const subtotal = Math.floor(total / 1.1);
-  const tax = total - subtotal;
-  return { subtotal, tax };
 }
 
 function parseMemoLine(memo: string, key: string) {
@@ -94,7 +89,7 @@ export async function GET(
       parkingSession?.totalYen ??
       0;
 
-    const { subtotal, tax } = taxCalc(total);
+    const { subtotal, tax } = calcTax(total);
 
     const customerName =
       overrideName ||

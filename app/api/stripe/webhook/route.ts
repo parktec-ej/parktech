@@ -3,7 +3,6 @@ import Stripe from "stripe";
 import { prisma } from "@/lib/db";
 import { stripe } from "@/lib/stripe";
 import { sendReservationPinMail, sendCheckoutThanksMail } from "@/lib/mail";
-import { uploadReceiptPdf } from "@/lib/receipt-storage";
 import { calcSplitAmounts, calcTax } from "@/lib/settlement-math";
 import { buildSettlementSnapshot } from "@/lib/settlement-snapshot";
 import crypto from "crypto";
@@ -98,81 +97,6 @@ async function paymentExists(params: {
   });
 
   return !!existing;
-}
-
-function buildReservationReceiptBuffer(params: {
-  parkingName: string;
-  useDate: string;
-  slot: string;
-  customerName: string;
-  plate: string;
-  subtotal: number;
-  tax: number;
-  total: number;
-  receiptNo: string;
-}) {
-  const {
-    parkingName,
-    useDate,
-    slot,
-    customerName,
-    plate,
-    subtotal,
-    tax,
-    total,
-    receiptNo,
-  } = params;
-
-  const content = [
-    "領収書",
-    `Receipt No: ${receiptNo}`,
-    `発行者: ${ISSUER_NAME}`,
-    `登録番号: ${ISSUER_INVOICE_NO}`,
-    "",
-    `駐車場: ${parkingName}`,
-    `利用日: ${useDate}`,
-    `区画: ${slot}`,
-    `氏名: ${customerName}`,
-    `ナンバー: ${plate}`,
-    "",
-    `小計: ${subtotal}円`,
-    `消費税(10%): ${tax}円`,
-    `合計: ${total}円`,
-  ].join("\n");
-
-  return Buffer.from(content, "utf-8");
-}
-
-function buildHourlyReceiptBuffer(params: {
-  parkingName: string;
-  useDate: string;
-  slot: string;
-  plate: string;
-  subtotal: number;
-  tax: number;
-  total: number;
-  receiptNo: string;
-}) {
-  const { parkingName, useDate, slot, plate, subtotal, tax, total, receiptNo } =
-    params;
-
-  const content = [
-    "領収書",
-    `Receipt No: ${receiptNo}`,
-    `発行者: ${ISSUER_NAME}`,
-    `登録番号: ${ISSUER_INVOICE_NO}`,
-    "",
-    `駐車場: ${parkingName}`,
-    `利用日: ${useDate}`,
-    `区画: ${slot}`,
-    `ナンバー: ${plate}`,
-    "",
-    `小計: ${subtotal}円`,
-    `消費税(10%): ${tax}円`,
-    `合計: ${total}円`,
-  ].join("\n");
-
-  return Buffer.from(content, "utf-8");
 }
 
 export async function POST(req: Request) {
@@ -487,23 +411,6 @@ export async function POST(req: Request) {
             const { subtotal, tax, total, taxRate } = calcTax(price);
             const receiptNo = buildReceiptNo("R");
 
-            const pdfBuffer = buildReservationReceiptBuffer({
-              receiptNo,
-              parkingName: placeNameForReceipt,
-              useDate: date,
-              slot: slotLabelForReceipt,
-              customerName: name,
-              plate,
-              subtotal,
-              tax,
-              total,
-            });
-
-            const filePath = await uploadReceiptPdf(
-              pdfBuffer,
-              `receipt_${reservationId}_v1.pdf`
-            );
-
             await prisma.receipt.create({
               data: {
                 receiptNo,
@@ -524,7 +431,6 @@ export async function POST(req: Request) {
                 issuerInvoiceNo: ISSUER_INVOICE_NO,
                 invoiceStatus: "issued",
                 receiptRequested: false,
-                pdfPath: filePath,
                 version: 1,
               },
             });
@@ -848,23 +754,6 @@ export async function POST(req: Request) {
             const { subtotal, tax, total, taxRate } = calcTax(price);
             const receiptNo = buildReceiptNo("R");
 
-            const pdfBuffer = buildReservationReceiptBuffer({
-              receiptNo,
-              parkingName: placeNameForReceipt,
-              useDate: date,
-              slot: slotLabelForReceipt,
-              customerName: reservationName,
-              plate,
-              subtotal,
-              tax,
-              total,
-            });
-
-            const filePath = await uploadReceiptPdf(
-              pdfBuffer,
-              `receipt_${reservationId}_v1.pdf`
-            );
-
             await prisma.receipt.create({
               data: {
                 receiptNo,
@@ -885,7 +774,6 @@ export async function POST(req: Request) {
                 issuerInvoiceNo: ISSUER_INVOICE_NO,
                 invoiceStatus: "issued",
                 receiptRequested: false,
-                pdfPath: filePath,
                 version: 1,
               },
             });
@@ -1112,51 +1000,38 @@ export async function POST(req: Request) {
         const hasReceipt = await receiptExists(paymentRef, paymentIntentId);
 
         if (!hasReceipt) {
-          const total = updated.totalYen ?? session.amount_total ?? 0;
-          const { subtotal, tax, taxRate } = calcTax(total);
-          const receiptNo = buildReceiptNo("H");
-          const useDate = checkoutDate || formatYmdJst(updated.checkInAt);
+          try {
+            const total = updated.totalYen ?? session.amount_total ?? 0;
+            const { subtotal, tax, taxRate } = calcTax(total);
+            const receiptNo = buildReceiptNo("H");
+            const useDate = checkoutDate || formatYmdJst(updated.checkInAt);
 
-          const pdfBuffer = buildHourlyReceiptBuffer({
-            receiptNo,
-            parkingName: updated.place?.name ?? placeId,
-            useDate,
-            slot: updated.spot?.label ?? updated.spot?.code ?? spotId,
-            plate: updated.plate ?? "未登録",
-            subtotal,
-            tax,
-            total,
-          });
-
-          const filePath = await uploadReceiptPdf(
-            pdfBuffer,
-            `receipt_hourly_${updated.id}_v1.pdf`
-          );
-
-          await prisma.receipt.create({
-            data: {
-              receiptNo,
-              reservationId: updated.reservationId ?? null,
-              paymentRef,
-              paymentIntentId,
-              issuedAt: new Date(),
-              useDate,
-              parkingName: updated.place?.name ?? placeId,
-              slot: updated.spot?.label ?? updated.spot?.code ?? spotId,
-              customerName: updated.customerName ?? null,
-              plate: updated.plate ?? "未登録",
-              subtotal,
-              tax,
-              total,
-              taxRate,
-              issuerName: ISSUER_NAME,
-              issuerInvoiceNo: ISSUER_INVOICE_NO,
-              invoiceStatus: "issued",
-              receiptRequested: false,
-              pdfPath: filePath,
-              version: 1,
-            },
-          });
+            await prisma.receipt.create({
+              data: {
+                receiptNo,
+                reservationId: updated.reservationId ?? null,
+                paymentRef,
+                paymentIntentId,
+                issuedAt: new Date(),
+                useDate,
+                parkingName: updated.place?.name ?? placeId,
+                slot: updated.spot?.label ?? updated.spot?.code ?? spotId,
+                customerName: updated.customerName ?? null,
+                plate: updated.plate ?? "未登録",
+                subtotal,
+                tax,
+                total,
+                taxRate,
+                issuerName: ISSUER_NAME,
+                issuerInvoiceNo: ISSUER_INVOICE_NO,
+                invoiceStatus: "issued",
+                receiptRequested: false,
+                version: 1,
+              },
+            });
+          } catch (receiptErr) {
+            console.error("Hourly receipt creation skipped:", receiptErr);
+          }
         }
 
         return NextResponse.json({
