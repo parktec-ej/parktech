@@ -5,6 +5,7 @@ import { stripe } from "@/lib/stripe";
 import { sendReservationPinMail, sendCheckoutThanksMail } from "@/lib/mail";
 import { calcSplitAmounts, calcTax } from "@/lib/settlement-math";
 import { buildSettlementSnapshot } from "@/lib/settlement-snapshot";
+import { sendSlackNotification } from "@/lib/slack";
 import crypto from "crypto";
 
 export const runtime = "nodejs";
@@ -313,6 +314,17 @@ export async function POST(req: Request) {
               console.error("Reservation mail send error detail:", mailErr);
             }
           }
+
+          await sendSlackNotification(
+            [
+              "🅿️ 新規予約",
+              `駐車場：${placeNameForReceipt}`,
+              `スポット：${slotLabelForReceipt}`,
+              `利用日：${date}`,
+              `顧客：${name}`,
+              `金額：¥${price.toLocaleString("ja-JP")}`,
+            ].join("\n")
+          );
         }
 
         const hasPayment = await paymentExists({

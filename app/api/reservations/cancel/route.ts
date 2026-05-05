@@ -3,6 +3,7 @@ import crypto from "crypto";
 import { prisma } from "@/lib/db";
 import { stripe } from "@/lib/stripe";
 import { sendReservationCanceledMail } from "@/lib/mail";
+import { sendSlackNotification } from "@/lib/slack";
 import { calcCancellationPolicy } from "@/lib/settlement-math";
 
 export const runtime = "nodejs";
@@ -237,6 +238,18 @@ export async function POST(req: NextRequest) {
         console.error(e);
       }
     }
+
+    await sendSlackNotification(
+      [
+        "❌ キャンセル",
+        `駐車場：${reservation.place?.name ?? "-"}`,
+        `スポット：${
+          reservation.spot?.label ?? reservation.spot?.code ?? reservation.slot
+        }`,
+        `顧客：${reservation.name}`,
+        `返金額：¥${policy.refundAmount.toLocaleString("ja-JP")}`,
+      ].join("\n")
+    );
 
     return NextResponse.json({
       ok: true,

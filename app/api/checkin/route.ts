@@ -5,6 +5,7 @@ import { NextResponse } from "next/server";
 import type { Prisma } from "@prisma/client";
 import { toZonedTime, format } from "date-fns-tz";
 import { prisma } from "@/lib/db";
+import { sendSlackNotification } from "@/lib/slack";
 
 function jsonError(message: string, status = 400, error?: string) {
   return NextResponse.json(
@@ -100,6 +101,7 @@ export async function POST(req: Request) {
       select: {
         id: true,
         slug: true,
+        name: true,
         isActive: true,
       },
     });
@@ -122,6 +124,7 @@ export async function POST(req: Request) {
       select: {
         id: true,
         code: true,
+        label: true,
       },
     });
 
@@ -140,6 +143,7 @@ export async function POST(req: Request) {
       },
       select: {
         id: true,
+        name: true,
         pin: true,
         paid: true,
         checkedIn: true,
@@ -238,6 +242,15 @@ export async function POST(req: Request) {
 
         return updatedReservation;
       }
+    );
+
+    await sendSlackNotification(
+      [
+        "✅ チェックイン",
+        `駐車場：${place.name ?? place.slug}`,
+        `スポット：${spot.label ?? spot.code}`,
+        `顧客：${reservation.name}`,
+      ].join("\n")
     );
 
     return NextResponse.json({

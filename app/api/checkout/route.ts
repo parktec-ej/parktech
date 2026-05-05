@@ -5,6 +5,7 @@ import { NextResponse } from "next/server";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { sendCheckoutThanksMail } from "@/lib/mail";
+import { sendSlackNotification } from "@/lib/slack";
 
 function ymdTodayJst() {
   return new Intl.DateTimeFormat("en-CA", {
@@ -436,6 +437,22 @@ export async function POST(req: Request) {
           paymentRef: reservation.paymentRef ?? null,
         });
       }
+
+      const totalMinutes = result.totalMinutes ?? 0;
+      const hours = Math.floor(totalMinutes / 60);
+      const mins = totalMinutes % 60;
+      const duration =
+        hours > 0 ? `${hours}時間${mins}分` : `${mins}分`;
+
+      await sendSlackNotification(
+        [
+          "🚗 チェックアウト",
+          `駐車場：${reservation.place?.name ?? ""}`,
+          `スポット：${reservation.spot?.label ?? reservation.spot?.code ?? slot}`,
+          `顧客：${reservation.name}`,
+          `利用時間：${duration}`,
+        ].join("\n")
+      );
     }
 
     return result.response;
