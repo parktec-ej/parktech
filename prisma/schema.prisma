@@ -85,6 +85,7 @@ model Reservation {
   checkedInAt       DateTime?
   checkedOutAt      DateTime?
   email             String?
+  phone             String?
   paid              Boolean           @default(false)
   paidAt            DateTime?
   paymentRef        String?

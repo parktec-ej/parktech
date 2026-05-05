@@ -112,6 +112,7 @@ function ReservePageInner() {
   const [name, setName] = useState("");
   const [plate, setPlate] = useState("");
   const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [err, setErr] = useState("");
@@ -259,6 +260,11 @@ function ReservePageInner() {
       return;
     }
 
+    if (phone.trim() && !/^[0-9\-\s]+$/.test(phone.trim())) {
+      setErr("電話番号は数字とハイフンのみで入力してください");
+      return;
+    }
+
     setSubmitting(true);
     setErr("");
 
@@ -275,6 +281,7 @@ function ReservePageInner() {
           name: name.trim(),
           plate: plate.trim(),
           email: email.trim(),
+          phone: phone.trim(),
         }),
       });
 
@@ -443,6 +450,18 @@ function ReservePageInner() {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             placeholder="example@example.com"
+            style={styles.input}
+          />
+        </section>
+
+        <section style={styles.section}>
+          <label style={styles.label}>電話番号（任意）</label>
+          <input
+            type="tel"
+            inputMode="tel"
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+            placeholder="例：090-1234-5678"
             style={styles.input}
           />
         </section>

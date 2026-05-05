@@ -134,6 +134,7 @@ export async function POST(req: Request) {
           "ゲスト";
 
         const plate = String(session.metadata.plate ?? "").trim() || "未登録";
+        const phone = String(session.metadata.phone ?? "").trim() || null;
 
         console.log("DEBUG reservation session.metadata:", session.metadata);
         console.log("DEBUG reservation customer_details:", session.customer_details);
@@ -227,6 +228,7 @@ export async function POST(req: Request) {
                 date,
                 slot,
                 plate,
+                phone,
                 price,
                 pin: reservationPin,
                 googleMapUrl: place?.googleMapUrl ?? null,
@@ -246,6 +248,7 @@ export async function POST(req: Request) {
               name,
               plate,
               email,
+              phone,
               price,
               pin: genPin4(),
               paid: true,
@@ -300,6 +303,7 @@ export async function POST(req: Request) {
                 date,
                 slot,
                 plate,
+                phone,
                 price,
                 pin: reservation.pin,
                 googleMapUrl: place?.googleMapUrl ?? null,

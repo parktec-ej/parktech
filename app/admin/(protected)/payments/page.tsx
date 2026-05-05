@@ -270,7 +270,7 @@ function PaymentsPageInner() {
               style={inputStyle}
             />
           </Field>
-          <Field label="電話番号 (時間貸しのみ)">
+          <Field label="電話番号">
             <input
               value={filters.phone}
               onChange={(e) => update("phone", e.target.value)}

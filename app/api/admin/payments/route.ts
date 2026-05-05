@@ -105,9 +105,11 @@ export async function GET(req: Request) {
     }
 
     if (phone) {
-      // Phone is only stored on ParkingSession (hourly flow)
       andConditions.push({
-        ParkingSession: { is: { phone: { contains: phone } } },
+        OR: [
+          { Reservation: { is: { phone: { contains: phone } } } },
+          { ParkingSession: { is: { phone: { contains: phone } } } },
+        ],
       });
     }
 
@@ -127,6 +129,7 @@ export async function GET(req: Request) {
             select: {
               id: true,
               email: true,
+              phone: true,
               name: true,
               plate: true,
               date: true,
@@ -152,7 +155,7 @@ export async function GET(req: Request) {
       const email =
         p.Reservation?.email ?? null;
       const phoneOut =
-        p.ParkingSession?.phone ?? null;
+        p.Reservation?.phone ?? p.ParkingSession?.phone ?? null;
       const customer =
         p.customerNameSnapshot ??
         p.Reservation?.name ??

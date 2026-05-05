@@ -75,6 +75,7 @@ export async function POST(req: NextRequest) {
     const name = String(body?.name ?? "").trim();
     const plate = String(body?.plate ?? "").trim();
     const email = String(body?.email ?? "").trim();
+    const phone = String(body?.phone ?? "").trim();
 
     if (!spotId) {
       return jsonError("spotId が必要です", 400, "missing_spot_id");
@@ -217,6 +218,7 @@ export async function POST(req: NextRequest) {
         name,
         plate,
         email,
+        phone,
         price: String(price),
       },
     });

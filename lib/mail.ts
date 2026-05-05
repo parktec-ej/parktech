@@ -18,6 +18,7 @@ export async function sendReservationPinMail(params: {
   date: string;
   slot: string;
   plate: string;
+  phone?: string | null;
   price: number;
   pin: string;
   googleMapUrl?: string | null;
@@ -30,6 +31,7 @@ export async function sendReservationPinMail(params: {
     date,
     slot,
     plate,
+    phone,
     price,
     pin,
     googleMapUrl,
@@ -51,6 +53,7 @@ export async function sendReservationPinMail(params: {
           <div><strong>利用日:</strong> ${safe(date)}</div>
           <div><strong>利用時間:</strong> ${safe(slot)}</div>
           <div><strong>車両ナンバー:</strong> ${safe(plate)}</div>
+          ${phone ? `<div><strong>電話番号:</strong> ${safe(phone)}</div>` : ""}
           <div><strong>お支払い金額:</strong> ${safe(price)} 円</div>
         </div>
 
@@ -98,6 +101,7 @@ ParkTechをご利用いただきありがとうございます。
 利用日: ${safe(date)}
 利用時間: ${safe(slot)}
 車両ナンバー: ${safe(plate)}
+${phone ? `電話番号: ${safe(phone)}` : ""}
 お支払い金額: ${safe(price)} 円
 
 入庫・出庫の両方で同じPINコードを使用します。

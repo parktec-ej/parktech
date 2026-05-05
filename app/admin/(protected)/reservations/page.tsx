@@ -16,6 +16,7 @@ type ReservationItem = {
   customerName: string;
   plate: string;
   email: string | null;
+  phone: string | null;
   price: number;
   pin: string;
   paid: boolean;
@@ -697,6 +698,7 @@ function AdminReservationsPageInner() {
                 <div>金額: {r.price} 円</div>
                 <div>PIN: {r.pin}</div>
                 <div>メール: {r.email || "未入力"}</div>
+                <div>電話: {r.phone || "未入力"}</div>
                 <div>作成: {new Date(r.createdAt).toLocaleString("ja-JP")}</div>
                 <div>決済: {r.paid ? "済み" : "未決済"}</div>
                 <div>

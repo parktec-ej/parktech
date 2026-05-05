@@ -18,6 +18,7 @@ type ReservationRow = {
   name: string;
   plate: string;
   email: string | null;
+  phone: string | null;
   price: number;
   pin: string | null;
   paid: boolean;
@@ -42,6 +43,7 @@ type ReservationItem = {
   customerName: string;
   plate: string;
   email: string | null;
+  phone: string | null;
   price: number;
   pin: string | null;
   paid: boolean;
@@ -168,6 +170,7 @@ export async function GET(req: Request) {
         name: true,
         plate: true,
         email: true,
+        phone: true,
         price: true,
         pin: true,
         paid: true,
@@ -197,6 +200,7 @@ export async function GET(req: Request) {
       customerName: r.name,
       plate: r.plate,
       email: r.email,
+      phone: r.phone,
       price: r.price,
       pin: r.pin,
       paid: r.paid,
@@ -226,6 +230,7 @@ export async function GET(req: Request) {
           x.customerName,
           x.plate,
           x.email ?? "",
+          x.phone ?? "",
           x.spot?.code ?? "",
           x.spot?.label ?? "",
         ].some((v: string) => String(v).toLowerCase().includes(qq))
