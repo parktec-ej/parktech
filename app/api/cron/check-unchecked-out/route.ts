@@ -3,7 +3,7 @@ export const preferredRegion = "hnd1";
 
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { sendSlackNotification } from "@/lib/slack";
+import { sendSlackAlert } from "@/lib/slack";
 
 const TWO_HOURS_MS = 2 * 60 * 60 * 1000;
 
@@ -55,7 +55,7 @@ export async function GET(req: Request) {
 
     const hours = Math.floor(elapsedMs / (60 * 60 * 1000));
 
-    await sendSlackNotification(
+    await sendSlackAlert(
       [
         "⚠️ アラート 未出庫",
         `駐車場：${r.place?.name ?? "-"}`,
