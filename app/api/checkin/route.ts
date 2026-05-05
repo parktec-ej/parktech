@@ -3,7 +3,19 @@ export const preferredRegion = "hnd1";
 
 import { NextResponse } from "next/server";
 import type { Prisma } from "@prisma/client";
+import { toZonedTime, format } from "date-fns-tz";
 import { prisma } from "@/lib/db";
+
+function jsonError(message: string, status = 400, error?: string) {
+  return NextResponse.json(
+    {
+      ok: false,
+      error: error ?? "bad_request",
+      message,
+    },
+    { status }
+  );
+}
 
 function normalizeSlot(input: string): string {
   if (!input) return "";
@@ -54,6 +66,15 @@ export async function POST(req: Request) {
         { ok: false, error: "date_required" },
         { status: 400 }
       );
+    }
+
+    const todayJST = format(
+      toZonedTime(new Date(), "Asia/Tokyo"),
+      "yyyy-MM-dd"
+    );
+
+    if (date !== todayJST) {
+      return jsonError("予約日が今日ではありません", 400, "invalid_date");
     }
 
     if (!rawSlot) {
