@@ -354,9 +354,10 @@ export async function POST(req: NextRequest) {
     const phone = String(body.phone ?? "").trim();
 
     if (phone && !/^[0-9\-\s\+\(\)]+$/.test(phone)) {
-      return NextResponse.json(
-        { ok: false, error: "電話番号の形式が正しくありません" },
-        { status: 400 }
+      return jsonError(
+        "電話番号の形式が正しくありません",
+        400,
+        "invalid_phone"
       );
     }
 
