@@ -456,13 +456,3 @@ export async function POST(req: Request) {
     console.log("[checkout] done", { ms: Date.now() - startedAt });
   }
 }
-
-export async function GET(req: Request) {
-  const url = new URL(req.url);
-
-  return NextResponse.json({
-    ok: true,
-    hint: 'POST {"placeId":"...","slot":"A-01","date":"YYYY-MM-DD","pin":"1234"}',
-    receivedUrl: url.toString(),
-  });
-}
