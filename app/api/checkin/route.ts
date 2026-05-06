@@ -144,6 +144,8 @@ export async function POST(req: Request) {
       select: {
         id: true,
         name: true,
+        plate: true,
+        phone: true,
         pin: true,
         paid: true,
         checkedIn: true,
@@ -236,6 +238,9 @@ export async function POST(req: Request) {
               sessionType: "RESERVATION",
               checkInAt: now,
               status: "IN",
+              customerName: reservation.name,
+              plate: reservation.plate,
+              phone: reservation.phone,
             },
           });
         }
