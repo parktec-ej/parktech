@@ -3,12 +3,19 @@
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
-
 function ymdTodayJst() {
   return new Date().toLocaleDateString("sv-SE", {
     timeZone: "Asia/Tokyo",
   });
 }
+
+function ymdMinusDaysJst(days: number) {
+  const now = new Date();
+  const past = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
+  return past.toLocaleDateString("sv-SE", { timeZone: "Asia/Tokyo" });
+}
+
+type StatusFilter = "ALL" | "IN" | "OUT" | "RESERVATION_ONLY";
 
 type SessionRow = {
   id: string;
@@ -21,15 +28,15 @@ type SessionRow = {
   paymentRef: string | null;
   totalMinutes: number | null;
   totalYen: number | null;
-  checkInAt: string;
+  checkInAt: string | null;
   checkOutAt: string | null;
-  status: "IN" | "OUT";
+  status: "IN" | "OUT" | "RESERVATION_ONLY";
   createdAt: string;
   spot: {
     id: string;
     code: string;
     label: string | null;
-  };
+  } | null;
   reservation: {
     id: string;
     date: string;
@@ -46,8 +53,9 @@ type ApiResponse = {
     name: string;
     address: string | null;
   };
-  date?: string;
   filters?: {
+    startDate: string;
+    endDate: string;
     status: string;
     q: string;
   };
@@ -55,6 +63,7 @@ type ApiResponse = {
     total: number;
     inCount: number;
     outCount: number;
+    reservationOnlyCount: number;
   };
   sessions?: SessionRow[];
   error?: string;
@@ -84,13 +93,18 @@ type PlacesResponse = {
 
 function fmtDateTime(value: string | null | undefined) {
   if (!value) return "-";
-  return new Date(value).toLocaleString("ja-JP", {
-    timeZone: "Asia/Tokyo",
-  });
+  return new Date(value).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" });
 }
 
 function statusLabel(status: SessionRow["status"]) {
-  return status === "IN" ? "入庫中" : "出庫済み";
+  switch (status) {
+    case "IN":
+      return "入庫中";
+    case "OUT":
+      return "出庫済み";
+    case "RESERVATION_ONLY":
+      return "予約のみ";
+  }
 }
 
 function sessionTypeLabel(type: SessionRow["sessionType"]) {
@@ -113,23 +127,33 @@ function updateUrl(
   });
 
   const qs = next.toString();
-  router.replace(qs ? `/admin/parking-sessions?${qs}` : "/admin/parking-sessions", {
-    scroll: false,
-  });
+  router.replace(
+    qs ? `/admin/parking-sessions?${qs}` : "/admin/parking-sessions",
+    { scroll: false }
+  );
 }
 
 function AdminParkingSessionsPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  const initialDate = searchParams.get("date") || ymdTodayJst();
-  const initialStatus = searchParams.get("status") || "ALL";
-  const initialQ = searchParams.get("q") || "";
-  const initialPlaceId = searchParams.get("placeId") || "";
+  const initialStartDate =
+    searchParams.get("startDate") ?? ymdMinusDaysJst(30);
+  const initialEndDate = searchParams.get("endDate") ?? ymdTodayJst();
+  const initialStatusRaw = (searchParams.get("status") ?? "ALL").toUpperCase();
+  const initialStatus: StatusFilter =
+    initialStatusRaw === "IN" ||
+    initialStatusRaw === "OUT" ||
+    initialStatusRaw === "RESERVATION_ONLY"
+      ? initialStatusRaw
+      : "ALL";
+  const initialQ = searchParams.get("q") ?? "";
+  const initialPlaceId = searchParams.get("placeId") ?? "";
 
   const [placeId, setPlaceId] = useState(initialPlaceId);
-  const [date, setDate] = useState(initialDate);
-  const [status, setStatus] = useState(initialStatus);
+  const [startDate, setStartDate] = useState(initialStartDate);
+  const [endDate, setEndDate] = useState(initialEndDate);
+  const [status, setStatus] = useState<StatusFilter>(initialStatus);
   const [qInput, setQInput] = useState(initialQ);
   const [qApplied, setQApplied] = useState(initialQ);
 
@@ -153,10 +177,7 @@ function AdminParkingSessionsPageInner() {
     setPlacesErr("");
 
     try {
-      const res = await fetch("/api/admin/places", {
-        cache: "no-store",
-      });
-
+      const res = await fetch("/api/admin/places", { cache: "no-store" });
       const text = await res.text();
       let json: PlacesResponse | null = null;
 
@@ -169,7 +190,9 @@ function AdminParkingSessionsPageInner() {
       }
 
       if (!json?.ok || !json.places) {
-        setPlacesErr(json?.message ?? json?.error ?? "Place一覧の取得に失敗しました");
+        setPlacesErr(
+          json?.message ?? json?.error ?? "Place一覧の取得に失敗しました"
+        );
         setPlaces([]);
         return;
       }
@@ -182,7 +205,8 @@ function AdminParkingSessionsPageInner() {
         setPlaceId(nextPlaceId);
         updateUrl(router, currentSearchParams, {
           placeId: nextPlaceId,
-          date,
+          startDate,
+          endDate,
           status,
           q: qApplied,
         });
@@ -197,8 +221,9 @@ function AdminParkingSessionsPageInner() {
 
   async function loadSessions(target: {
     placeId: string;
-    date: string;
-    status: string;
+    startDate: string;
+    endDate: string;
+    status: StatusFilter;
     q: string;
   }) {
     if (!target.placeId) {
@@ -214,17 +239,16 @@ function AdminParkingSessionsPageInner() {
     try {
       const params = new URLSearchParams({
         placeId: target.placeId,
-        date: target.date,
         status: target.status,
       });
+      if (target.startDate) params.set("startDate", target.startDate);
+      if (target.endDate) params.set("endDate", target.endDate);
+      if (target.q) params.set("q", target.q);
 
-      if (target.q) {
-        params.set("q", target.q);
-      }
-
-      const res = await fetch(`/api/admin/parking-sessions?${params.toString()}`, {
-        cache: "no-store",
-      });
+      const res = await fetch(
+        `/api/admin/parking-sessions?${params.toString()}`,
+        { cache: "no-store" }
+      );
 
       const text = await res.text();
       let json: ApiResponse | null = null;
@@ -262,22 +286,19 @@ function AdminParkingSessionsPageInner() {
 
     updateUrl(router, currentSearchParams, {
       placeId,
-      date,
+      startDate,
+      endDate,
       status,
       q: qApplied,
     });
 
-    loadSessions({
-      placeId,
-      date,
-      status,
-      q: qApplied,
-    });
+    loadSessions({ placeId, startDate, endDate, status, q: qApplied });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [placeId, date, status, qApplied]);
+  }, [placeId, startDate, endDate, status, qApplied]);
 
   async function doForceCheckout(parkingSessionId: string) {
-    if (!confirm("このセッションを強制出庫しますか？\n※ 精算完了にはなりません。")) return;
+    if (!confirm("このセッションを強制出庫しますか？\n※ 精算完了にはなりません。"))
+      return;
 
     setActionBusyId(parkingSessionId);
     setErr("");
@@ -306,13 +327,20 @@ function AdminParkingSessionsPageInner() {
       }
 
       setMsg("強制出庫を実行しました");
-      await loadSessions({ placeId, date, status, q: qApplied });
+      await loadSessions({ placeId, startDate, endDate, status, q: qApplied });
     } catch (e: any) {
       setErr(String(e?.message ?? e));
     } finally {
       setActionBusyId(null);
     }
   }
+
+  const summary = data?.summary ?? {
+    total: 0,
+    inCount: 0,
+    outCount: 0,
+    reservationOnlyCount: 0,
+  };
 
   return (
     <main style={{ maxWidth: 1180, margin: "0 auto", padding: 24 }}>
@@ -330,13 +358,13 @@ function AdminParkingSessionsPageInner() {
           borderRadius: 16,
           background: "#fff",
           padding: 16,
-          marginBottom: 20,
+          marginBottom: 16,
         }}
       >
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "220px 180px 180px 1fr auto auto",
+            gridTemplateColumns: "260px 160px 160px 1fr auto auto",
             gap: 12,
             alignItems: "end",
           }}
@@ -361,26 +389,27 @@ function AdminParkingSessionsPageInner() {
           </div>
 
           <div>
-            <div style={{ fontSize: 12, color: "#666", marginBottom: 6 }}>日付</div>
+            <div style={{ fontSize: 12, color: "#666", marginBottom: 6 }}>
+              開始日
+            </div>
             <input
               type="date"
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
               style={inputStyle}
             />
           </div>
 
           <div>
-            <div style={{ fontSize: 12, color: "#666", marginBottom: 6 }}>状態</div>
-            <select
-              value={status}
-              onChange={(e) => setStatus(e.target.value)}
+            <div style={{ fontSize: 12, color: "#666", marginBottom: 6 }}>
+              終了日
+            </div>
+            <input
+              type="date"
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
               style={inputStyle}
-            >
-              <option value="ALL">すべて</option>
-              <option value="IN">入庫中</option>
-              <option value="OUT">出庫済み</option>
-            </select>
+            />
           </div>
 
           <div>
@@ -409,20 +438,51 @@ function AdminParkingSessionsPageInner() {
           <button
             type="button"
             onClick={() => {
+              setStartDate("");
+              setEndDate("");
               setQInput("");
               setQApplied("");
-              loadSessions({ placeId, date, status, q: "" });
-              updateUrl(router, currentSearchParams, {
-                placeId,
-                date,
-                status,
-                q: "",
-              });
             }}
             style={secondaryButtonStyle}
+            title="日付・キーワードをクリア（全期間検索）"
           >
             クリア
           </button>
+        </div>
+
+        {/* Status filter buttons with count badges */}
+        <div
+          style={{
+            display: "flex",
+            gap: 8,
+            flexWrap: "wrap",
+            marginTop: 16,
+          }}
+        >
+          <StatusButton
+            label="すべて"
+            count={summary.total}
+            active={status === "ALL"}
+            onClick={() => setStatus("ALL")}
+          />
+          <StatusButton
+            label="入庫中"
+            count={summary.inCount}
+            active={status === "IN"}
+            onClick={() => setStatus("IN")}
+          />
+          <StatusButton
+            label="出庫済み"
+            count={summary.outCount}
+            active={status === "OUT"}
+            onClick={() => setStatus("OUT")}
+          />
+          <StatusButton
+            label="予約のみ"
+            count={summary.reservationOnlyCount}
+            active={status === "RESERVATION_ONLY"}
+            onClick={() => setStatus("RESERVATION_ONLY")}
+          />
         </div>
 
         {placesErr ? (
@@ -464,19 +524,6 @@ function AdminParkingSessionsPageInner() {
 
       <div
         style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
-          gap: 12,
-          marginBottom: 16,
-        }}
-      >
-        <SummaryCard title="総件数" value={String(data?.summary?.total ?? 0)} />
-        <SummaryCard title="入庫中" value={String(data?.summary?.inCount ?? 0)} />
-        <SummaryCard title="出庫済み" value={String(data?.summary?.outCount ?? 0)} />
-      </div>
-
-      <div
-        style={{
           border: "1px solid #e5e7eb",
           borderRadius: 16,
           background: "#fff",
@@ -510,7 +557,9 @@ function AdminParkingSessionsPageInner() {
               <tbody>
                 {data.sessions.map((row) => (
                   <tr key={row.id}>
-                    <td style={tdStyle}>{row.spot.label ?? row.spot.code}</td>
+                    <td style={tdStyle}>
+                      {row.spot?.label ?? row.spot?.code ?? "-"}
+                    </td>
                     <td style={tdStyle}>{sessionTypeLabel(row.sessionType)}</td>
                     <td style={tdStyle}>{statusLabel(row.status)}</td>
                     <td style={tdStyle}>{row.plate ?? "-"}</td>
@@ -519,7 +568,9 @@ function AdminParkingSessionsPageInner() {
                     <td style={tdStyle}>{fmtDateTime(row.checkInAt)}</td>
                     <td style={tdStyle}>{fmtDateTime(row.checkOutAt)}</td>
                     <td style={tdStyle}>
-                      {row.totalYen != null ? `${row.totalYen.toLocaleString()}円` : "-"}
+                      {row.totalYen != null
+                        ? `${row.totalYen.toLocaleString()}円`
+                        : "-"}
                     </td>
                     <td style={tdStyle}>{row.paid ? "済" : "未"}</td>
                     <td style={tdStyle}>
@@ -561,19 +612,53 @@ export default function AdminParkingSessionsPage() {
   );
 }
 
-function SummaryCard({ title, value }: { title: string; value: string }) {
+function StatusButton({
+  label,
+  count,
+  active,
+  onClick,
+}: {
+  label: string;
+  count: number;
+  active: boolean;
+  onClick: () => void;
+}) {
   return (
-    <div
+    <button
+      type="button"
+      onClick={onClick}
       style={{
-        border: "1px solid #e5e7eb",
-        borderRadius: 14,
-        background: "#fff",
-        padding: 16,
+        padding: "10px 14px",
+        borderRadius: 999,
+        border: active ? "1px solid #2563eb" : "1px solid #d1d5db",
+        background: active ? "#2563eb" : "#fff",
+        color: active ? "#fff" : "#111",
+        fontWeight: 700,
+        cursor: "pointer",
+        fontSize: 14,
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 8,
       }}
     >
-      <div style={{ fontSize: 12, color: "#666", marginBottom: 8 }}>{title}</div>
-      <div style={{ fontSize: 28, fontWeight: 900 }}>{value}</div>
-    </div>
+      <span>{label}</span>
+      <span
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+          minWidth: 28,
+          padding: "2px 8px",
+          borderRadius: 999,
+          background: active ? "rgba(255,255,255,0.2)" : "#f1f5f9",
+          color: active ? "#fff" : "#111",
+          fontSize: 12,
+          fontWeight: 800,
+        }}
+      >
+        {count}
+      </span>
+    </button>
   );
 }
 
