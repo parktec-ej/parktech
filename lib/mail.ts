@@ -280,3 +280,54 @@ ParkTech
     `.trim(),
   });
 }
+export async function sendGateUrlMail(params: {
+  to: string;
+  placeName: string;
+  slot: string;
+  gateUrl: string;
+  name?: string | null;
+}) {
+  const { to, placeName, slot, gateUrl, name } = params;
+
+  return getResend().emails.send({
+    from: MAIL_FROM,
+    to,
+    subject: "【ParkTech】ゲートURLのご案内",
+    html: `
+      <div style="font-family:Arial,sans-serif;line-height:1.8;color:#111">
+        <h2>${safe(name) || "お客様"} 様</h2>
+        <p>下記のURLからゲートを操作してください。</p>
+
+        <div style="padding:16px;border:1px solid #ddd;border-radius:8px;background:#fafafa">
+          <div><strong>駐車場:</strong> ${safe(placeName)}</div>
+          <div><strong>区画:</strong> ${safe(slot)}</div>
+        </div>
+
+        <p style="margin-top:20px">
+          <a href="${gateUrl}" target="_blank" rel="noopener noreferrer"
+             style="display:inline-block;padding:14px 22px;background:#111;color:#fff;border-radius:10px;font-weight:bold;text-decoration:none">
+            ゲートを開く
+          </a>
+        </p>
+
+        <p style="margin-top:16px;font-size:13px;color:#555;word-break:break-all">
+          リンクが開けない場合は下記URLをコピーしてアクセスしてください：<br />
+          ${gateUrl}
+        </p>
+
+        <hr style="margin:24px 0" />
+        <p>ParkTech</p>
+      </div>
+    `,
+    text: `${safe(name) || "お客様"} 様
+
+下記のURLからゲートを操作してください。
+
+駐車場: ${safe(placeName)}
+区画: ${safe(slot)}
+
+${gateUrl}
+
+ParkTech`,
+  });
+}

@@ -117,6 +117,11 @@ function AdminTabs() {
         label="バス業者管理"
         current={pathname.startsWith("/admin/bus-partners")}
       />
+      <NavLink
+        href="/admin/emergency"
+        label="🚨 緊急対応"
+        current={pathname.startsWith("/admin/emergency")}
+      />
     </div>
   );
 }
