@@ -4,9 +4,11 @@ export const preferredRegion = "hnd1";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getAdminSession } from "@/lib/admin-auth";
+import { sendSlackNotification } from "@/lib/slack";
 
 type ForceCheckoutBody = {
   parkingSessionId?: unknown;
+  reason?: unknown;
 };
 
 function jsonError(error: string, status: number, message?: string) {
@@ -35,6 +37,7 @@ export async function POST(req: Request) {
     }
 
     const parkingSessionId = String(body.parkingSessionId ?? "").trim();
+    const reason = String(body.reason ?? "").trim();
 
     if (!parkingSessionId) {
       return jsonError("parking_session_id_required", 400);
@@ -48,6 +51,10 @@ export async function POST(req: Request) {
         checkOutAt: true,
         paid: true,
         reservationId: true,
+        customerName: true,
+        plate: true,
+        place: { select: { name: true } },
+        spot: { select: { code: true, label: true } },
       },
     });
 
@@ -73,6 +80,22 @@ export async function POST(req: Request) {
         checkOutAt: now,
       },
     });
+
+    await sendSlackNotification(
+      [
+        "🚗 [管理者操作] 強制出庫",
+        `operator: ${admin.email}`,
+        `parkingSessionId: ${parkingSessionId}`,
+        session.reservationId ? `reservationId: ${session.reservationId}` : null,
+        `place/slot: ${session.place?.name ?? "-"} / ${session.spot?.label ?? session.spot?.code ?? "-"}`,
+        session.customerName || session.plate
+          ? `customer: ${session.customerName ?? "-"} / ${session.plate ?? "-"}`
+          : null,
+        reason ? `理由: ${reason}` : null,
+      ]
+        .filter(Boolean)
+        .join("\n")
+    );
 
     return NextResponse.json({
       ok: true,

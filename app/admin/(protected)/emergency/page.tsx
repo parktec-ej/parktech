@@ -22,6 +22,7 @@ type ReservationRow = {
   paymentRef: string | null;
   place: Place | null;
   spot: Spot | null;
+  activeSession: { id: string } | null;
 };
 
 type SessionRow = {
@@ -223,6 +224,15 @@ function EmergencyPageInner() {
       `セッション ${s.id.slice(0, 8)}… を強制出庫しますか？\n※精算完了にはなりません。`
     );
   }
+  function doForceCheckoutForReservation(r: ReservationRow) {
+    if (!r.activeSession) return;
+    action(
+      "強制出庫",
+      "/api/admin/parking-sessions/force-checkout",
+      { parkingSessionId: r.activeSession.id },
+      `${r.name} 様 (${r.spot?.label ?? r.spot?.code ?? r.slot}) を強制出庫しますか？\n※精算完了にはなりません。`
+    );
+  }
 
   async function doCreateReservation() {
     if (!cName || !cPlate || !cPlaceId || !cSlot || !cStartAt) {
@@ -371,6 +381,16 @@ function EmergencyPageInner() {
                     >
                       🚪 GATE URL送信
                     </button>
+                    {r.activeSession ? (
+                      <button
+                        type="button"
+                        disabled={busy === `強制出庫-${r.activeSession.id}`}
+                        onClick={() => doForceCheckoutForReservation(r)}
+                        style={dangerBtn}
+                      >
+                        🚗 強制出庫
+                      </button>
+                    ) : null}
                   </div>
                 </div>
               ))}

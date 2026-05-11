@@ -52,6 +52,12 @@ export async function GET(req: Request) {
         include: {
           place: { select: { id: true, slug: true, name: true } },
           spot: { select: { id: true, code: true, label: true } },
+          sessions: {
+            where: { status: "IN", checkOutAt: null },
+            orderBy: { checkInAt: "desc" },
+            take: 1,
+            select: { id: true },
+          },
         },
       }),
       prisma.parkingSession.findMany({
@@ -130,6 +136,9 @@ export async function GET(req: Request) {
         paymentRef: r.paymentRef,
         place: r.place,
         spot: r.spot,
+        activeSession: r.sessions[0]
+          ? { id: r.sessions[0].id }
+          : null,
       })),
       parkingSessions: parkingSessions.map((s) => ({
         id: s.id,
