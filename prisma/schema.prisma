@@ -31,6 +31,7 @@ model Place {
   Settlement         Settlement[]
   spots              Spot[]
   spotModeCalendars  SpotModeCalendar[]
+  events             Event[]
 
   @@index([ownerId])
   @@index([operationMode])
@@ -697,4 +698,79 @@ enum SettlementStatus {
   LOCKED
   PAID
   CANCELLED
+}
+
+model Event {
+  id String @id @default(cuid())
+
+  title       String
+  description String?
+  venue       String
+  category    String    @default("concert")
+  startAt     DateTime
+  endAt       DateTime?
+  doorOpenAt  DateTime?
+  showStartAt DateTime?
+
+  sourceType  String  @default("manual")
+  sourceUrl   String?
+  sourcePdfId String?
+  officialUrl String?
+
+  competitorPrice Int?
+  ourPrice        Int?
+
+  bookingStartDays Int?
+  bookingStartAt   DateTime?
+  bookingStartTime String?   @default("10:00")
+
+  status String @default("draft")
+
+  snsSchedule Json?
+
+  place   Place?  @relation(fields: [placeId], references: [id])
+  placeId String?
+
+  snsPosts SnsPost[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([startAt])
+  @@index([placeId])
+  @@index([sourceType, status])
+}
+
+model SnsPost {
+  id               String    @id @default(cuid())
+  eventId          String
+  phase            Int
+  phaseLabel       String
+  platform         String    @default("facebook")
+  postText         String
+  scheduledAt      DateTime?
+  postedAt         DateTime?
+  fbPostId         String?
+  triggerType      String    @default("scheduled")
+  triggerCondition String?
+  status           String    @default("draft")
+
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([eventId])
+  @@index([status])
+  @@index([scheduledAt])
+}
+
+model ScrapedPdf {
+  id         String   @id @default(cuid())
+  uafId      String   @unique
+  title      String
+  url        String
+  scrapedAt  DateTime @default(now())
+  eventCount Int      @default(0)
 }

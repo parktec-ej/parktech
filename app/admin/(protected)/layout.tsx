@@ -118,6 +118,11 @@ function AdminTabs() {
         current={pathname.startsWith("/admin/bus-partners")}
       />
       <NavLink
+        href="/admin/events"
+        label="🎫 イベント管理"
+        current={pathname.startsWith("/admin/events")}
+      />
+      <NavLink
         href="/admin/emergency"
         label="🚨 緊急対応"
         current={pathname.startsWith("/admin/emergency")}
