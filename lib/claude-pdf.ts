@@ -52,7 +52,16 @@ export type ExtractedEvent = {
 };
 
 function getClient() {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
+  const raw = process.env.ANTHROPIC_API_KEY ?? "";
+  // Strip whitespace/newlines that can sneak in from `echo` or copy-paste
+  // and surrounding quotes if any (e.g. accidental `"sk-ant-..."` in env).
+  let apiKey = raw.trim();
+  if (
+    (apiKey.startsWith('"') && apiKey.endsWith('"')) ||
+    (apiKey.startsWith("'") && apiKey.endsWith("'"))
+  ) {
+    apiKey = apiKey.slice(1, -1);
+  }
   if (!apiKey) throw new Error("ANTHROPIC_API_KEY is not set");
   return new Anthropic({ apiKey });
 }

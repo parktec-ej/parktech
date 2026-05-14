@@ -69,7 +69,14 @@ export function buildSnsTextPrompt(input: SnsTextInput): string {
 }
 
 function getClient() {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
+  const raw = process.env.ANTHROPIC_API_KEY ?? "";
+  let apiKey = raw.trim();
+  if (
+    (apiKey.startsWith('"') && apiKey.endsWith('"')) ||
+    (apiKey.startsWith("'") && apiKey.endsWith("'"))
+  ) {
+    apiKey = apiKey.slice(1, -1);
+  }
   if (!apiKey) throw new Error("ANTHROPIC_API_KEY is not set");
   return new Anthropic({ apiKey });
 }
