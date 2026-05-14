@@ -1,0 +1,101 @@
+import * as cheerio from "cheerio";
+import { fetchEucJpHtml } from "./fetch-html";
+
+export const EVENT_LIST_URL =
+  "https://www.mspf.jp/grande21/index.php?action=event_show_list";
+export const EVENT_DETAIL_BASE =
+  "https://www.mspf.jp/grande21/index.php?action=event_show_detail&event_id=";
+
+export type ScrapedEventListItem = {
+  /** Concert title / artist line, e.g. "桑田佳祐 コンサート" */
+  title: string;
+  /** "コンサート" などのカテゴリ文字列（HTML 上の表示） */
+  category: string;
+  /** "桑田佳祐 LIVE TOUR 2026 ..." 表に出ている説明（先頭〜省略） */
+  description: string;
+  /** YYYY-MM-DD 形式の開始日 */
+  startDate: string | null;
+  /** YYYY-MM-DD 形式の終了日（単日なら startDate と同じ） */
+  endDate: string | null;
+  /** 詳細リンク URL（event_id 付き） */
+  detailUrl: string | null;
+  /** event_id 部分（取れた場合のみ） */
+  externalId: string | null;
+};
+
+const CONCERT_CATEGORIES = ["コンサート", "ライブ", "音楽"];
+
+function isConcertCategory(category: string): boolean {
+  return CONCERT_CATEGORIES.some((c) => category.includes(c));
+}
+
+/**
+ * "2026.09/09(水)" → "2026-09-09"
+ * Accepts also "2026/09/09" forms just in case.
+ */
+function normalizeJaDate(input: string): string | null {
+  const v = input.replace(/\s/g, "");
+  const m = v.match(/(\d{4})[./](\d{1,2})[./](\d{1,2})/);
+  if (!m) return null;
+  const y = Number(m[1]);
+  const mo = Number(m[2]);
+  const d = Number(m[3]);
+  if (!Number.isFinite(y) || !Number.isFinite(mo) || !Number.isFinite(d)) return null;
+  return `${y}-${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+}
+
+/**
+ * Parse the grande21 event-list HTML and return only concert-category
+ * rows.  Returns an empty array if the table or rows can't be found
+ * (the site can change its HTML at any time).
+ */
+export function parseEventListHtml(html: string): ScrapedEventListItem[] {
+  const $ = cheerio.load(html);
+  const rows = $("table.tbl-event-index tbody tr");
+  const items: ScrapedEventListItem[] = [];
+
+  rows.each((_, el) => {
+    const $row = $(el);
+    const $cells = $row.find("td");
+    if ($cells.length < 4) return;
+
+    const $titleAnchor = $cells.eq(0).find("a").first();
+    const title = ($titleAnchor.text() || $cells.eq(0).text()).trim();
+    const category = $cells.eq(1).text().trim();
+    const description = $cells.eq(2).text().replace(/…+/g, "").trim();
+
+    if (!isConcertCategory(category)) return;
+    if (!title) return;
+
+    const $dates = $cells.eq(3).find("span.nowrap");
+    const startRaw = $dates.eq(0).text().trim();
+    const endRaw = $dates.length > 1 ? $dates.eq(1).text().trim() : startRaw;
+
+    const startDate = startRaw ? normalizeJaDate(startRaw) : null;
+    const endDate = endRaw ? normalizeJaDate(endRaw) : startDate;
+
+    const href = $titleAnchor.attr("href") ?? "";
+    const eventIdMatch = href.match(/event_id=(\d+)/);
+    const externalId = eventIdMatch ? eventIdMatch[1] : null;
+    const detailUrl = externalId
+      ? `${EVENT_DETAIL_BASE}${externalId}`
+      : null;
+
+    items.push({
+      title,
+      category,
+      description,
+      startDate,
+      endDate,
+      detailUrl,
+      externalId,
+    });
+  });
+
+  return items;
+}
+
+export async function scrapeEventList(): Promise<ScrapedEventListItem[]> {
+  const html = await fetchEucJpHtml(EVENT_LIST_URL);
+  return parseEventListHtml(html);
+}
