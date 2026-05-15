@@ -109,6 +109,7 @@ async function upsertEventsBatch(params: {
         sourceUrl: row.sourceUrl,
         sourcePdfId: row.sourcePdfId,
         status: "draft",
+        venueGroupId: "grandee21",
       },
     });
     existingKeys.add(key);

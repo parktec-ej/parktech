@@ -731,6 +731,9 @@ model Event {
   place   Place?  @relation(fields: [placeId], references: [id])
   placeId String?
 
+  venueGroup   VenueGroup? @relation(fields: [venueGroupId], references: [id])
+  venueGroupId String?
+
   snsPosts SnsPost[]
 
   createdAt DateTime @default(now())
@@ -739,6 +742,7 @@ model Event {
   @@index([status])
   @@index([startAt])
   @@index([placeId])
+  @@index([venueGroupId])
   @@index([sourceType, status])
 }
 
@@ -773,4 +777,22 @@ model ScrapedPdf {
   url        String
   scrapedAt  DateTime @default(now())
   eventCount Int      @default(0)
+}
+
+model VenueGroup {
+  id       String              @id
+  name     String
+  events   Event[]
+  parkings VenueGroupParking[]
+}
+
+model VenueGroupParking {
+  id           String     @id @default(cuid())
+  venueGroupId String
+  parkingSlug  String
+  showOnHp     Boolean    @default(true)
+  venueGroup   VenueGroup @relation(fields: [venueGroupId], references: [id])
+
+  @@index([venueGroupId])
+  @@index([parkingSlug])
 }
