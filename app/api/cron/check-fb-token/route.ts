@@ -23,11 +23,9 @@ export async function GET(req: Request) {
   }
 
   try {
-    // Graph API でトークンの有効期限を確認
-    const appId = process.env.FACEBOOK_APP_ID ?? "";
-    const appSecret = process.env.FACEBOOK_APP_SECRET ?? "";
+    // Graph API でトークンの有効期限を確認（Page Token 自身で debug）
     const res = await fetch(
-      `https://graph.facebook.com/debug_token?input_token=${token}&access_token=${appId}|${appSecret}`
+      `https://graph.facebook.com/debug_token?input_token=${token}&access_token=${token}`
     );
     const data = await res.json() as {
       data?: {
