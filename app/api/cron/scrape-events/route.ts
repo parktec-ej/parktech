@@ -7,6 +7,7 @@ import { sendSlackNotification, sendSlackAlert } from "@/lib/slack";
 import {
   scrapeEventList,
   scrapeEventDetail,
+  selectTimePairForDate,
   type ScrapedEventListItem,
 } from "@/lib/scraping/event-list";
 import {
@@ -213,11 +214,15 @@ export async function GET(req: Request) {
         doorOpen: string | null;
         showStart: string | null;
         officialUrl: string | null;
+        timePairs: Array<{ doorOpen: string | null; showStart: string | null }>;
+        timeText: string;
       } = {
         description: it.description,
         doorOpen: null,
         showStart: null,
         officialUrl: null,
+        timePairs: [],
+        timeText: "",
       };
       if (it.externalId) {
         try {
@@ -229,21 +234,26 @@ export async function GET(req: Request) {
       }
 
       rowsArrays.push(
-        dates.map((date) => ({
-          title: it.title,
-          venue,
-          startAt: buildStartAt(date, detail.showStart),
-          endAt: null,
-          doorOpenAt: detail.doorOpen
-            ? new Date(`${date}T${detail.doorOpen}:00+09:00`)
-            : null,
-          showStartAt: detail.showStart
-            ? new Date(`${date}T${detail.showStart}:00+09:00`)
-            : null,
-          sourceUrl: detail.officialUrl ?? it.detailUrl,
-          sourcePdfId: null,
-          description: detail.description || it.description,
-        }))
+        dates.map((date) => {
+          const timePair = detail.timeText
+            ? selectTimePairForDate(detail.timeText, date)
+            : { doorOpen: detail.doorOpen, showStart: detail.showStart };
+          return {
+            title: it.title,
+            venue,
+            startAt: buildStartAt(date, timePair.showStart),
+            endAt: null,
+            doorOpenAt: timePair.doorOpen
+              ? new Date(`${date}T${timePair.doorOpen}:00+09:00`)
+              : null,
+            showStartAt: timePair.showStart
+              ? new Date(`${date}T${timePair.showStart}:00+09:00`)
+              : null,
+            sourceUrl: detail.officialUrl ?? it.detailUrl,
+            sourcePdfId: null,
+            description: detail.description || it.description,
+          };
+        })
       );
     }
     const rows = rowsArrays.flat();

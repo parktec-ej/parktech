@@ -103,24 +103,95 @@ export async function scrapeEventList(): Promise<ScrapedEventListItem[]> {
 export type ScrapedEventDetail = {
   /** 完全な説明文 */
   description: string;
-  /** 開場時間 HH:MM または null */
+  /** 開場時間 HH:MM または null（先頭ペアの値） */
   doorOpen: string | null;
-  /** 開演時間 HH:MM または null */
+  /** 開演時間 HH:MM または null（先頭ペアの値） */
   showStart: string | null;
   /** 公式URL（チケットサイト等） */
   officialUrl: string | null;
+  /** 日付別の時刻ペア（複数日程で時刻が異なる場合に使用） */
+  timePairs: Array<{ doorOpen: string | null; showStart: string | null }>;
+  /** 時刻テキスト全文（呼び出し元で日付別に解析するため） */
+  timeText: string;
 };
 
 /**
- * "開場17：30　開演18：30" のような文字列から HH:MM を抽出
+ * テキストから 開場/開演 ペアを全て抽出する
+ * 例: "9/9（水）11（金）開場17：30　開演18：30　/　9/12（土）開場15：30　開演16：30"
+ * → [{doorOpen:"17:30", showStart:"18:30"}, {doorOpen:"15:30", showStart:"16:30"}]
  */
-function parseTime(text: string, keyword: string): string | null {
-  const pattern = new RegExp(keyword + "[\\s　]*([０-９0-9]{1,2})[：:｜|]([０-９0-9]{2})");
-  const m = text.match(pattern);
-  if (!m) return null;
-  const h = String(parseInt(m[1].replace(/[０-９]/g, (c) => String(c.charCodeAt(0) - 0xFF10)))).padStart(2, "0");
-  const min = m[2].replace(/[０-９]/g, (c) => String(c.charCodeAt(0) - 0xFF10));
-  return `${h}:${min}`;
+export function parseAllTimePairs(
+  text: string
+): Array<{ doorOpen: string | null; showStart: string | null }> {
+  function toHalfWidth(s: string): string {
+    return s.replace(/[０-９]/g, (c) =>
+      String.fromCharCode(c.charCodeAt(0) - 0xff10 + 0x30)
+    );
+  }
+  // 開場HH:MM 開演HH:MM のペアを全て抽出
+  const pattern =
+    /(?:開場|OPEN)[^\d０-９]*([０-９0-9]{1,2})[：:][　 ]*([０-９0-9]{2})[^開演OPEN]*(?:開演|START)[^\d０-９]*([０-９0-9]{1,2})[：:][　 ]*([０-９0-9]{2})/g;
+  const pairs: Array<{ doorOpen: string | null; showStart: string | null }> =
+    [];
+  let m: RegExpExecArray | null;
+  while ((m = pattern.exec(text)) !== null) {
+    const dh = toHalfWidth(m[1]).padStart(2, "0");
+    const dm = toHalfWidth(m[2]);
+    const sh = toHalfWidth(m[3]).padStart(2, "0");
+    const sm = toHalfWidth(m[4]);
+    pairs.push({ doorOpen: `${dh}:${dm}`, showStart: `${sh}:${sm}` });
+  }
+  // 開演のみのパターン（開場なし）
+  if (pairs.length === 0) {
+    const onlyStart =
+      /(?:開演|START)[^\d０-９]*([０-９0-9]{1,2})[：:][　 ]*([０-９0-9]{2})/g;
+    while ((m = onlyStart.exec(text)) !== null) {
+      const sh = toHalfWidth(m[1]).padStart(2, "0");
+      const sm = toHalfWidth(m[2]);
+      pairs.push({ doorOpen: null, showStart: `${sh}:${sm}` });
+    }
+  }
+  return pairs;
+}
+
+/**
+ * 日付文字列（"9/12"など）に対応する時刻ペアを返す。
+ * 各ペアの出現位置の直前テキストを「コンテキスト」として、
+ * その中に日付プレフィックス（"9/12" や "9月12日" 等）が含まれるかで判定。
+ * 見つからなければ最初のペアを返す。
+ */
+export function selectTimePairForDate(
+  timeText: string,
+  date: string
+): { doorOpen: string | null; showStart: string | null } {
+  const allPairs = parseAllTimePairs(timeText);
+  if (allPairs.length === 0) return { doorOpen: null, showStart: null };
+  if (allPairs.length === 1) return allPairs[0];
+
+  const ymdMatch = date.match(/(\d{4})-(\d{2})-(\d{2})/);
+  if (!ymdMatch) return allPairs[0];
+  const month = String(parseInt(ymdMatch[2]));
+  const day = String(parseInt(ymdMatch[3]));
+  // 数値の前後に他の数字が並ばないことを保証（"29/12" を "9/12" と誤認しない）
+  const datePattern = new RegExp(
+    `(?:^|\\D)${month}\\/${day}(?:\\D|$)|${month}月${day}日`
+  );
+
+  // 各ペアの出現位置を実テキストで再走査
+  const pattern =
+    /(?:開場|OPEN)[^\d０-９]*[０-９0-9]{1,2}[：:][　 ]*[０-９0-9]{2}[^開演OPEN]*(?:開演|START)[^\d０-９]*[０-９0-9]{1,2}[：:][　 ]*[０-９0-9]{2}/g;
+  const indexes: number[] = [];
+  let m: RegExpExecArray | null;
+  while ((m = pattern.exec(timeText)) !== null) indexes.push(m.index);
+
+  // 各ペアの「コンテキスト」= 前のペアの終端〜自分の開始位置
+  for (let i = 0; i < Math.min(indexes.length, allPairs.length); i++) {
+    const start = i === 0 ? 0 : indexes[i - 1];
+    const end = indexes[i];
+    const context = timeText.slice(start, end);
+    if (datePattern.test(context)) return allPairs[i];
+  }
+  return allPairs[0];
 }
 
 /**
@@ -167,9 +238,6 @@ export async function scrapeEventDetail(
   const timeSection = bodyText.match(/開場.{0,60}開演.{0,30}/);
   if (timeSection) timeText += " " + timeSection[0];
 
-  const doorOpen = parseTime(timeText, "開場");
-  const showStart = parseTime(timeText, "開演");
-
   // 公式URL：外部リンクを探す
   let officialUrl: string | null = null;
   $("a[href]").each((_, el) => {
@@ -183,5 +251,13 @@ export async function scrapeEventDetail(
     }
   });
 
-  return { description, doorOpen, showStart, officialUrl };
+  const timePairs = parseAllTimePairs(timeText);
+  return {
+    description,
+    doorOpen: timePairs[0]?.doorOpen ?? null,
+    showStart: timePairs[0]?.showStart ?? null,
+    officialUrl,
+    timePairs,
+    timeText,
+  };
 }
