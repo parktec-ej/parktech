@@ -38,6 +38,11 @@ export const PDF_EXTRACTION_PROMPT = `このPDFは宮城県総合運動公園「
   「キューアンドエースタジアムみやぎ」なら "qanda_stadium" に正規化してください。
 - どちらにも該当しない（フィットネスホールなど）場合はその項目を除外してください。
 - 該当イベントが1件も無い場合は空配列 [] を返してください。
+- 複数日にわたる公演（例：9/9・9/10・9/11の3日間）は、1日ごとに別オブジェクトとして出力してください。"endDate" は常に null にし、"date" に各公演日を1件ずつ入れてください。
+  例：
+  {"title":"桑田佳祐 コンサート","date":"2026-09-09","endDate":null,"doorOpen":"17:00","showStart":"18:00","venue":"sekisui_arena","category":"concert","notes":""},
+  {"title":"桑田佳祐 コンサート","date":"2026-09-10","endDate":null,"doorOpen":"17:00","showStart":"18:00","venue":"sekisui_arena","category":"concert","notes":""},
+  {"title":"桑田佳祐 コンサート","date":"2026-09-11","endDate":null,"doorOpen":"17:00","showStart":"18:00","venue":"sekisui_arena","category":"concert","notes":""}
 - JSON 以外の説明文・前置きは絶対に含めないでください。`;
 
 export type ExtractedEvent = {
