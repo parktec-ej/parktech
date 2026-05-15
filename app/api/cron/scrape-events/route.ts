@@ -78,7 +78,7 @@ async function upsertEventsBatch(params: {
 
   const existing = await prisma.event.findMany({
     where: { startAt: { gte: minStart, lte: maxStart } },
-    select: { title: true, venue: true, startAt: true },
+    select: { title: true, venue: true, startAt: true, status: true },
   });
   const existingKeys = new Set(
     existing.map(
