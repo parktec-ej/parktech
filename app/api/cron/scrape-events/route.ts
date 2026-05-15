@@ -171,23 +171,38 @@ export async function GET(req: Request) {
 
   // STEP 1B: 一覧から取り込み（コンサートのみ・date あり）
   if (listItems.length > 0) {
+    // 複数日公演を1日ごとに展開するヘルパー
+    function expandDates(startDate: string, endDate: string | null): string[] {
+      if (!endDate || endDate <= startDate) return [startDate];
+      const dates: string[] = [];
+      const cur = new Date(`${startDate}T00:00:00+09:00`);
+      const end = new Date(`${endDate}T00:00:00+09:00`);
+      while (cur <= end) {
+        // JST の YYYY-MM-DD を取得（toISOString だと UTC で 1日ズレる）
+        dates.push(
+          cur.toLocaleDateString("sv-SE", { timeZone: "Asia/Tokyo" })
+        );
+        cur.setDate(cur.getDate() + 1);
+      }
+      return dates;
+    }
+
     const rows = listItems
       .filter((it) => it.startDate)
-      .map((it) => {
-        const date = it.startDate!;
-        const startAt = buildStartAt(date, null);
-        const endAt = it.endDate ? ymdToUtcStartOfJstDay(it.endDate) : null;
-        return {
+      .flatMap((it) => {
+        const dates = expandDates(it.startDate!, it.endDate ?? null);
+        const venue = inferVenue(`${it.title} ${it.description}`);
+        return dates.map((date) => ({
           title: it.title,
-          venue: inferVenue(`${it.title} ${it.description}`),
-          startAt,
-          endAt,
+          venue,
+          startAt: buildStartAt(date, null),
+          endAt: null,
           doorOpenAt: null,
           showStartAt: null,
           sourceUrl: it.detailUrl,
           sourcePdfId: null,
           description: it.description,
-        };
+        }));
       });
     try {
       const r = await upsertEventsBatch({ source: "event_list", rows });
