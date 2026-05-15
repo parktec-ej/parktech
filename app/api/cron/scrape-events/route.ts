@@ -6,6 +6,7 @@ import { prisma } from "@/lib/db";
 import { sendSlackNotification, sendSlackAlert } from "@/lib/slack";
 import {
   scrapeEventList,
+  scrapeEventDetail,
   type ScrapedEventListItem,
 } from "@/lib/scraping/event-list";
 import {
@@ -188,23 +189,64 @@ export async function GET(req: Request) {
       return dates;
     }
 
-    const rows = listItems
-      .filter((it) => it.startDate)
-      .flatMap((it) => {
-        const dates = expandDates(it.startDate!, it.endDate ?? null);
-        const venue = inferVenue(`${it.title} ${it.description}`);
-        return dates.map((date) => ({
+    const filtered = listItems.filter((it) => it.startDate);
+    const rowsArrays: Array<
+      Array<{
+        title: string;
+        venue: "sekisui_arena" | "qanda_stadium";
+        startAt: Date;
+        endAt: Date | null;
+        doorOpenAt: Date | null;
+        showStartAt: Date | null;
+        sourceUrl: string | null;
+        sourcePdfId: null;
+        description: string;
+      }>
+    > = [];
+    for (const it of filtered) {
+      const dates = expandDates(it.startDate!, it.endDate ?? null);
+      const venue = inferVenue(`${it.title} ${it.description}`);
+
+      // 詳細ページから開演時間・説明文・公式URLを取得
+      let detail: {
+        description: string;
+        doorOpen: string | null;
+        showStart: string | null;
+        officialUrl: string | null;
+      } = {
+        description: it.description,
+        doorOpen: null,
+        showStart: null,
+        officialUrl: null,
+      };
+      if (it.externalId) {
+        try {
+          await politeWait();
+          detail = await scrapeEventDetail(it.externalId);
+        } catch (e) {
+          console.warn(`detail fetch failed for ${it.externalId}:`, e);
+        }
+      }
+
+      rowsArrays.push(
+        dates.map((date) => ({
           title: it.title,
           venue,
-          startAt: buildStartAt(date, null),
+          startAt: buildStartAt(date, detail.showStart),
           endAt: null,
-          doorOpenAt: null,
-          showStartAt: null,
-          sourceUrl: it.detailUrl,
+          doorOpenAt: detail.doorOpen
+            ? new Date(`${date}T${detail.doorOpen}:00+09:00`)
+            : null,
+          showStartAt: detail.showStart
+            ? new Date(`${date}T${detail.showStart}:00+09:00`)
+            : null,
+          sourceUrl: detail.officialUrl ?? it.detailUrl,
           sourcePdfId: null,
-          description: it.description,
-        }));
-      });
+          description: detail.description || it.description,
+        }))
+      );
+    }
+    const rows = rowsArrays.flat();
     try {
       const r = await upsertEventsBatch({ source: "event_list", rows });
       report.listCreated = r.created;

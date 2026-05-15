@@ -99,3 +99,89 @@ export async function scrapeEventList(): Promise<ScrapedEventListItem[]> {
   const html = await fetchEucJpHtml(EVENT_LIST_URL);
   return parseEventListHtml(html);
 }
+
+export type ScrapedEventDetail = {
+  /** 完全な説明文 */
+  description: string;
+  /** 開場時間 HH:MM または null */
+  doorOpen: string | null;
+  /** 開演時間 HH:MM または null */
+  showStart: string | null;
+  /** 公式URL（チケットサイト等） */
+  officialUrl: string | null;
+};
+
+/**
+ * "開場17：30　開演18：30" のような文字列から HH:MM を抽出
+ */
+function parseTime(text: string, keyword: string): string | null {
+  const pattern = new RegExp(keyword + "[\\s　]*([０-９0-9]{1,2})[：:｜|]([０-９0-9]{2})");
+  const m = text.match(pattern);
+  if (!m) return null;
+  const h = String(parseInt(m[1].replace(/[０-９]/g, (c) => String(c.charCodeAt(0) - 0xFF10)))).padStart(2, "0");
+  const min = m[2].replace(/[０-９]/g, (c) => String(c.charCodeAt(0) - 0xFF10));
+  return `${h}:${min}`;
+}
+
+/**
+ * グランディ21イベント詳細ページから開演時間・説明文・公式URLを取得
+ */
+export async function scrapeEventDetail(
+  externalId: string
+): Promise<ScrapedEventDetail> {
+  const url = `${EVENT_DETAIL_BASE}${externalId}`;
+  const html = await fetchEucJpHtml(url);
+  const $ = cheerio.load(html);
+
+  // 説明文：.event-detail-content または td.content など複数セレクタを試みる
+  let description = "";
+  const descCandidates = [
+    ".event-detail-content",
+    "td.content",
+    ".detail-content",
+    "#event-detail td:nth-child(2)",
+  ];
+  for (const sel of descCandidates) {
+    const text = $(sel).first().text().trim();
+    if (text.length > 10) { description = text; break; }
+  }
+  // fallback: テーブルの「内容」行を探す
+  if (!description) {
+    $("th, td").each((_, el) => {
+      if ($(el).text().trim() === "内容") {
+        description = $(el).next("td").text().trim();
+      }
+    });
+  }
+
+  // 開場・開演時間：「時間」行のテキストから抽出
+  let timeText = "";
+  $("th, td").each((_, el) => {
+    const t = $(el).text().trim();
+    if (/開場|開演|OPEN|START/.test(t) && t.length > 2) {
+      timeText += " " + t + " " + $(el).next("td").text().trim();
+    }
+  });
+  // ページ全体テキストからも探す
+  const bodyText = $("body").text();
+  const timeSection = bodyText.match(/開場.{0,60}開演.{0,30}/);
+  if (timeSection) timeText += " " + timeSection[0];
+
+  const doorOpen = parseTime(timeText, "開場");
+  const showStart = parseTime(timeText, "開演");
+
+  // 公式URL：外部リンクを探す
+  let officialUrl: string | null = null;
+  $("a[href]").each((_, el) => {
+    const href = $(el).attr("href") ?? "";
+    if (
+      href.startsWith("http") &&
+      !href.includes("mspf.jp") &&
+      !officialUrl
+    ) {
+      officialUrl = href;
+    }
+  });
+
+  return { description, doorOpen, showStart, officialUrl };
+}
