@@ -24,11 +24,28 @@ type EventRow = {
   bookingStartDays: number | null;
   bookingStartAt: string | null;
   bookingStartTime: string | null;
-  status: "draft" | "approved" | "published";
+  status: "draft" | "approved" | "published" | "archived";
   place: Place | null;
   placeId: string | null;
+  venueGroupId: string | null;
+  venueGroup: {
+    id: string;
+    name: string;
+    parkings: Array<{ id: string; parkingSlug: string; showOnHp: boolean }>;
+  } | null;
   createdAt: string;
   updatedAt: string;
+};
+
+type VenueGroupOpt = {
+  id: string;
+  name: string;
+  parkings: Array<{ id: string; parkingSlug: string; showOnHp: boolean }>;
+};
+
+const PARKING_NAMES: Record<string, string> = {
+  "rifu-main": "PARKTEC 利府グランディー前駐車場",
+  "sugaya-bus": "菅谷バス駐車場",
 };
 
 const VENUE_OPTIONS = [
@@ -61,6 +78,7 @@ export default function EventDetailPage() {
 
   const [event, setEvent] = useState<EventRow | null>(null);
   const [places, setPlaces] = useState<Place[]>([]);
+  const [venueGroups, setVenueGroups] = useState<VenueGroupOpt[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
   const [err, setErr] = useState("");
@@ -79,6 +97,7 @@ export default function EventDetailPage() {
   const [bookingStartTime, setBookingStartTime] = useState("10:00");
   const [ourPrice, setOurPrice] = useState("");
   const [competitorPrice, setCompetitorPrice] = useState("");
+  const [venueGroupId, setVenueGroupId] = useState("");
 
   async function load() {
     setLoading(true);
@@ -103,6 +122,7 @@ export default function EventDetailPage() {
       setCompetitorPrice(
         e.competitorPrice != null ? String(e.competitorPrice) : ""
       );
+      setVenueGroupId(e.venueGroupId ?? "");
       setBookingStartTime(e.bookingStartTime ?? "10:00");
       if (e.bookingStartDays !== null) {
         setBookingDaysOpt(String(e.bookingStartDays));
@@ -134,6 +154,14 @@ export default function EventDetailPage() {
         }
       })
       .catch(() => {});
+    fetch("/api/admin/venue-groups", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((j) => {
+        if (j?.ok && Array.isArray(j.venueGroups)) {
+          setVenueGroups(j.venueGroups);
+        }
+      })
+      .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
@@ -149,6 +177,7 @@ export default function EventDetailPage() {
       startAt: startAt ? new Date(startAt).toISOString() : null,
       endAt: endAt ? new Date(endAt).toISOString() : null,
       placeId,
+      venueGroupId,
       officialUrl: officialUrl.trim(),
       ourPrice: ourPrice ? Number(ourPrice) : null,
       competitorPrice: competitorPrice ? Number(competitorPrice) : null,
@@ -354,6 +383,54 @@ export default function EventDetailPage() {
                 <option key={p.id} value={p.id}>{p.name}</option>
               ))}
             </select>
+          </Field>
+          <Field label="対応エリア（VenueGroup）">
+            <select
+              value={venueGroupId}
+              onChange={(e) => setVenueGroupId(e.target.value)}
+              style={input}
+            >
+              <option value="">未選択</option>
+              {venueGroups.map((g) => (
+                <option key={g.id} value={g.id}>
+                  {g.id} - {g.name}
+                </option>
+              ))}
+            </select>
+            {(() => {
+              const selected = venueGroups.find((g) => g.id === venueGroupId);
+              if (!selected) return null;
+              const visible = selected.parkings.filter((p) => p.showOnHp);
+              if (visible.length === 0)
+                return (
+                  <div style={{ marginTop: 6, fontSize: 12, color: "#6b7280" }}>
+                    HP表示対象の駐車場はありません
+                  </div>
+                );
+              return (
+                <div style={{ marginTop: 8, display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  {visible.map((p) => (
+                    <span
+                      key={p.id}
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 4,
+                        padding: "4px 10px",
+                        borderRadius: 999,
+                        background: "#eff6ff",
+                        color: "#1e40af",
+                        fontSize: 12,
+                        fontWeight: 700,
+                        border: "1px solid #bfdbfe",
+                      }}
+                    >
+                      🅿️ {PARKING_NAMES[p.parkingSlug] ?? p.parkingSlug}
+                    </span>
+                  ))}
+                </div>
+              );
+            })()}
           </Field>
           <Field label="公式URL">
             <input value={officialUrl} onChange={(e) => setOfficialUrl(e.target.value)} style={input} />

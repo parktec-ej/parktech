@@ -4,10 +4,7 @@ export const preferredRegion = "hnd1";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 
-const RESERVE_BASE_URL = "https://reserve.parktec-ej.com";
-const RIFU_PLACE_URL = `${RESERVE_BASE_URL}/places/rifu-main`;
-
-const ALLOW_ORIGINS = ["https://parktec-ej.com", "https://www.parktec-ej.com"];
+const ALLOW_ORIGINS = ["https://parktec-ej.com", "https://www.parktec-ej.com", "https://new.parktec-ej.com"];
 
 function corsHeaders(origin: string | null) {
   const allowed =
@@ -25,15 +22,15 @@ export async function OPTIONS(req: Request) {
   return new NextResponse(null, { status: 204, headers: corsHeaders(origin) });
 }
 
-export async function GET(req: Request) {
+export async function GET(
+  req: Request,
+  context: { params: Promise<{ id: string }> }
+) {
   const origin = req.headers.get("origin");
   try {
-    const events = await prisma.event.findMany({
-      where: {
-        status: "published",
-        startAt: { gte: new Date() },
-      },
-      orderBy: { startAt: "asc" },
+    const { id } = await context.params;
+    const e = await prisma.event.findFirst({
+      where: { id, status: "published" },
       select: {
         id: true,
         title: true,
@@ -63,11 +60,17 @@ export async function GET(req: Request) {
       },
     });
 
+    if (!e) {
+      return NextResponse.json(
+        { ok: false, error: "event_not_found" },
+        { status: 404, headers: corsHeaders(origin) }
+      );
+    }
+
     return NextResponse.json(
       {
         ok: true,
-        reserveUrl: RIFU_PLACE_URL,
-        events: events.map((e) => ({
+        event: {
           id: e.id,
           title: e.title,
           description: e.description,
@@ -94,12 +97,12 @@ export async function GET(req: Request) {
                 })),
               }
             : null,
-        })),
+        },
       },
       { headers: corsHeaders(origin) }
     );
   } catch (error) {
-    console.error("[public/events] error:", error);
+    console.error("[public/events/[id]] error:", error);
     return NextResponse.json(
       {
         ok: false,

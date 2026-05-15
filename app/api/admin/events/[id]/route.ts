@@ -58,6 +58,7 @@ export async function GET(
       where: { id },
       include: {
         place: { select: { id: true, slug: true, name: true } },
+        venueGroup: { include: { parkings: true } },
         snsPosts: { orderBy: { phase: "asc" } },
       },
     });
@@ -126,6 +127,10 @@ export async function PATCH(
     if ("placeId" in body) {
       const pid = String(body.placeId ?? "").trim();
       data.place = pid ? { connect: { id: pid } } : { disconnect: true };
+    }
+    if ("venueGroupId" in body) {
+      const vgid = String(body.venueGroupId ?? "").trim();
+      data.venueGroup = vgid ? { connect: { id: vgid } } : { disconnect: true };
     }
 
     let nextStartAt: Date | null = null;
