@@ -19,7 +19,7 @@ type EventRow = {
   bookingStartDays: number | null;
   bookingStartAt: string | null;
   bookingStartTime: string | null;
-  status: "draft" | "approved" | "published";
+  status: "draft" | "approved" | "published" | "archived";
   place: { id: string; slug: string; name: string } | null;
   placeId: string | null;
   snsPostsCount: number;
@@ -35,7 +35,7 @@ type ApiResp = {
   message?: string;
 };
 
-type Filter = "all" | "draft" | "approved" | "published";
+type Filter = "all" | "draft" | "approved" | "published" | "archived";
 
 const VENUE_LABEL: Record<string, string> = {
   sekisui_arena: "セキスイハイムスーパーアリーナ",
@@ -101,6 +101,7 @@ function EventsListInner() {
         <FilterBtn label="draft" active={filter === "draft"} onClick={() => setFilter("draft")} />
         <FilterBtn label="approved" active={filter === "approved"} onClick={() => setFilter("approved")} />
         <FilterBtn label="published" active={filter === "published"} onClick={() => setFilter("published")} />
+        <FilterBtn label="archived" active={filter === "archived"} onClick={() => setFilter("archived")} />
         {counts.newly > 0 && (
           <span style={{ marginLeft: "auto", alignSelf: "center", fontSize: 13, color: "#92400e", fontWeight: 700 }}>
             🆕 新着 {counts.newly} 件（未承認・自動取得）
@@ -186,6 +187,7 @@ function FilterBtn({
 function statusColor(s: string) {
   if (s === "published") return "#16a34a";
   if (s === "approved") return "#0369a1";
+  if (s === "archived") return "#9ca3af";
   return "#6b7280";
 }
 

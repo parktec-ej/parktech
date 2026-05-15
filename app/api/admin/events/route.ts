@@ -6,7 +6,7 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { getAdminSession } from "@/lib/admin-auth";
 
-const ALLOWED_STATUS = ["draft", "approved", "published"] as const;
+const ALLOWED_STATUS = ["draft", "approved", "published", "archived"] as const;
 type Status = (typeof ALLOWED_STATUS)[number];
 function isStatus(v: string): v is Status {
   return (ALLOWED_STATUS as readonly string[]).includes(v);
