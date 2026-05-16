@@ -21,22 +21,33 @@ export async function GET(req: Request) {
   }
 
   const res = await fetch(
-    `https://graph.facebook.com/v19.0/me/permissions?access_token=${token}`
+    `https://graph.facebook.com/debug_token?input_token=${token}&access_token=${token}`
   );
-  const data = await res.json() as { data?: Array<{permission: string, status: string}>, error?: {message: string} };
+  const data = await res.json() as {
+    data?: {
+      is_valid?: boolean;
+      type?: string;
+      expires_at?: number;
+      scopes?: string[];
+    };
+    error?: { message: string };
+  };
 
   if (data.error) {
     return NextResponse.json({ ok: false, error: data.error.message });
   }
 
-  const granted = data.data?.filter(p => p.status === "granted").map(p => p.permission) ?? [];
+  const granted = data.data?.scopes ?? [];
   const required = ["pages_manage_posts", "pages_read_engagement", "pages_show_list"];
   const missing = required.filter(p => !granted.includes(p));
 
   return NextResponse.json({
     ok: missing.length === 0,
+    type: data.data?.type,
+    isValid: data.data?.is_valid,
+    expiresAt: data.data?.expires_at,
     granted,
     missing,
-    allRequired: missing.length === 0 ? "✅ 全権限あり" : `❌ 不足: ${missing.join(", ")}`
+    allRequired: missing.length === 0 ? "✅ 全権限あり" : `❌ 不足: ${missing.join(", ")}`,
   });
 }
