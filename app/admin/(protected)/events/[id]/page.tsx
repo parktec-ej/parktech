@@ -63,6 +63,46 @@ const BOOKING_DAYS_OPTIONS = [
   { value: "custom", label: "カスタム" },
 ];
 
+type SnsPostRow = {
+  id: string;
+  eventId: string;
+  phase: number;
+  phaseLabel: string;
+  platform: string;
+  postText: string;
+  scheduledAt: string | null;
+  postedAt: string | null;
+  fbPostId: string | null;
+  triggerType: string;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+const PHASE_BUTTONS: Array<{ phase: number; label: string }> = [
+  { phase: 1, label: "Phase1: イベント決定アナウンス" },
+  { phase: 2, label: "Phase2: 予約開始日お知らせ" },
+  { phase: 3, label: "Phase3: 予約1週間前予告" },
+  { phase: 4, label: "Phase4: 予約3日前予告" },
+  { phase: 5, label: "Phase5: 予約受付開始" },
+  { phase: 6, label: "Phase6: 満車・残りわずか" },
+  { phase: 7, label: "Phase7: キャンセル報告" },
+];
+
+const SNS_STATUS_STYLE: Record<string, { bg: string; fg: string }> = {
+  draft: { bg: "#e5e7eb", fg: "#374151" },
+  scheduled: { bg: "#dbeafe", fg: "#1e40af" },
+  posted: { bg: "#dcfce7", fg: "#166534" },
+  failed: { bg: "#fee2e2", fg: "#991b1b" },
+};
+
+function fromDateTimeLocalToIso(local: string): string | null {
+  if (!local) return null;
+  // local is "YYYY-MM-DDTHH:mm" interpreted as JST
+  const d = new Date(local + ":00+09:00");
+  return Number.isNaN(d.getTime()) ? null : d.toISOString();
+}
+
 function toDateTimeLocal(iso: string | null) {
   if (!iso) return "";
   const d = new Date(iso);
@@ -98,6 +138,134 @@ export default function EventDetailPage() {
   const [ourPrice, setOurPrice] = useState("");
   const [competitorPrice, setCompetitorPrice] = useState("");
   const [venueGroupId, setVenueGroupId] = useState("");
+
+  // --- SNS posts state ---
+  const [posts, setPosts] = useState<SnsPostRow[]>([]);
+  const [postsLoading, setPostsLoading] = useState(false);
+  const [genBusyPhase, setGenBusyPhase] = useState<number | null>(null);
+  const [postBusyId, setPostBusyId] = useState<string | null>(null);
+
+  async function fetchPosts() {
+    if (!id) return;
+    setPostsLoading(true);
+    try {
+      const res = await fetch(
+        `/api/admin/sns-posts?eventId=${encodeURIComponent(id)}`,
+        { cache: "no-store" }
+      );
+      const json = await res.json();
+      if (json?.ok && Array.isArray(json.posts)) setPosts(json.posts);
+    } catch {
+      // swallow — error feedback comes from per-action handlers
+    } finally {
+      setPostsLoading(false);
+    }
+  }
+
+  async function handleGenerate(phase: number) {
+    if (genBusyPhase !== null) return;
+    setGenBusyPhase(phase);
+    try {
+      const res = await fetch("/api/admin/sns-posts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ eventId: id, phase, autoGenerate: true }),
+      });
+      const json = await res.json();
+      if (!json?.ok) {
+        alert(
+          `生成失敗: ${json?.error ?? "unknown"}${json?.message ? " - " + json.message : ""}`
+        );
+        return;
+      }
+      await fetchPosts();
+    } catch (e) {
+      alert(`通信エラー: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setGenBusyPhase(null);
+    }
+  }
+
+  function updatePostLocal(postId: string, patch: Partial<SnsPostRow>) {
+    setPosts((cur) => cur.map((p) => (p.id === postId ? { ...p, ...patch } : p)));
+  }
+
+  async function handleSavePost(post: SnsPostRow) {
+    setPostBusyId(post.id);
+    try {
+      const res = await fetch(`/api/admin/sns-posts/${post.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          postText: post.postText,
+          scheduledAt: post.scheduledAt,
+        }),
+      });
+      const json = await res.json();
+      if (!json?.ok) {
+        alert(`保存失敗: ${json?.error ?? "unknown"}`);
+        return;
+      }
+      await fetchPosts();
+    } catch (e) {
+      alert(`通信エラー: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setPostBusyId(null);
+    }
+  }
+
+  async function handlePostNow(post: SnsPostRow, mode: "now" | "scheduled") {
+    const confirmMsg =
+      mode === "now"
+        ? "Facebook に今すぐ投稿します。よろしいですか？"
+        : "Facebook 側に予約投稿として登録します。よろしいですか？";
+    if (!confirm(confirmMsg)) return;
+    setPostBusyId(post.id);
+    try {
+      const res = await fetch(`/api/admin/sns-posts/${post.id}/post-now`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode }),
+      });
+      const json = await res.json();
+      if (!json?.ok) {
+        alert(
+          `投稿失敗: ${json?.error ?? "unknown"}${json?.message ? " - " + json.message : ""}`
+        );
+        return;
+      }
+      alert(
+        mode === "scheduled"
+          ? "Facebook 側に予約投稿を登録しました"
+          : "Facebook への投稿が完了しました"
+      );
+      await fetchPosts();
+    } catch (e) {
+      alert(`通信エラー: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setPostBusyId(null);
+    }
+  }
+
+  async function handleDeletePost(post: SnsPostRow) {
+    if (!confirm(`「${post.phaseLabel}」を削除します。よろしいですか？`)) return;
+    setPostBusyId(post.id);
+    try {
+      const res = await fetch(`/api/admin/sns-posts/${post.id}`, {
+        method: "DELETE",
+      });
+      const json = await res.json();
+      if (!json?.ok) {
+        alert(`削除失敗: ${json?.error ?? "unknown"}`);
+        return;
+      }
+      await fetchPosts();
+    } catch (e) {
+      alert(`通信エラー: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setPostBusyId(null);
+    }
+  }
 
   async function load() {
     setLoading(true);
@@ -144,6 +312,7 @@ export default function EventDetailPage() {
   useEffect(() => {
     if (!id) return;
     load();
+    fetchPosts();
     fetch("/api/admin/places", { cache: "no-store" })
       .then((r) => r.json())
       .then((j) => {
@@ -487,6 +656,328 @@ export default function EventDetailPage() {
               />
             </Field>
           </div>
+
+          <hr style={{ margin: "20px 0", border: "none", borderTop: "1px solid #e5e7eb" }} />
+
+          <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 6 }}>
+            📣 SNS投稿管理
+          </div>
+          <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 12 }}>
+            Claudeでフェーズごとの投稿文を自動生成し、Facebookに投稿します。
+          </div>
+
+          <div style={{ fontSize: 13, fontWeight: 700, margin: "8px 0 6px" }}>
+            📝 投稿文をPhase別に生成
+          </div>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+              gap: 8,
+              marginBottom: 16,
+            }}
+          >
+            {PHASE_BUTTONS.map((b) => (
+              <button
+                key={b.phase}
+                type="button"
+                onClick={() => handleGenerate(b.phase)}
+                disabled={genBusyPhase !== null}
+                style={{
+                  padding: "10px 12px",
+                  borderRadius: 10,
+                  border: "1px solid #d1d5db",
+                  background: genBusyPhase === b.phase ? "#fef3c7" : "#f9fafb",
+                  color: "#111",
+                  fontSize: 13,
+                  fontWeight: 700,
+                  cursor: genBusyPhase !== null ? "not-allowed" : "pointer",
+                  opacity: genBusyPhase !== null && genBusyPhase !== b.phase ? 0.6 : 1,
+                  textAlign: "left",
+                }}
+              >
+                {genBusyPhase === b.phase ? "🤖 生成中..." : b.label}
+              </button>
+            ))}
+          </div>
+
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              margin: "16px 0 8px",
+            }}
+          >
+            <div style={{ fontSize: 13, fontWeight: 700 }}>
+              📋 投稿一覧 ({posts.length}件)
+            </div>
+            <button
+              type="button"
+              onClick={fetchPosts}
+              disabled={postsLoading}
+              style={{
+                fontSize: 12,
+                color: "#2563eb",
+                background: "none",
+                border: "none",
+                cursor: postsLoading ? "default" : "pointer",
+                textDecoration: "underline",
+              }}
+            >
+              {postsLoading ? "更新中..." : "🔄 再読み込み"}
+            </button>
+          </div>
+
+          {postsLoading && posts.length === 0 ? (
+            <div style={{ fontSize: 13, color: "#6b7280", padding: 12 }}>
+              読み込み中...
+            </div>
+          ) : posts.length === 0 ? (
+            <div
+              style={{
+                border: "1px dashed #d1d5db",
+                borderRadius: 12,
+                padding: 24,
+                textAlign: "center",
+                fontSize: 13,
+                color: "#6b7280",
+              }}
+            >
+              まだ投稿はありません。上のボタンから生成してください。
+            </div>
+          ) : (
+            <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
+              {posts.map((p) => {
+                const style =
+                  SNS_STATUS_STYLE[p.status] ??
+                  { bg: "#e5e7eb", fg: "#374151" };
+                const busy = postBusyId === p.id;
+                const isPosted = p.status === "posted";
+                return (
+                  <li
+                    key={p.id}
+                    style={{
+                      border: "1px solid #e5e7eb",
+                      background: "#fafafa",
+                      borderRadius: 12,
+                      padding: 14,
+                      marginBottom: 12,
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        flexWrap: "wrap",
+                        gap: 8,
+                      }}
+                    >
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <span
+                          style={{
+                            background: style.bg,
+                            color: style.fg,
+                            padding: "3px 10px",
+                            borderRadius: 999,
+                            fontSize: 11,
+                            fontWeight: 800,
+                            textTransform: "uppercase",
+                          }}
+                        >
+                          {p.status}
+                        </span>
+                        <span style={{ fontSize: 13, fontWeight: 700 }}>
+                          {p.phaseLabel}
+                        </span>
+                      </div>
+                      {p.fbPostId ? (
+                        <a
+                          href={`https://www.facebook.com/${p.fbPostId}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={{
+                            fontSize: 11,
+                            color: "#2563eb",
+                            textDecoration: "underline",
+                          }}
+                        >
+                          fbPostId: {p.fbPostId} ↗
+                        </a>
+                      ) : null}
+                    </div>
+
+                    <textarea
+                      value={p.postText}
+                      onChange={(e) =>
+                        updatePostLocal(p.id, { postText: e.target.value })
+                      }
+                      rows={6}
+                      style={{
+                        ...input,
+                        marginTop: 10,
+                        minHeight: 120,
+                        fontFamily: "inherit",
+                        fontSize: 13,
+                        lineHeight: 1.5,
+                      }}
+                      disabled={isPosted}
+                    />
+                    <div
+                      style={{
+                        fontSize: 11,
+                        color: "#6b7280",
+                        marginTop: 2,
+                        textAlign: "right",
+                      }}
+                    >
+                      {p.postText.length} 文字
+                    </div>
+
+                    <div
+                      style={{
+                        marginTop: 10,
+                        display: "flex",
+                        gap: 12,
+                        flexWrap: "wrap",
+                        alignItems: "flex-end",
+                      }}
+                    >
+                      <label style={{ display: "block" }}>
+                        <div
+                          style={{
+                            fontSize: 11,
+                            fontWeight: 700,
+                            color: "#6b7280",
+                            marginBottom: 4,
+                          }}
+                        >
+                          予約日時（JST）
+                        </div>
+                        <input
+                          type="datetime-local"
+                          value={toDateTimeLocal(p.scheduledAt)}
+                          onChange={(e) =>
+                            updatePostLocal(p.id, {
+                              scheduledAt: fromDateTimeLocalToIso(e.target.value),
+                            })
+                          }
+                          style={{
+                            ...input,
+                            width: 220,
+                            padding: 8,
+                          }}
+                          disabled={isPosted}
+                        />
+                      </label>
+                      {p.postedAt ? (
+                        <div style={{ fontSize: 11, color: "#6b7280" }}>
+                          投稿日時:{" "}
+                          {new Date(p.postedAt).toLocaleString("ja-JP", {
+                            timeZone: "Asia/Tokyo",
+                          })}
+                        </div>
+                      ) : null}
+                    </div>
+
+                    <div
+                      style={{
+                        marginTop: 12,
+                        display: "flex",
+                        gap: 8,
+                        flexWrap: "wrap",
+                      }}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => handleSavePost(p)}
+                        disabled={busy || isPosted}
+                        style={{
+                          padding: "8px 14px",
+                          borderRadius: 8,
+                          border: "1px solid #d1d5db",
+                          background: "#fff",
+                          fontSize: 12,
+                          fontWeight: 700,
+                          cursor: busy || isPosted ? "not-allowed" : "pointer",
+                          opacity: busy || isPosted ? 0.6 : 1,
+                        }}
+                      >
+                        💾 保存
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handlePostNow(p, "now")}
+                        disabled={busy || isPosted}
+                        style={{
+                          padding: "8px 14px",
+                          borderRadius: 8,
+                          border: "1px solid #16a34a",
+                          background: "#16a34a",
+                          color: "#fff",
+                          fontSize: 12,
+                          fontWeight: 800,
+                          cursor: busy || isPosted ? "not-allowed" : "pointer",
+                          opacity: busy || isPosted ? 0.6 : 1,
+                        }}
+                      >
+                        📣 今すぐ投稿
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handlePostNow(p, "scheduled")}
+                        disabled={busy || isPosted || !p.scheduledAt}
+                        title={
+                          !p.scheduledAt
+                            ? "予約日時を設定してください"
+                            : ""
+                        }
+                        style={{
+                          padding: "8px 14px",
+                          borderRadius: 8,
+                          border: "1px solid #2563eb",
+                          background: "#2563eb",
+                          color: "#fff",
+                          fontSize: 12,
+                          fontWeight: 800,
+                          cursor:
+                            busy || isPosted || !p.scheduledAt
+                              ? "not-allowed"
+                              : "pointer",
+                          opacity:
+                            busy || isPosted || !p.scheduledAt ? 0.5 : 1,
+                        }}
+                      >
+                        📅 予約投稿
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeletePost(p)}
+                        disabled={busy}
+                        style={{
+                          marginLeft: "auto",
+                          padding: "8px 14px",
+                          borderRadius: 8,
+                          border: "1px solid #dc2626",
+                          background: "#fff",
+                          color: "#dc2626",
+                          fontSize: 12,
+                          fontWeight: 800,
+                          cursor: busy ? "not-allowed" : "pointer",
+                          opacity: busy ? 0.6 : 1,
+                        }}
+                      >
+                        🗑️ 削除
+                      </button>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+
+          <hr style={{ margin: "20px 0", border: "none", borderTop: "1px solid #e5e7eb" }} />
 
           <div style={{ display: "flex", gap: 10, marginTop: 16, flexWrap: "wrap" }}>
             <button type="button" onClick={save} disabled={busy !== null} style={primaryBtn}>
