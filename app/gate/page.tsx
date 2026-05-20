@@ -272,7 +272,7 @@ function GateInner() {
   if (loading) {
     return (
       <main style={pageStyle}>
-        <h1 style={titleStyle}>ParkTech ゲート</h1>
+        <h1 style={titleStyle}>ParkTec ゲート</h1>
         <div style={cardStyle}>状態を確認しています...</div>
       </main>
     );
@@ -280,7 +280,7 @@ function GateInner() {
 
   return (
     <main style={pageStyle}>
-      <h1 style={titleStyle}>ParkTech ゲート</h1>
+      <h1 style={titleStyle}>ParkTec ゲート</h1>
 
       <div style={heroCardStyle}>
         <div style={heroPlaceStyle}>{placeName || "-"}</div>

@@ -173,8 +173,8 @@ export default function AdminProtectedLayout({
           }}
         >
           <div>
-            <div style={{ fontWeight: 900, fontSize: 20 }}>ParkTech Admin</div>
-            <div style={{ fontSize: 12, color: "#666" }}>ParkTech Admin</div>
+            <div style={{ fontWeight: 900, fontSize: 20 }}>ParkTec Admin</div>
+            <div style={{ fontSize: 12, color: "#666" }}>ParkTec Admin</div>
 
             <Suspense fallback={null}>
               <AdminTabs />

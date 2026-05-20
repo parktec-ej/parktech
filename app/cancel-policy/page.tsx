@@ -1,6 +1,6 @@
 export const metadata = {
-  title: "キャンセルポリシー | ParkTech",
-  description: "ParkTechのキャンセルポリシー",
+  title: "キャンセルポリシー | ParkTec",
+  description: "ParkTecのキャンセルポリシー",
 };
 
 export default function CancelPolicyPage() {
@@ -10,7 +10,7 @@ export default function CancelPolicyPage() {
 
       <div className="mt-8 space-y-6 text-sm leading-7 text-gray-800">
         <p>
-          ParkTechをご利用いただきありがとうございます。
+          ParkTecをご利用いただきありがとうございます。
           ご予約のキャンセルおよび返金について、以下のとおり定めます。
         </p>
 

@@ -27,7 +27,7 @@ export default async function AdminProtectedLayout({
           }}
         >
           <div>
-            <div style={{ fontWeight: 900 }}>ParkTech Admin</div>
+            <div style={{ fontWeight: 900 }}>ParkTec Admin</div>
             <div style={{ fontSize: 12, color: "#666" }}>
               {admin.name || admin.email}
             </div>

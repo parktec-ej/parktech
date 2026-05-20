@@ -1,6 +1,6 @@
 export const metadata = {
-  title: "利用規約 | ParkTech",
-  description: "ParkTechの利用規約",
+  title: "利用規約 | ParkTec",
+  description: "ParkTecの利用規約",
 };
 
 export default function TermsPage() {

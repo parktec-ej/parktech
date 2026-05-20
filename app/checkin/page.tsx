@@ -115,7 +115,7 @@ function CheckinInner() {
 
   return (
     <main style={pageStyle}>
-      <h1 style={titleStyle}>ParkTech チェックイン</h1>
+      <h1 style={titleStyle}>ParkTec チェックイン</h1>
 
       <div style={heroCardStyle}>
         <div style={heroPlaceStyle}>{placeName || "-"}</div>

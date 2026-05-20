@@ -41,10 +41,10 @@ export async function sendReservationPinMail(params: {
   return getResend().emails.send({
     from: MAIL_FROM,
     to,
-    subject: "【ParkTech】駐車場予約完了 / PINコードのお知らせ",
+    subject: "【ParkTec】駐車場予約完了 / PINコードのお知らせ",
     html: `
       <div style="font-family:Arial,sans-serif;line-height:1.8;color:#111">
-        <h2>ParkTechをご利用いただきありがとうございます。</h2>
+        <h2>ParkTecをご利用いただきありがとうございます。</h2>
         <p>以下の内容で駐車場の予約が完了しました。</p>
 
         <div style="padding:16px;border:1px solid #ddd;border-radius:8px;background:#fafafa">
@@ -94,7 +94,7 @@ export async function sendReservationPinMail(params: {
       </div>
     `,
     text: `
-ParkTechをご利用いただきありがとうございます。
+ParkTecをご利用いただきありがとうございます。
 
 駐車場: ${safe(placeName)}
 区画: ${safe(spotLabel)}
@@ -163,11 +163,11 @@ ${receiptRequestUrl}
   return getResend().emails.send({
     from: MAIL_FROM,
     to,
-    subject: "【ParkTech】ご利用ありがとうございました",
+    subject: "【ParkTec】ご利用ありがとうございました",
     text,
     html: `
       <div style="font-family:Arial,sans-serif;line-height:1.8;color:#111">
-        <h2>ParkTechをご利用いただきありがとうございました。</h2>
+        <h2>ParkTecをご利用いただきありがとうございました。</h2>
         <p>以下の内容でご利用が完了しました。</p>
 
         <div style="padding:16px;border:1px solid #ddd;border-radius:8px;background:#fafafa">
@@ -229,7 +229,7 @@ export async function sendReservationCanceledMail(params: {
   return getResend().emails.send({
     from: MAIL_FROM,
     to,
-    subject: "【ParkTech】キャンセル完了のお知らせ",
+    subject: "【ParkTec】キャンセル完了のお知らせ",
     html: `
       <div style="font-family:Arial,sans-serif;line-height:1.8;color:#111">
         <h2>キャンセルが完了しました。</h2>
@@ -292,7 +292,7 @@ export async function sendGateUrlMail(params: {
   return getResend().emails.send({
     from: MAIL_FROM,
     to,
-    subject: "【ParkTech】ゲートURLのご案内",
+    subject: "【ParkTec】ゲートURLのご案内",
     html: `
       <div style="font-family:Arial,sans-serif;line-height:1.8;color:#111">
         <h2>${safe(name) || "お客様"} 様</h2>

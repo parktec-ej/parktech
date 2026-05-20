@@ -1,6 +1,6 @@
 export const metadata = {
-  title: "プライバシーポリシー | ParkTech",
-  description: "ParkTechのプライバシーポリシー",
+  title: "プライバシーポリシー | ParkTec",
+  description: "ParkTecのプライバシーポリシー",
 };
 
 export default function PrivacyPage() {
