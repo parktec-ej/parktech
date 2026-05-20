@@ -111,7 +111,7 @@ PINコード: ${safe(pin)}
 ${googleMapUrl ? `Google Map: ${googleMapUrl}` : ""}
 ${manageUrl ? `予約確認・キャンセル: ${manageUrl}` : ""}
 
-ParkTech
+ParkTec
     `.trim(),
   });
 }
@@ -276,7 +276,7 @@ export async function sendReservationCanceledMail(params: {
 
 ※ 返金がある場合、カード会社への反映まで数日かかることがあります。
 
-ParkTech
+ParkTec
     `.trim(),
   });
 }
@@ -328,6 +328,6 @@ export async function sendGateUrlMail(params: {
 
 ${gateUrl}
 
-ParkTech`,
+ParkTec`,
   });
 }

@@ -10,7 +10,7 @@ export default function PrivacyPage() {
 
       <div className="mt-8 space-y-6 text-sm leading-7 text-gray-800">
         <p>
-          ParkTech（以下「当サービス」）は、利用者の個人情報の重要性を認識し、
+          ParkTec（以下「当サービス」）は、利用者の個人情報の重要性を認識し、
           個人情報の保護に関する法令等を遵守するとともに、以下の方針に基づき適切に取り扱います。
         </p>
 

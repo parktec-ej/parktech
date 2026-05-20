@@ -10,7 +10,7 @@ export default function TermsPage() {
 
       <div className="mt-8 space-y-6 text-sm leading-7 text-gray-800">
         <p>
-          この利用規約（以下「本規約」）は、ParkTech（以下「当サービス」）が提供する
+          この利用規約（以下「本規約」）は、ParkTec（以下「当サービス」）が提供する
           駐車場予約・時間貸しサービスの利用条件を定めるものです。
           利用者は、本規約に同意のうえ当サービスを利用するものとします。
         </p>

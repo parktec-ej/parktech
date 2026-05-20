@@ -52,7 +52,7 @@ export default function RootLayout({
               </div>
 
               <p className="mt-4 text-xs text-gray-400">
-                © ParkTech
+                © ParkTec
               </p>
             </div>
           </footer>
