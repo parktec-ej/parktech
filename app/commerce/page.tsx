@@ -12,7 +12,7 @@ export default function CommercePage() {
         <dl className="divide-y divide-gray-200 text-sm">
           <div className="grid gap-2 px-4 py-4 md:grid-cols-3">
             <dt className="font-semibold text-gray-900">販売事業者</dt>
-            <dd className="md:col-span-2">ParkTech</dd>
+            <dd className="md:col-span-2">ParkTec</dd>
           </div>
 
           <div className="grid gap-2 px-4 py-4 md:grid-cols-3">

@@ -90,7 +90,7 @@ export async function sendReservationPinMail(params: {
         }
 
         <hr style="margin:24px 0" />
-        <p>ParkTech</p>
+        <p>ParkTec</p>
       </div>
     `,
     text: `
@@ -193,7 +193,7 @@ ${receiptRequestUrl}
         </p>
 
         <hr style="margin:24px 0" />
-        <p>またのご利用をお待ちしております。<br />ParkTech</p>
+        <p>またのご利用をお待ちしております。<br />ParkTec</p>
       </div>
     `,
   });
@@ -256,7 +256,7 @@ export async function sendReservationCanceledMail(params: {
         </p>
 
         <hr style="margin:24px 0" />
-        <p>ParkTech</p>
+        <p>ParkTec</p>
       </div>
     `,
     text: `
@@ -316,7 +316,7 @@ export async function sendGateUrlMail(params: {
         </p>
 
         <hr style="margin:24px 0" />
-        <p>ParkTech</p>
+        <p>ParkTec</p>
       </div>
     `,
     text: `${safe(name) || "お客様"} 様

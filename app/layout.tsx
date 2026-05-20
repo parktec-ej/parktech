@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "ParkTech",
+  title: "ParkTec",
   description: "QR駐車場予約・時間貸しサービス",
 };
 

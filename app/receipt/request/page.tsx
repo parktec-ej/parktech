@@ -65,7 +65,7 @@ function ReceiptRequestPageInner() {
   return (
     <main style={pageStyle}>
       <div style={cardStyle}>
-        <div style={badgeStyle}>ParkTech</div>
+        <div style={badgeStyle}>ParkTec</div>
 
         <h1 style={titleStyle}>領収書発行</h1>
 
