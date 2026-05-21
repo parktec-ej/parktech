@@ -17,11 +17,13 @@ export async function GET(req: Request) {
   const token = process.env.FACEBOOK_PAGE_ACCESS_TOKEN ?? "";
   const envPageId = process.env.FACEBOOK_PAGE_ID ?? "";
   const me = await fetch(
-    `https://graph.facebook.com/v19.0/me?fields=id,name,instagram_business_account&access_token=${token}`
+    `https://graph.facebook.com/v19.0/me?fields=id,name,instagram_business_account{id,username},connected_instagram_account{id,username},instagram_accounts{id,username}&access_token=${token}`
   ).then(r => r.json()) as {
     id?: string;
     name?: string;
-    instagram_business_account?: { id?: string };
+    instagram_business_account?: { id?: string; username?: string };
+    connected_instagram_account?: { id?: string; username?: string };
+    instagram_accounts?: { data?: Array<{ id?: string; username?: string }> };
     error?: { message: string };
   };
 
@@ -32,6 +34,8 @@ export async function GET(req: Request) {
     match: envPageId === me.id,
     igAccountId: me.instagram_business_account?.id ?? null,
     igLinked: !!me.instagram_business_account?.id,
+    igAccounts: me.instagram_accounts?.data ?? [],
+    connectedIg: me.connected_instagram_account ?? null,
     error: me.error?.message ?? null,
   });
 }
