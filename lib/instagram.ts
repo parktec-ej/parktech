@@ -1,4 +1,4 @@
-import { sendSlackAlert } from "./slack";
+import { sendSlackNotification } from "./slack";
 
 const IG_API_BASE = "https://graph.facebook.com/v19.0";
 
@@ -45,6 +45,16 @@ export async function postInstagram(caption: string, imageUrl: string): Promise<
   if (container.error) throw new Error(`IG container error: ${container.error.message}`);
   if (!container.id) throw new Error("IG container ID not returned");
 
+  // Step1.5: メディア処理完了を待つ（最大20秒）
+  for (let i = 0; i < 10; i++) {
+    await new Promise(r => setTimeout(r, 2000));
+    const status = await fetch(
+      `${IG_API_BASE}/${container.id}?fields=status_code&access_token=${token}`
+    ).then(r => r.json()) as { status_code?: string };
+    if (status.status_code === "FINISHED") break;
+    if (status.status_code === "ERROR") throw new Error("IG media processing failed");
+  }
+
   // Step2: 公開
   const publishRes = await fetch(
     `${IG_API_BASE}/${igUserId}/media_publish`,
@@ -61,6 +71,6 @@ export async function postInstagram(caption: string, imageUrl: string): Promise<
   if (published.error) throw new Error(`IG publish error: ${published.error.message}`);
   if (!published.id) throw new Error("IG post ID not returned");
 
-  await sendSlackAlert(`📸 [Instagram] 投稿完了 igPostId: ${published.id}`);
+  await sendSlackNotification(`📸 [Instagram] 投稿完了 igPostId: ${published.id}`);
   return published.id;
 }
