@@ -17,14 +17,21 @@ export async function GET(req: Request) {
   const token = process.env.FACEBOOK_PAGE_ACCESS_TOKEN ?? "";
   const envPageId = process.env.FACEBOOK_PAGE_ID ?? "";
   const me = await fetch(
-    `https://graph.facebook.com/v19.0/me?fields=id,name&access_token=${token}`
-  ).then(r => r.json()) as { id?: string; name?: string; error?: { message: string } };
+    `https://graph.facebook.com/v19.0/me?fields=id,name,instagram_business_account&access_token=${token}`
+  ).then(r => r.json()) as {
+    id?: string;
+    name?: string;
+    instagram_business_account?: { id?: string };
+    error?: { message: string };
+  };
 
   return NextResponse.json({
     envPageId,
     tokenPageId: me.id,
     name: me.name,
     match: envPageId === me.id,
+    igAccountId: me.instagram_business_account?.id ?? null,
+    igLinked: !!me.instagram_business_account?.id,
     error: me.error?.message ?? null,
   });
 }
