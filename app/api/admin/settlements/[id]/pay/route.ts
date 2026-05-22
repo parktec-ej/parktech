@@ -76,6 +76,7 @@ export async function POST(
           select: {
             id: true,
             payoutTarget: true,
+            status: true,
           },
         },
       },
@@ -105,11 +106,18 @@ export async function POST(
     );
 
     const hasOwnerPayout = settlement.Payout.some(
-      (p) => p.payoutTarget === "OWNER"
+      (p) => p.payoutTarget === "OWNER" && p.status === "PAID"
     );
     const hasAgentPayout = settlement.Payout.some(
-      (p) => p.payoutTarget === "AGENT"
+      (p) => p.payoutTarget === "AGENT" && p.status === "PAID"
     );
+
+    const failedOwnerPayoutIds = settlement.Payout.filter(
+      (p) => p.payoutTarget === "OWNER" && p.status === "FAILED"
+    ).map((p) => p.id);
+    const failedAgentPayoutIds = settlement.Payout.filter(
+      (p) => p.payoutTarget === "AGENT" && p.status === "FAILED"
+    ).map((p) => p.id);
 
     // --- Stripe Transfer は DB トランザクション外で実行 ---
     // 1. Owner / Agent の Stripe 情報を取得
@@ -203,6 +211,12 @@ export async function POST(
 
     await prisma.$transaction(async (tx) => {
       if (shouldCreateOwnerPayout) {
+        // 既存の FAILED Payout を削除してから新しい Payout を作成
+        if (failedOwnerPayoutIds.length > 0) {
+          await tx.payout.deleteMany({
+            where: { id: { in: failedOwnerPayoutIds } },
+          });
+        }
         await tx.payout.create({
           data: {
             id: crypto.randomUUID(),
@@ -227,6 +241,12 @@ export async function POST(
       }
 
       if (shouldCreateAgentPayout && settlement.agentId) {
+        // 既存の FAILED Payout を削除してから新しい Payout を作成
+        if (failedAgentPayoutIds.length > 0) {
+          await tx.payout.deleteMany({
+            where: { id: { in: failedAgentPayoutIds } },
+          });
+        }
         await tx.payout.create({
           data: {
             id: crypto.randomUUID(),
