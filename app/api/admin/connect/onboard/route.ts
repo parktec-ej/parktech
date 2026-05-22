@@ -84,12 +84,16 @@ export async function POST(req: Request) {
       url: accountLink.url,
       accountId: stripeAccountId,
     });
-  } catch (error) {
-    console.error("[admin/connect/onboard] error:", error);
-    return jsonError(
-      "server_error",
-      500,
-      error instanceof Error ? error.message : String(error)
+  } catch (e: any) {
+    console.error("Connect onboard error:", e);
+    return NextResponse.json(
+      {
+        ok: false,
+        error: e?.type || "server_error",
+        message: e?.message || String(e),
+        code: e?.code || null,
+      },
+      { status: 500 }
     );
   }
 }

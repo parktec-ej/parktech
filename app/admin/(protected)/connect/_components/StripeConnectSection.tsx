@@ -16,11 +16,15 @@ export default function StripeConnectSection({
   stripeOnboardingComplete,
 }: Props) {
   const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState("");
+  const [errMessage, setErrMessage] = useState("");
+  const [errCode, setErrCode] = useState<string | null>(null);
+  const [errType, setErrType] = useState<string | null>(null);
 
   async function startOnboarding() {
     setBusy(true);
-    setErr("");
+    setErrMessage("");
+    setErrCode(null);
+    setErrType(null);
     try {
       const res = await fetch(`/api/admin/connect/onboard`, {
         method: "POST",
@@ -31,11 +35,16 @@ export default function StripeConnectSection({
       if (json?.ok && json.url) {
         window.location.href = json.url;
       } else {
-        setErr(json?.message ?? json?.error ?? "onboarding URLの取得に失敗");
+        // Stripe / サーバーから返ってきた message をそのまま表示する
+        setErrMessage(
+          json?.message ?? json?.error ?? "onboarding URLの取得に失敗"
+        );
+        setErrCode(json?.code ?? null);
+        setErrType(json?.error ?? null);
         setBusy(false);
       }
     } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
+      setErrMessage(e instanceof Error ? e.message : String(e));
       setBusy(false);
     }
   }
@@ -84,7 +93,18 @@ export default function StripeConnectSection({
         </>
       )}
 
-      {err ? <div style={errorBox}>{err}</div> : null}
+      {errMessage ? (
+        <div style={errorBox}>
+          <div style={errorMessageText}>{errMessage}</div>
+          {(errType || errCode) && (
+            <div style={errorMeta}>
+              {errType && <span>type: {errType}</span>}
+              {errType && errCode && <span> / </span>}
+              {errCode && <span>code: {errCode}</span>}
+            </div>
+          )}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -142,8 +162,23 @@ const errorBox: React.CSSProperties = {
   color: "#b91c1c",
   padding: 12,
   borderRadius: 10,
-  fontWeight: 700,
   marginTop: 12,
+};
+
+const errorMessageText: React.CSSProperties = {
+  fontWeight: 700,
+  whiteSpace: "pre-wrap",
+  wordBreak: "break-word",
+  fontSize: 13,
+  lineHeight: 1.6,
+};
+
+const errorMeta: React.CSSProperties = {
+  marginTop: 6,
+  fontSize: 11,
+  color: "#991b1b",
+  fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+  opacity: 0.85,
 };
 
 const primaryBtn: React.CSSProperties = {
