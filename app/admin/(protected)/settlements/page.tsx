@@ -374,6 +374,23 @@ export default async function SettlementsPage({
             {selectedPlace.owner?.displayName || selectedPlace.owner?.name || "-"}
           </div>
         </div>
+
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-start" }}>
+          <a
+            href={`/api/admin/settlements/csv?month=${encodeURIComponent(month)}&type=journal`}
+            style={csvBtnStyle}
+            download
+          >
+            📒 仕訳CSV
+          </a>
+          <a
+            href={`/api/admin/settlements/csv?month=${encodeURIComponent(month)}&type=detail`}
+            style={csvBtnStyle}
+            download
+          >
+            📊 明細CSV
+          </a>
+        </div>
       </div>
 
       {params.created === "1" ? (
@@ -996,6 +1013,19 @@ const pdfLinkStyle: CSSProperties = {
   color: "#111827",
   textDecoration: "none",
   fontSize: 12,
+  fontWeight: 700,
+  whiteSpace: "nowrap",
+};
+
+const csvBtnStyle: CSSProperties = {
+  display: "inline-block",
+  padding: "8px 14px",
+  border: "1px solid #111827",
+  borderRadius: 8,
+  background: "#fff",
+  color: "#111827",
+  textDecoration: "none",
+  fontSize: 13,
   fontWeight: 700,
   whiteSpace: "nowrap",
 };
