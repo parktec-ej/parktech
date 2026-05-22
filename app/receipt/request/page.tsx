@@ -6,11 +6,15 @@ import { useSearchParams } from "next/navigation";
 
 function ReceiptRequestPageInner() {
   const searchParams = useSearchParams();
-  const paymentRef = searchParams.get("paymentRef") ?? "";
+  const paymentRefParam = searchParams.get("paymentRef") ?? "";
+  const reservationId = searchParams.get("reservationId") ?? "";
 
   const [name, setName] = useState("");
   const [note, setNote] = useState("駐車場利用料として");
   const [touched, setTouched] = useState(false);
+  const [paymentRef, setPaymentRef] = useState(paymentRefParam);
+  const [resolveError, setResolveError] = useState<string | null>(null);
+  const [resolving, setResolving] = useState(false);
 
   useEffect(() => {
     try {
@@ -31,6 +35,42 @@ function ReceiptRequestPageInner() {
     } catch {}
   }, [name, note, touched]);
 
+  // Resolve paymentRef from reservationId when only the latter is given
+  useEffect(() => {
+    if (paymentRefParam) return;
+    if (!reservationId) return;
+    let cancelled = false;
+    setResolving(true);
+    setResolveError(null);
+    fetch(
+      `/api/receipt/by-reservation?reservationId=${encodeURIComponent(reservationId)}`,
+      { cache: "no-store" }
+    )
+      .then(async (res) => {
+        const json = await res.json().catch(() => null);
+        if (cancelled) return;
+        if (!res.ok || !json?.ok || !json?.paymentRef) {
+          setResolveError(
+            json?.error === "paymentRef_not_found"
+              ? "この予約に対応する決済情報が見つかりませんでした。"
+              : "予約情報の取得に失敗しました。"
+          );
+          return;
+        }
+        setPaymentRef(String(json.paymentRef));
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setResolveError("通信エラーが発生しました。");
+      })
+      .finally(() => {
+        if (!cancelled) setResolving(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [paymentRefParam, reservationId]);
+
   const pdfUrl = useMemo(() => {
     if (!paymentRef) return "#";
 
@@ -44,13 +84,43 @@ function ReceiptRequestPageInner() {
 
   const nameError = name.trim().length === 0;
 
+  if (!paymentRefParam && !reservationId) {
+    return (
+      <main style={pageStyle}>
+        <div style={cardStyle}>
+          <h1 style={titleStyle}>領収書発行</h1>
+          <p style={mutedStyle}>
+            paymentRef または reservationId が見つかりません。メール内のリンクからもう一度お開きください。
+          </p>
+          <div style={{ marginTop: 20 }}>
+            <Link href="/" style={backLinkStyle}>
+              トップへ戻る
+            </Link>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
+  if (resolving) {
+    return (
+      <main style={pageStyle}>
+        <div style={cardStyle}>
+          <h1 style={titleStyle}>領収書発行</h1>
+          <p style={mutedStyle}>予約情報を読み込んでいます...</p>
+        </div>
+      </main>
+    );
+  }
+
   if (!paymentRef) {
     return (
       <main style={pageStyle}>
         <div style={cardStyle}>
           <h1 style={titleStyle}>領収書発行</h1>
           <p style={mutedStyle}>
-            paymentRef が見つかりません。メール内のリンクからもう一度お開きください。
+            {resolveError ??
+              "決済情報が見つかりません。メール内のリンクからもう一度お開きください。"}
           </p>
           <div style={{ marginTop: 20 }}>
             <Link href="/" style={backLinkStyle}>
