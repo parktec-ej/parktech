@@ -159,7 +159,7 @@ export async function POST(
           ownerId: settlement.ownerId,
           payoutTarget: "OWNER",
         },
-        idempotencyKey: `settlement-${settlement.id}-OWNER`,
+        idempotencyKey: `settlement-${settlement.id}-OWNER-${failedOwnerPayoutIds.length + 1}`,
       });
     } else if (
       shouldCreateOwnerPayout &&
@@ -197,7 +197,7 @@ export async function POST(
           agentId: settlement.agentId ?? "",
           payoutTarget: "AGENT",
         },
-        idempotencyKey: `settlement-${settlement.id}-AGENT`,
+        idempotencyKey: `settlement-${settlement.id}-AGENT-${failedAgentPayoutIds.length + 1}`,
       });
     } else if (shouldCreateAgentPayout && !agent?.stripeAccountId) {
       agentResult.note = `Manual payout - no Stripe account (by ${admin.email})`;
