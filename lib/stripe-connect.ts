@@ -15,9 +15,9 @@ export async function createConnectAccount(params: {
       transfers: { requested: true },
     },
     controller: {
-      losses: { payments: "application" },
-      fees: { payer: "application" },
-      stripe_dashboard: { type: "express" },
+      losses: { payments: "stripe" },
+      fees: { payer: "account" },
+      stripe_dashboard: { type: "full" },
     },
   } as any);
 }
