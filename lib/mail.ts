@@ -207,6 +207,7 @@ export async function sendReservationCanceledMail(params: {
   refundAmount: number;
   cancelFee: number;
   refundFee: number;
+  reservationId?: string | null;
 }) {
   const {
     to,
@@ -220,6 +221,7 @@ export async function sendReservationCanceledMail(params: {
     refundAmount,
     cancelFee,
     refundFee,
+    reservationId,
   } = params;
 
   return getResend().emails.send({
@@ -247,6 +249,15 @@ export async function sendReservationCanceledMail(params: {
           <div><strong>返金予定額:</strong> ${safe(refundAmount)} 円</div>
         </div>
 
+        ${reservationId ? `
+          <div style="margin-top:16px;padding:14px 16px;border:1px solid #ddd;border-radius:8px;background:#fafafa">
+            <strong>🧾 領収書（キャンセル料）</strong><br />
+            <a href="${APP_URL}/receipt/request?reservationId=${encodeURIComponent(reservationId)}" target="_blank" rel="noopener noreferrer">
+              領収書を発行する
+            </a>
+          </div>
+        ` : ""}
+
         <p style="margin-top:16px;font-size:12px;color:#666">
           ※ 返金がある場合、カード会社への反映まで数日かかることがあります。
         </p>
@@ -268,7 +279,7 @@ export async function sendReservationCanceledMail(params: {
 
 キャンセル料: ${safe(cancelFee)} 円
 返金手数料: ${safe(refundFee)} 円
-返金予定額: ${safe(refundAmount)} 円
+返金予定額: ${safe(refundAmount)} 円${reservationId ? `\n領収書（キャンセル料）: ${APP_URL}/receipt/request?reservationId=${encodeURIComponent(reservationId)}` : ""}
 
 ※ 返金がある場合、カード会社への反映まで数日かかることがあります。
 

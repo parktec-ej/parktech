@@ -233,6 +233,7 @@ export async function POST(req: NextRequest) {
           refundAmount: policy.refundAmount,
           cancelFee: policy.cancelFee,
           refundFee: policy.refundFee,
+          reservationId: reservation.id,
         });
       } catch (e) {
         console.error(e);
