@@ -181,6 +181,8 @@ model Owner {
   bankAccountType   String?
   bankAccountNo     String?
   notes             String?
+  stripeAccountId          String?
+  stripeOnboardingComplete Boolean           @default(false)
   Payment           Payment[]
   Payout            Payout[]
   places            Place[]
@@ -329,6 +331,8 @@ model Agent {
   bankAccountType     String?
   bankAccountNo       String?
   notes               String?
+  stripeAccountId          String?
+  stripeOnboardingComplete Boolean           @default(false)
   Payment             Payment[]
   Payout              Payout[]
   PlaceAssignment     PlaceAssignment[]
@@ -427,6 +431,7 @@ model Payout {
   bankAccountType String?
   bankAccountNo   String?
   transferRef     String?
+  stripeTransferId String?
   executedAt      DateTime?
   approvedAt      DateTime?
   failedReason    String?
