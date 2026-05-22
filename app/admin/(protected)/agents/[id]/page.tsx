@@ -2,6 +2,7 @@ import type { CSSProperties } from "react";
 import { prisma } from "@/lib/db";
 import { requireAdmin } from "@/lib/admin-auth";
 import { notFound } from "next/navigation";
+import StripeConnectSection from "@/app/admin/(protected)/connect/_components/StripeConnectSection";
 
 export default async function AgentDetailPage({
   params,
@@ -20,6 +21,13 @@ export default async function AgentDetailPage({
   return (
     <main style={pageStyle}>
       <h1 style={titleStyle}>代理店編集</h1>
+
+      <StripeConnectSection
+        targetType="agent"
+        targetId={agent.id}
+        stripeAccountId={agent.stripeAccountId}
+        stripeOnboardingComplete={agent.stripeOnboardingComplete}
+      />
 
       <form method="post" action={`/api/admin/agents/${agent.id}/update`} style={formCardStyle}>
         <SectionTitle>基本情報</SectionTitle>

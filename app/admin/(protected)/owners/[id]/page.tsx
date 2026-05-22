@@ -3,6 +3,7 @@ import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { requireAdmin } from "@/lib/admin-auth";
 import { notFound } from "next/navigation";
+import StripeConnectSection from "@/app/admin/(protected)/connect/_components/StripeConnectSection";
 
 function ymd(date: Date | null | undefined) {
   if (!date) return "";
@@ -40,6 +41,13 @@ export default async function OwnerDetailPage({
           このオーナーでPLACE新規作成
         </Link>
       </div>
+
+      <StripeConnectSection
+        targetType="owner"
+        targetId={owner.id}
+        stripeAccountId={owner.stripeAccountId}
+        stripeOnboardingComplete={owner.stripeOnboardingComplete}
+      />
 
       <form method="post" action={`/api/admin/owners/${owner.id}/update`} style={formCardStyle}>
         <SectionTitle>基本情報</SectionTitle>
