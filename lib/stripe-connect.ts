@@ -7,7 +7,6 @@ export async function createConnectAccount(params: {
   country?: string;
 }) {
   return stripe.accounts.create({
-    type: "express",
     country: params.country || "JP",
     email: params.email,
     business_type: params.businessType || "individual",
@@ -15,7 +14,12 @@ export async function createConnectAccount(params: {
       card_payments: { requested: true },
       transfers: { requested: true },
     },
-  });
+    controller: {
+      losses: { payments: "stripe" },
+      fees: { payer: "account" },
+      stripe_dashboard: { type: "express" },
+    },
+  } as any);
 }
 
 // Onboarding URL生成
