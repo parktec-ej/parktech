@@ -89,7 +89,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const policy = calcCancellationPolicy(reservation.price, reservation.date);
+    const policy = calcCancellationPolicy(reservation.price, reservation.date, undefined, reservation.paidAt);
     const canceledAt = new Date();
 
     const payment = await prisma.payment.findFirst({
