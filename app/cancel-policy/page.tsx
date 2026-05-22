@@ -16,14 +16,32 @@ export default function CancelPolicyPage() {
 
         <section>
           <h2 className="text-xl font-semibold">1. 予約キャンセル</h2>
-          <ul className="mt-3 list-disc space-y-2 pl-6">
-            <li>
-              予約完了後から利用開始前まで：利用料金の
-              <strong>50%を返金</strong>します。
-            </li>
-            <li>
-              返金時には、<strong>返金事務手数料300円</strong>を差し引きます。
-            </li>
+          <p className="mt-3">
+            キャンセル料は、キャンセルのタイミングにより以下のとおり異なります。
+          </p>
+          <table className="mt-4 w-full border-collapse text-sm">
+            <thead>
+              <tr className="border-b">
+                <th className="py-2 pr-4 text-left font-semibold">タイミング</th>
+                <th className="py-2 text-left font-semibold">キャンセル料</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr className="border-b">
+                <td className="py-3 pr-4">予約から48時間以内<br /><span className="text-xs text-gray-500">（かつ利用日2日前より前の場合）</span></td>
+                <td className="py-3"><strong>手数料300円のみ</strong><br /><span className="text-xs text-gray-500">残額を返金</span></td>
+              </tr>
+              <tr className="border-b">
+                <td className="py-3 pr-4">利用日の2日前〜前日</td>
+                <td className="py-3"><strong>利用料金の50%</strong><br /><span className="text-xs text-gray-500">＋返金事務手数料300円</span></td>
+              </tr>
+              <tr className="border-b">
+                <td className="py-3 pr-4">利用日当日</td>
+                <td className="py-3"><strong>利用料金の100%</strong><br /><span className="text-xs text-gray-500">返金なし</span></td>
+              </tr>
+            </tbody>
+          </table>
+          <ul className="mt-4 list-disc space-y-2 pl-6">
             <li>
               利用開始後、および無断不使用（ノーショー）の場合は、
               <strong>返金いたしかねます</strong>。
