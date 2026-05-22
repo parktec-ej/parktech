@@ -520,6 +520,7 @@ export default async function SettlementsPage({
                       <th style={thStyle}>最低利用料調整</th>
                       <th style={thStyle}>オーナー振込</th>
                       <th style={thStyle}>代理店振込</th>
+                      <th style={thStyle}>精算書</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -536,6 +537,28 @@ export default async function SettlementsPage({
                         <td style={tdStyle}>{fmtYen(s.monthlyMinFeeAdjustment)}</td>
                         <td style={tdStyle}>{fmtYen(s.finalOwnerPayoutAmount)}</td>
                         <td style={tdStyle}>{fmtYen(s.finalAgentPayoutAmount)}</td>
+                        <td style={tdStyle}>
+                          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                            <a
+                              href={`/admin/settlements/${s.id}/pdf?target=owner`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              style={pdfLinkStyle}
+                            >
+                              オーナー精算書
+                            </a>
+                            {s.agentId ? (
+                              <a
+                                href={`/admin/settlements/${s.id}/pdf?target=agent`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                style={pdfLinkStyle}
+                              >
+                                代理店精算書
+                              </a>
+                            ) : null}
+                          </div>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -962,6 +985,19 @@ const linkStyle: CSSProperties = {
   color: "#2563eb",
   textDecoration: "none",
   fontWeight: 700,
+};
+
+const pdfLinkStyle: CSSProperties = {
+  display: "inline-block",
+  padding: "4px 10px",
+  border: "1px solid #d1d5db",
+  borderRadius: 6,
+  background: "#fff",
+  color: "#111827",
+  textDecoration: "none",
+  fontSize: 12,
+  fontWeight: 700,
+  whiteSpace: "nowrap",
 };
 
 const tableWrapStyle: CSSProperties = {
