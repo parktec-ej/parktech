@@ -49,6 +49,7 @@ export async function sendReservationPinMail(params: {
 
         <div style="padding:16px;border:1px solid #ddd;border-radius:8px;background:#fafafa">
           <div><strong>駐車場:</strong> ${safe(placeName)}</div>
+          ${googleMapUrl ? `<div style="margin-top:4px"><a href="${googleMapUrl}" target="_blank" rel="noopener noreferrer" style="color:#2563eb;font-size:13px">📍 Google Mapで場所を確認する</a></div>` : ""}
           <div><strong>区画:</strong> ${safe(spotLabel)}</div>
           <div><strong>利用日:</strong> ${safe(date)}</div>
           <div><strong>利用時間:</strong> ${safe(slot)}</div>
@@ -67,16 +68,9 @@ export async function sendReservationPinMail(params: {
           ${safe(pin)}
         </div>
 
-        ${
-          googleMapUrl
-            ? `
-          <p style="margin-top:20px">
-            <strong>Google Map</strong><br />
-            <a href="${googleMapUrl}" target="_blank" rel="noopener noreferrer">${googleMapUrl}</a>
-          </p>
-        `
-            : ""
-        }
+        <div style="margin-top:20px;padding:14px 16px;border:1px solid #d1e7dd;border-radius:8px;background:#f0fdf4;color:#166534;font-size:13px">
+          🧾 領収書の発行は出庫後にメールでご案内いたします。
+        </div>
 
         ${
           manageUrl
@@ -108,6 +102,8 @@ ${phone ? `電話番号: ${safe(phone)}` : ""}
 現地のQRコードを読み取り、PINコードを入力してください。
 
 PINコード: ${safe(pin)}
+
+※ 領収書の発行は出庫後にメールでご案内いたします。
 ${googleMapUrl ? `Google Map: ${googleMapUrl}` : ""}
 ${manageUrl ? `予約確認・キャンセル: ${manageUrl}` : ""}
 
