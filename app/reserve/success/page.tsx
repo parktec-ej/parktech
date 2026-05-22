@@ -181,6 +181,22 @@ function SuccessInner() {
             <div>2. 「予約利用」を選択してください</div>
             <div>3. 上記PINコードを入力してください</div>
           </div>
+
+          {reservation.email && (
+            <div
+              style={{
+                border: "1px solid #d1e7dd",
+                borderRadius: 16,
+                padding: 16,
+                background: "#f0fdf4",
+                fontSize: 14,
+                color: "#166534",
+                lineHeight: 1.8,
+              }}
+            >
+              📩 予約内容は <strong>{reservation.email}</strong> にお送りしました。ご確認ください。
+            </div>
+          )}
         </div>
       )}
 
