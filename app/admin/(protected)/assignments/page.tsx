@@ -35,7 +35,7 @@ type AssignmentRow = {
 
 function ymd(date: Date | null) {
   if (!date) return "-";
-  return new Date(date).toLocaleDateString("ja-JP");
+  return new Date(date).toLocaleDateString("ja-JP", { timeZone: "Asia/Tokyo" });
 }
 
 function rate(bps: number) {

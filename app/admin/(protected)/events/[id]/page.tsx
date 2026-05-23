@@ -989,8 +989,8 @@ export default function EventDetailPage() {
           </div>
 
           <div style={{ marginTop: 16, fontSize: 12, color: "#6b7280" }}>
-            sourceType: {event.sourceType} / created: {new Date(event.createdAt).toLocaleString("ja-JP")}{" "}
-            / updated: {new Date(event.updatedAt).toLocaleString("ja-JP")}
+            sourceType: {event.sourceType} / created: {new Date(event.createdAt).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" })}{" "}
+            / updated: {new Date(event.updatedAt).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" })}
           </div>
         </div>
       )}

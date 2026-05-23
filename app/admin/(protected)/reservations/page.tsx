@@ -699,18 +699,18 @@ function AdminReservationsPageInner() {
                 <div>PIN: {r.pin}</div>
                 <div>メール: {r.email || "未入力"}</div>
                 <div>電話: {r.phone || "未入力"}</div>
-                <div>作成: {new Date(r.createdAt).toLocaleString("ja-JP")}</div>
+                <div>作成: {new Date(r.createdAt).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" })}</div>
                 <div>決済: {r.paid ? "済み" : "未決済"}</div>
                 <div>
                   入庫:{" "}
                   {r.checkedInAt
-                    ? new Date(r.checkedInAt).toLocaleString("ja-JP")
+                    ? new Date(r.checkedInAt).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" })
                     : "未"}
                 </div>
                 <div>
                   出庫:{" "}
                   {r.checkedOutAt
-                    ? new Date(r.checkedOutAt).toLocaleString("ja-JP")
+                    ? new Date(r.checkedOutAt).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" })
                     : "未"}
                 </div>
               </div>

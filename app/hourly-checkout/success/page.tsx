@@ -146,13 +146,13 @@ export default function HourlyCheckoutSuccessPage() {
             <p style={{ margin: 0 }}>
               決済時刻:{" "}
               {data?.parkingSession?.paidAt
-                ? new Date(data.parkingSession.paidAt).toLocaleString("ja-JP")
+                ? new Date(data.parkingSession.paidAt).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" })
                 : "-"}
             </p>
             <p style={{ margin: 0 }}>
               出庫時刻:{" "}
               {data?.parkingSession?.checkOutAt
-                ? new Date(data.parkingSession.checkOutAt).toLocaleString("ja-JP")
+                ? new Date(data.parkingSession.checkOutAt).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" })
                 : "-"}
             </p>
             <p style={{ margin: 0 }}>
