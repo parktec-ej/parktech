@@ -61,9 +61,9 @@ export async function getMonthlyStatus(): Promise<MonthlyStatus> {
   };
 
   // 締めるべき Place 数の見立て（active な Place を「精算が必要な対象」と見なす）
-  const activePlaceCount = await prisma.place.count({
-    where: { status: "ACTIVE" as any },
-  }).catch(() => 0);
+  const activePlaceCount = await prisma.place
+    .count({ where: { isActive: true } })
+    .catch(() => 0);
 
   const expectedTotal = Math.max(activePlaceCount, counts.total);
   const missingCreate = Math.max(0, expectedTotal - counts.total);
