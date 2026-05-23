@@ -23,6 +23,10 @@
     {
       "path": "/api/cron/check-fb-token",
       "schedule": "0 0 * * *"
+    },
+    {
+      "path": "/api/cron/monthly-reminder",
+      "schedule": "0 1 * * *"
     }
   ]
 }

@@ -338,3 +338,65 @@ ${gateUrl}
 ParkTec`,
   });
 }
+
+export async function sendSettlementNotifyMail(params: {
+  to: string;
+  targetName: string;
+  month: string;
+  amount: number;
+  pdfUrl: string;
+}) {
+  const { to, targetName, month, amount, pdfUrl } = params;
+  const monthLabel = month.replace(/^(\d{4})-(\d{2})$/, "$1年$2月");
+  const amountText = `¥${amount.toLocaleString("ja-JP")}`;
+
+  return getResend().emails.send({
+    from: MAIL_FROM,
+    to,
+    subject: `【ParkTec】${monthLabel}分 精算書のお知らせ`,
+    html: `
+      <div style="font-family:Arial,sans-serif;line-height:1.8;color:#111">
+        <p>${safe(targetName)} 様</p>
+        <p>いつもご利用いただきありがとうございます。<br />
+        ${monthLabel}分の精算が完了いたしました。</p>
+
+        <div style="padding:16px;border:1px solid #ddd;border-radius:8px;background:#fafafa;margin:16px 0">
+          <div style="font-size:13px;color:#6b7280">お支払額</div>
+          <div style="font-size:24px;font-weight:bold">${amountText}</div>
+        </div>
+
+        <p>精算書の詳細は、PDFを添付しているか、または以下のページからご確認いただけます（要ログイン）。</p>
+        <p>
+          <a href="${pdfUrl}" target="_blank" rel="noopener noreferrer" style="color:#2563eb">
+            精算書を確認する →
+          </a>
+        </p>
+        <p style="font-size:12px;color:#6b7280">
+          ※ ご不明な点がございましたら、お気軽にお問い合わせください。
+        </p>
+
+        <hr style="margin:24px 0" />
+        <p>
+          パークテックイーストジャパン<br />
+          TEL: 050-1793-4785<br />
+          Email: info@parktec-ej.com
+        </p>
+      </div>
+    `,
+    text: `${safe(targetName)} 様
+
+いつもご利用いただきありがとうございます。
+${monthLabel}分の精算が完了いたしました。
+
+お支払額: ${amountText}
+
+精算書の詳細は、PDFを添付しているか、または以下のページからご確認いただけます（要ログイン）。
+${pdfUrl}
+
+ご不明な点がございましたら、お気軽にお問い合わせください。
+
+パークテックイーストジャパン
+TEL: 050-1793-4785
+Email: info@parktec-ej.com`,
+  });
+}

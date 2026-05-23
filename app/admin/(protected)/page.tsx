@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import DateSwitcher from "./DateSwitcher";
 import ForceCheckoutButton from "./_components/ForceCheckoutButton";
 import AutoRefresh from "./_components/AutoRefresh";
+import MonthlyTasksWidget from "./_components/MonthlyTasksWidget";
 
 function ymdTodayJst() {
   return new Date().toLocaleDateString("sv-SE", {
@@ -522,6 +523,8 @@ export default async function AdminHomePage({
           <div style={heroMiniValueStyle}>{selectedDate}</div>
         </div>
       </div>
+
+      <MonthlyTasksWidget />
 
       <section style={{ ...cardStyle, marginBottom: 16 }}>
         <form method="GET" style={toolbarStyle}>

@@ -3,6 +3,10 @@ import crypto from "crypto";
 import { prisma } from "@/lib/db";
 import { getAdminSession } from "@/lib/admin-auth";
 import { stripe } from "@/lib/stripe";
+import { sendSettlementNotifyMail } from "@/lib/mail";
+
+const APP_URL =
+  process.env.NEXT_PUBLIC_APP_URL || "https://reserve.parktec-ej.com";
 
 export const runtime = "nodejs";
 export const preferredRegion = "hnd1";
@@ -120,16 +124,28 @@ export async function POST(
     ).map((p) => p.id);
 
     // --- Stripe Transfer は DB トランザクション外で実行 ---
-    // 1. Owner / Agent の Stripe 情報を取得
+    // 1. Owner / Agent の Stripe 情報を取得（mail送信のため name/email も含める）
     const owner = await prisma.owner.findUnique({
       where: { id: settlement.ownerId },
-      select: { stripeAccountId: true, stripeOnboardingComplete: true },
+      select: {
+        stripeAccountId: true,
+        stripeOnboardingComplete: true,
+        name: true,
+        displayName: true,
+        email: true,
+      },
     });
 
     const agent = settlement.agentId
       ? await prisma.agent.findUnique({
           where: { id: settlement.agentId },
-          select: { stripeAccountId: true, stripeOnboardingComplete: true },
+          select: {
+            stripeAccountId: true,
+            stripeOnboardingComplete: true,
+            name: true,
+            displayName: true,
+            email: true,
+          },
         })
       : null;
 
@@ -295,6 +311,36 @@ export async function POST(
         }
       }
     });
+
+    // --- 全 Transfer 成功時に精算書メール送信（失敗は伝播させない）---
+    if (allTransfersSucceeded) {
+      if (owner?.email && shouldCreateOwnerPayout) {
+        try {
+          await sendSettlementNotifyMail({
+            to: owner.email,
+            targetName: owner.displayName || owner.name || "オーナー",
+            month: settlement.month,
+            amount: settlement.finalOwnerPayoutAmount,
+            pdfUrl: `${APP_URL}/admin/settlements/${settlement.id}/pdf?target=owner`,
+          });
+        } catch (e) {
+          console.error("[settlements/pay] owner mail send failed:", e);
+        }
+      }
+      if (agent?.email && shouldCreateAgentPayout) {
+        try {
+          await sendSettlementNotifyMail({
+            to: agent.email,
+            targetName: agent.displayName || agent.name || "代理店",
+            month: settlement.month,
+            amount: settlement.finalAgentPayoutAmount,
+            pdfUrl: `${APP_URL}/admin/settlements/${settlement.id}/pdf?target=agent`,
+          });
+        } catch (e) {
+          console.error("[settlements/pay] agent mail send failed:", e);
+        }
+      }
+    }
 
     const qsParams = new URLSearchParams({
       month: settlement.month,
