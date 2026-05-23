@@ -39,7 +39,10 @@ export async function POST(req: Request) {
   }
 
   try {
-    switch (event.type) {
+    // 注: Stripe SDK の Event.type 型に "transfer.failed" は含まれないが、
+    // Connect 関連で Stripe側 から到達する可能性のあるイベントを広く受ける
+    // ためキャストして switch する。
+    switch (event.type as string) {
       case "account.updated":
         await handleAccountUpdated(event.data.object as Stripe.Account);
         break;
@@ -47,6 +50,7 @@ export async function POST(req: Request) {
         await handleTransferCreated(event.data.object as Stripe.Transfer);
         break;
       case "transfer.failed":
+      case "transfer.reversed":
         await handleTransferFailed(event.data.object as Stripe.Transfer);
         break;
       case "payout.failed":
