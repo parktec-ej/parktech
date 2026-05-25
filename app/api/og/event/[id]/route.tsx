@@ -182,9 +182,9 @@ export async function GET(
       : undefined;
 
     const dateLine = dateStr
-      ? `📅 ${dateStr}${timeStr ? ` ／ ${timeStr} 開演` : ""}`
+      ? `${dateStr}${timeStr ? ` ／ ${timeStr} 開演` : ""}`
       : "";
-    const venueLine = venue ? `📍 ${venue}` : "";
+    const venueLine = venue ? `${venue}` : "";
 
     return new ImageResponse(
       (
@@ -278,7 +278,7 @@ export async function GET(
                 fontWeight: 700,
               }}
             >
-              🅿️ 駐車場予約受付中
+              駐車場予約受付中
             </div>
             <div
               style={{
