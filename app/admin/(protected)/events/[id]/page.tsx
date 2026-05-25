@@ -156,7 +156,18 @@ export default function EventDetailPage() {
         { cache: "no-store" }
       );
       const json = await res.json();
-      if (json?.ok && Array.isArray(json.posts)) setPosts(json.posts);
+      if (json?.ok && Array.isArray(json.posts)) {
+        setPosts(json.posts);
+        // 自動生成OG画像URLを未編集の入力欄に default 挿入
+        const defaultImageUrl = `${window.location.origin}/api/og/event/${encodeURIComponent(id)}`;
+        setPostImageUrls((cur) => {
+          const next = { ...cur };
+          for (const p of json.posts as Array<{ id: string }>) {
+            if (!next[p.id]) next[p.id] = defaultImageUrl;
+          }
+          return next;
+        });
+      }
     } catch {
       // swallow — error feedback comes from per-action handlers
     } finally {
@@ -946,9 +957,25 @@ export default function EventDetailPage() {
                             fontSize: 10,
                             color: "#9ca3af",
                             marginTop: 2,
+                            display: "flex",
+                            justifyContent: "space-between",
+                            gap: 8,
+                            flexWrap: "wrap",
                           }}
                         >
-                          ※ 空欄の場合は Facebook のみに投稿されます
+                          <span>
+                            ※ 自動生成画像URL（編集可・空欄の場合は Facebookのみ投稿）
+                          </span>
+                          {postImageUrls[p.id] ? (
+                            <a
+                              href={postImageUrls[p.id]}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              style={{ color: "#2563eb", textDecoration: "underline" }}
+                            >
+                              プレビュー →
+                            </a>
+                          ) : null}
                         </div>
                       </div>
                     )}
