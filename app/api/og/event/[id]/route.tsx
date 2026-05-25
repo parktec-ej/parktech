@@ -1,19 +1,20 @@
 /**
- * イベント告知用 OG画像 動的生成（1080x1080 / public, 認証なし）
+ * イベント告知用 OG画像 動的生成（600x600 / public, 認証なし / Edge runtime）
  *
  * 使い方:
  *   GET /api/og/event/<eventId>
- *   → PNG 画像 (1080x1080) を返す
+ *   → PNG 画像 (600x600) を返す
  *
  * Instagram 投稿時の imageUrl にそのまま渡せる public URL。
  * Vercel CDN により response はキャッシュされる。
+ *
+ * Edge runtime のため Prisma を直接呼べないので、内部の public events API を fetch する。
+ * (Public API は published のみ返すので、OG生成も published イベントのみ対応となる)
  */
 
-export const runtime = "nodejs";
-export const preferredRegion = "hnd1";
+export const runtime = "edge";
 
 import { ImageResponse } from "next/og";
-import { prisma } from "@/lib/db";
 
 const VENUE_LABEL: Record<string, string> = {
   sekisui_arena: "セキスイハイムスーパーアリーナ",
@@ -22,33 +23,55 @@ const VENUE_LABEL: Record<string, string> = {
 
 const RESERVE_URL_DISPLAY = "reserve.parktec-ej.com/places/rifu-main";
 
-// Google Fonts CSS 経由で Noto Sans JP の woff2 を取得
-async function loadJpFont(text: string, weight: 400 | 700 = 700): Promise<ArrayBuffer | null> {
+// 共通の fetch + タイムアウト
+async function fetchWithTimeout(
+  url: string,
+  init: RequestInit | undefined,
+  timeoutMs: number
+): Promise<Response | null> {
+  const controller = new AbortController();
+  const t = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const cssUrl = `https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@${weight}&text=${encodeURIComponent(
+    const res = await fetch(url, { ...init, signal: controller.signal });
+    return res;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+// Google Fonts CSS 経由で Noto Sans JP の woff2 を取得（失敗時 null）
+async function loadJpFont(text: string): Promise<ArrayBuffer | null> {
+  try {
+    const cssUrl = `https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@700&text=${encodeURIComponent(
       text
     )}`;
-    const css = await fetch(cssUrl, {
-      headers: {
-        // 新しい woff2 を返してもらうため UA をモダンブラウザに
-        "User-Agent":
-          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
+    const cssRes = await fetchWithTimeout(
+      cssUrl,
+      {
+        headers: {
+          "User-Agent":
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
+        },
       },
-    }).then((r) => (r.ok ? r.text() : null));
-    if (!css) return null;
+      3000
+    );
+    if (!cssRes || !cssRes.ok) return null;
+    const css = await cssRes.text();
     const m = css.match(/src:\s*url\(([^)]+)\)\s*format\('(?:woff2|woff)'\)/);
     if (!m) return null;
-    const fontRes = await fetch(m[1]);
-    if (!fontRes.ok) return null;
+    const fontRes = await fetchWithTimeout(m[1], undefined, 3000);
+    if (!fontRes || !fontRes.ok) return null;
     return await fontRes.arrayBuffer();
   } catch {
     return null;
   }
 }
 
-function fmtJstDate(d: Date | string | null | undefined): string {
+function fmtJstDate(d: string | null | undefined): string {
   if (!d) return "";
-  const dt = typeof d === "string" ? new Date(d) : d;
+  const dt = new Date(d);
   const parts = new Intl.DateTimeFormat("ja-JP", {
     year: "numeric",
     month: "numeric",
@@ -60,10 +83,9 @@ function fmtJstDate(d: Date | string | null | undefined): string {
   return `${get("year")}年${get("month")}月${get("day")}日（${get("weekday")}）`;
 }
 
-function fmtJstTime(d: Date | string | null | undefined): string {
+function fmtJstTime(d: string | null | undefined): string {
   if (!d) return "";
-  const dt = typeof d === "string" ? new Date(d) : d;
-  return dt.toLocaleTimeString("ja-JP", {
+  return new Date(d).toLocaleTimeString("ja-JP", {
     hour: "2-digit",
     minute: "2-digit",
     hour12: false,
@@ -71,22 +93,33 @@ function fmtJstTime(d: Date | string | null | undefined): string {
   });
 }
 
+type EventLite = {
+  title: string;
+  venue: string;
+  startAt: string;
+  showStartAt: string | null;
+  doorOpenAt: string | null;
+};
+
+async function fetchEvent(req: Request, id: string): Promise<EventLite | null> {
+  const url = new URL(`/api/public/events/${encodeURIComponent(id)}`, req.url);
+  const res = await fetchWithTimeout(url.toString(), { cache: "no-store" }, 3000);
+  if (!res || !res.ok) return null;
+  try {
+    const json = await res.json();
+    if (!json?.ok || !json?.event) return null;
+    return json.event as EventLite;
+  } catch {
+    return null;
+  }
+}
+
 export async function GET(
-  _req: Request,
+  req: Request,
   context: { params: Promise<{ id: string }> }
 ) {
   const { id } = await context.params;
-
-  const event = await prisma.event.findUnique({
-    where: { id },
-    select: {
-      title: true,
-      venue: true,
-      startAt: true,
-      showStartAt: true,
-      doorOpenAt: true,
-    },
-  });
+  const event = await fetchEvent(req, id);
 
   const title = event?.title ?? "イベント情報";
   const venue = event ? VENUE_LABEL[event.venue] ?? event.venue : "";
@@ -105,18 +138,17 @@ export async function GET(
     "駐車場予約受付中",
     RESERVE_URL_DISPLAY,
   ].join("");
-  const fontDataBold = await loadJpFont(allText, 700);
-  const fontDataRegular = await loadJpFont(allText, 400);
-  const fonts: Array<{
-    name: string;
-    data: ArrayBuffer;
-    weight: 400 | 700;
-    style: "normal";
-  }> = [];
-  if (fontDataBold)
-    fonts.push({ name: "NotoJP", data: fontDataBold, weight: 700, style: "normal" });
-  if (fontDataRegular)
-    fonts.push({ name: "NotoJP", data: fontDataRegular, weight: 400, style: "normal" });
+  const fontDataBold = await loadJpFont(allText);
+  const fonts = fontDataBold
+    ? [
+        {
+          name: "NotoJP",
+          data: fontDataBold,
+          weight: 700 as const,
+          style: "normal" as const,
+        },
+      ]
+    : undefined;
 
   return new ImageResponse(
     (
@@ -130,7 +162,7 @@ export async function GET(
             "linear-gradient(135deg, #1e40af 0%, #2563eb 50%, #3b82f6 100%)",
           color: "#fff",
           fontFamily: "NotoJP, sans-serif",
-          padding: "72px 64px",
+          padding: "40px 36px",
           justifyContent: "space-between",
         }}
       >
@@ -140,9 +172,9 @@ export async function GET(
             display: "flex",
             justifyContent: "center",
             alignItems: "center",
-            fontSize: 36,
+            fontSize: 22,
             fontWeight: 700,
-            letterSpacing: 6,
+            letterSpacing: 4,
             opacity: 0.95,
           }}
         >
@@ -158,17 +190,17 @@ export async function GET(
             justifyContent: "center",
             textAlign: "center",
             flex: 1,
-            padding: "0 24px",
+            padding: "0 12px",
           }}
         >
           <div
             style={{
               display: "flex",
-              fontSize: title.length > 20 ? 64 : 80,
+              fontSize: title.length > 20 ? 38 : 48,
               fontWeight: 700,
               lineHeight: 1.2,
               textAlign: "center",
-              maxWidth: 900,
+              maxWidth: 540,
             }}
           >
             {title}
@@ -181,14 +213,14 @@ export async function GET(
             display: "flex",
             flexDirection: "column",
             alignItems: "center",
-            gap: 14,
+            gap: 8,
           }}
         >
           {dateStr ? (
             <div
               style={{
                 display: "flex",
-                fontSize: 32,
+                fontSize: 20,
                 fontWeight: 700,
               }}
             >
@@ -200,8 +232,8 @@ export async function GET(
             <div
               style={{
                 display: "flex",
-                fontSize: 26,
-                fontWeight: 400,
+                fontSize: 16,
+                fontWeight: 700,
                 opacity: 0.92,
               }}
             >
@@ -212,12 +244,12 @@ export async function GET(
           <div
             style={{
               display: "flex",
-              marginTop: 12,
+              marginTop: 8,
               background: "#fff",
               color: "#1e40af",
-              padding: "16px 36px",
+              padding: "10px 22px",
               borderRadius: 999,
-              fontSize: 32,
+              fontSize: 20,
               fontWeight: 700,
             }}
           >
@@ -227,9 +259,9 @@ export async function GET(
           <div
             style={{
               display: "flex",
-              fontSize: 22,
+              fontSize: 13,
               opacity: 0.85,
-              marginTop: 6,
+              marginTop: 4,
             }}
           >
             {RESERVE_URL_DISPLAY}
@@ -238,11 +270,10 @@ export async function GET(
       </div>
     ),
     {
-      width: 1080,
-      height: 1080,
-      fonts: fonts.length > 0 ? fonts : undefined,
+      width: 600,
+      height: 600,
+      fonts,
       headers: {
-        // Vercel CDN で1時間キャッシュ
         "Cache-Control": "public, max-age=3600, s-maxage=3600",
       },
     }
