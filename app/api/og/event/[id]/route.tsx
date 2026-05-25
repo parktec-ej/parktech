@@ -3,13 +3,12 @@
  *
  * 使い方:
  *   GET /api/og/event/<eventId>
- *   → PNG 画像 (600x600) を返す
  *
- * Instagram 投稿時の imageUrl にそのまま渡せる public URL。
- * Vercel CDN により response はキャッシュされる。
- *
- * Edge runtime のため Prisma を直接呼べないので、内部の public events API を fetch する。
- * (Public API は published のみ返すので、OG生成も published イベントのみ対応となる)
+ * 設計メモ:
+ * - Edge runtime の Intl.DateTimeFormat は ICU データが限定的で
+ *   日本語 weekday などの formatToParts が壊れる事があるため、JST計算は手書き。
+ * - フォント取得失敗 / event取得失敗 でも 500 を返さず英数字フォールバックで PNG を返す。
+ * - ImageResponse のレンダー例外を最外で catch して error PNG を返す。
  */
 
 export const runtime = "edge";
@@ -22,8 +21,8 @@ const VENUE_LABEL: Record<string, string> = {
 };
 
 const RESERVE_URL_DISPLAY = "reserve.parktec-ej.com/places/rifu-main";
+const WEEKDAYS_JP = ["日", "月", "火", "水", "木", "金", "土"];
 
-// 共通の fetch + タイムアウト
 async function fetchWithTimeout(
   url: string,
   init: RequestInit | undefined,
@@ -32,8 +31,7 @@ async function fetchWithTimeout(
   const controller = new AbortController();
   const t = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const res = await fetch(url, { ...init, signal: controller.signal });
-    return res;
+    return await fetch(url, { ...init, signal: controller.signal });
   } catch {
     return null;
   } finally {
@@ -41,7 +39,6 @@ async function fetchWithTimeout(
   }
 }
 
-// Google Fonts CSS 経由で Noto Sans JP の woff2 を取得（失敗時 null）
 async function loadJpFont(text: string): Promise<ArrayBuffer | null> {
   try {
     const cssUrl = `https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@700&text=${encodeURIComponent(
@@ -57,40 +54,56 @@ async function loadJpFont(text: string): Promise<ArrayBuffer | null> {
       },
       3000
     );
-    if (!cssRes || !cssRes.ok) return null;
+    if (!cssRes || !cssRes.ok) {
+      console.warn("[og] font CSS fetch failed:", cssRes?.status);
+      return null;
+    }
     const css = await cssRes.text();
     const m = css.match(/src:\s*url\(([^)]+)\)\s*format\('(?:woff2|woff)'\)/);
-    if (!m) return null;
+    if (!m) {
+      console.warn("[og] font url not matched in CSS");
+      return null;
+    }
     const fontRes = await fetchWithTimeout(m[1], undefined, 3000);
-    if (!fontRes || !fontRes.ok) return null;
+    if (!fontRes || !fontRes.ok) {
+      console.warn("[og] font binary fetch failed:", fontRes?.status);
+      return null;
+    }
     return await fontRes.arrayBuffer();
-  } catch {
+  } catch (e) {
+    console.warn("[og] loadJpFont error:", e);
     return null;
   }
 }
 
-function fmtJstDate(d: string | null | undefined): string {
-  if (!d) return "";
-  const dt = new Date(d);
-  const parts = new Intl.DateTimeFormat("ja-JP", {
-    year: "numeric",
-    month: "numeric",
-    day: "numeric",
-    weekday: "short",
-    timeZone: "Asia/Tokyo",
-  }).formatToParts(dt);
-  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "";
-  return `${get("year")}年${get("month")}月${get("day")}日（${get("weekday")}）`;
+// Edge ランタイム互換: UTC ミリ秒に +9h して getUTC* で JST 値を取り出す
+function jstDateParts(iso: string | null | undefined) {
+  if (!iso) return null;
+  const dt = new Date(iso);
+  if (Number.isNaN(dt.getTime())) return null;
+  const jst = new Date(dt.getTime() + 9 * 60 * 60 * 1000);
+  return {
+    year: jst.getUTCFullYear(),
+    month: jst.getUTCMonth() + 1,
+    day: jst.getUTCDate(),
+    weekday: WEEKDAYS_JP[jst.getUTCDay()],
+    hour: jst.getUTCHours(),
+    minute: jst.getUTCMinutes(),
+  };
 }
 
-function fmtJstTime(d: string | null | undefined): string {
-  if (!d) return "";
-  return new Date(d).toLocaleTimeString("ja-JP", {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-    timeZone: "Asia/Tokyo",
-  });
+function fmtJstDate(iso: string | null | undefined): string {
+  const p = jstDateParts(iso);
+  if (!p) return "";
+  return `${p.year}年${p.month}月${p.day}日（${p.weekday}）`;
+}
+
+function fmtJstTime(iso: string | null | undefined): string {
+  const p = jstDateParts(iso);
+  if (!p) return "";
+  const hh = String(p.hour).padStart(2, "0");
+  const mm = String(p.minute).padStart(2, "0");
+  return `${hh}:${mm}`;
 }
 
 type EventLite = {
@@ -102,14 +115,25 @@ type EventLite = {
 };
 
 async function fetchEvent(req: Request, id: string): Promise<EventLite | null> {
-  const url = new URL(`/api/public/events/${encodeURIComponent(id)}`, req.url);
-  const res = await fetchWithTimeout(url.toString(), { cache: "no-store" }, 3000);
-  if (!res || !res.ok) return null;
   try {
+    const url = new URL(`/api/public/events/${encodeURIComponent(id)}`, req.url);
+    const res = await fetchWithTimeout(
+      url.toString(),
+      { cache: "no-store" },
+      3000
+    );
+    if (!res || !res.ok) {
+      console.warn("[og] event fetch failed:", res?.status, url.toString());
+      return null;
+    }
     const json = await res.json();
-    if (!json?.ok || !json?.event) return null;
+    if (!json?.ok || !json?.event) {
+      console.warn("[og] event payload empty");
+      return null;
+    }
     return json.event as EventLite;
-  } catch {
+  } catch (e) {
+    console.warn("[og] fetchEvent error:", e);
     return null;
   }
 }
@@ -118,105 +142,111 @@ export async function GET(
   req: Request,
   context: { params: Promise<{ id: string }> }
 ) {
-  const { id } = await context.params;
-  const event = await fetchEvent(req, id);
+  console.log("[og] GET start");
+  try {
+    const { id } = await context.params;
+    console.log("[og] id:", id);
 
-  const title = event?.title ?? "イベント情報";
-  const venue = event ? VENUE_LABEL[event.venue] ?? event.venue : "";
-  const dateStr = event ? fmtJstDate(event.startAt) : "";
-  const timeStr = event
-    ? fmtJstTime(event.showStartAt ?? event.doorOpenAt ?? event.startAt)
-    : "";
+    const event = await fetchEvent(req, id);
+    console.log("[og] event fetched:", event?.title ?? "(null)");
 
-  // 描画する全テキストをまとめて font subset を取得（容量最小化）
-  const allText = [
-    "ParkTec East Japan",
-    title,
-    dateStr,
-    timeStr,
-    venue,
-    "駐車場予約受付中",
-    RESERVE_URL_DISPLAY,
-  ].join("");
-  const fontDataBold = await loadJpFont(allText);
-  const fonts = fontDataBold
-    ? [
-        {
-          name: "NotoJP",
-          data: fontDataBold,
-          weight: 700 as const,
-          style: "normal" as const,
-        },
-      ]
-    : undefined;
+    const title = event?.title ?? "イベント情報";
+    const venue = event ? VENUE_LABEL[event.venue] ?? event.venue : "";
+    const dateStr = event ? fmtJstDate(event.startAt) : "";
+    const timeStr = event
+      ? fmtJstTime(event.showStartAt ?? event.doorOpenAt ?? event.startAt)
+      : "";
+    console.log("[og] computed:", { title, venue, dateStr, timeStr });
 
-  return new ImageResponse(
-    (
-      <div
-        style={{
-          width: "100%",
-          height: "100%",
-          display: "flex",
-          flexDirection: "column",
-          background:
-            "linear-gradient(135deg, #1e40af 0%, #2563eb 50%, #3b82f6 100%)",
-          color: "#fff",
-          fontFamily: "NotoJP, sans-serif",
-          padding: "40px 36px",
-          justifyContent: "space-between",
-        }}
-      >
-        {/* 上部: ParkTec East Japan ロゴテキスト */}
+    const allText = [
+      "ParkTec East Japan",
+      title,
+      dateStr,
+      timeStr,
+      venue,
+      "駐車場予約受付中",
+      RESERVE_URL_DISPLAY,
+    ].join("");
+    const fontDataBold = await loadJpFont(allText);
+    console.log("[og] font loaded:", !!fontDataBold);
+
+    const fonts = fontDataBold
+      ? [
+          {
+            name: "NotoJP",
+            data: fontDataBold,
+            weight: 700 as const,
+            style: "normal" as const,
+          },
+        ]
+      : undefined;
+
+    const dateLine = dateStr
+      ? `📅 ${dateStr}${timeStr ? ` ／ ${timeStr} 開演` : ""}`
+      : "";
+    const venueLine = venue ? `📍 ${venue}` : "";
+
+    return new ImageResponse(
+      (
         <div
           style={{
-            display: "flex",
-            justifyContent: "center",
-            alignItems: "center",
-            fontSize: 22,
-            fontWeight: 700,
-            letterSpacing: 4,
-            opacity: 0.95,
-          }}
-        >
-          ParkTec East Japan
-        </div>
-
-        {/* 中央: イベント名 */}
-        <div
-          style={{
+            width: "100%",
+            height: "100%",
             display: "flex",
             flexDirection: "column",
-            alignItems: "center",
-            justifyContent: "center",
-            textAlign: "center",
-            flex: 1,
-            padding: "0 12px",
+            background: "linear-gradient(135deg, #1e40af 0%, #3b82f6 100%)",
+            color: "#fff",
+            fontFamily: "NotoJP, sans-serif",
+            padding: "40px 36px",
+            justifyContent: "space-between",
           }}
         >
+          {/* 上部: ロゴテキスト */}
           <div
             style={{
               display: "flex",
-              fontSize: title.length > 20 ? 38 : 48,
+              justifyContent: "center",
+              fontSize: 22,
               fontWeight: 700,
-              lineHeight: 1.2,
-              textAlign: "center",
-              maxWidth: 540,
+              letterSpacing: 4,
             }}
           >
-            {title}
+            ParkTec East Japan
           </div>
-        </div>
 
-        {/* 下部: 日程・会場・予約案内 */}
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            gap: 8,
-          }}
-        >
-          {dateStr ? (
+          {/* 中央: タイトル */}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              flex: 1,
+              padding: "0 12px",
+              textAlign: "center",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                fontSize: title.length > 20 ? 38 : 48,
+                fontWeight: 700,
+                lineHeight: 1.2,
+                textAlign: "center",
+              }}
+            >
+              {title}
+            </div>
+          </div>
+
+          {/* 下部 */}
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              gap: 8,
+            }}
+          >
             <div
               style={{
                 display: "flex",
@@ -224,11 +254,8 @@ export async function GET(
                 fontWeight: 700,
               }}
             >
-              📅 {dateStr}
-              {timeStr ? ` ／ ${timeStr} 開演` : ""}
+              {dateLine || " "}
             </div>
-          ) : null}
-          {venue ? (
             <div
               style={{
                 display: "flex",
@@ -237,45 +264,66 @@ export async function GET(
                 opacity: 0.92,
               }}
             >
-              📍 {venue}
+              {venueLine || " "}
             </div>
-          ) : null}
-
-          <div
-            style={{
-              display: "flex",
-              marginTop: 8,
-              background: "#fff",
-              color: "#1e40af",
-              padding: "10px 22px",
-              borderRadius: 999,
-              fontSize: 20,
-              fontWeight: 700,
-            }}
-          >
-            🅿️ 駐車場予約受付中
-          </div>
-
-          <div
-            style={{
-              display: "flex",
-              fontSize: 13,
-              opacity: 0.85,
-              marginTop: 4,
-            }}
-          >
-            {RESERVE_URL_DISPLAY}
+            <div
+              style={{
+                display: "flex",
+                marginTop: 8,
+                background: "#fff",
+                color: "#1e40af",
+                padding: "10px 22px",
+                borderRadius: 999,
+                fontSize: 20,
+                fontWeight: 700,
+              }}
+            >
+              🅿️ 駐車場予約受付中
+            </div>
+            <div
+              style={{
+                display: "flex",
+                fontSize: 13,
+                opacity: 0.85,
+                marginTop: 4,
+              }}
+            >
+              {RESERVE_URL_DISPLAY}
+            </div>
           </div>
         </div>
-      </div>
-    ),
-    {
-      width: 600,
-      height: 600,
-      fonts,
-      headers: {
-        "Cache-Control": "public, max-age=3600, s-maxage=3600",
-      },
-    }
-  );
+      ),
+      {
+        width: 600,
+        height: 600,
+        fonts,
+        headers: {
+          "Cache-Control": "public, max-age=3600, s-maxage=3600",
+        },
+      }
+    );
+  } catch (e) {
+    console.error("[og] render error:", e);
+    // ImageResponse 失敗時の safety net: 純粋にシンプルな PNG を返す
+    return new ImageResponse(
+      (
+        <div
+          style={{
+            width: "100%",
+            height: "100%",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            background: "#1e40af",
+            color: "#fff",
+            fontSize: 32,
+            fontWeight: 700,
+          }}
+        >
+          ParkTec East Japan
+        </div>
+      ),
+      { width: 600, height: 600 }
+    );
+  }
 }
