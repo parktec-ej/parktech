@@ -385,12 +385,13 @@ function ReservePageInner() {
               📍 セキスイハイムスーパーアリーナまで徒歩約8分
             </div>
             <iframe
-              src="https://maps.google.com/maps?q=%E3%83%91%E3%83%BC%E3%82%AF%E3%83%86%E3%83%83%E3%82%AF%E5%88%A9%E5%BA%9C%E3%82%B0%E3%83%A9%E3%83%B3%E3%83%87%E3%82%A3%E3%83%BC%E5%89%8D%E9%A7%90%E8%BB%8A%E5%A0%B4&output=embed"
+              src={`https://www.google.com/maps/embed/v1/place?key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}&q=宮城県宮城郡利府町利府字新堤前1番&zoom=16`}
               width="100%"
               height={250}
               style={{ border: 0, borderRadius: 16 }}
               loading="lazy"
               referrerPolicy="no-referrer-when-downgrade"
+              allowFullScreen
               title="パークテック利府グランディー前駐車場の地図"
             />
           </div>
