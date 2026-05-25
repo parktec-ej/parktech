@@ -5,6 +5,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getAdminSession } from "@/lib/admin-auth";
 import { postFacebook, postFacebookScheduled } from "@/lib/facebook";
+import { postInstagram } from "@/lib/instagram";
 import { sendSlackNotification } from "@/lib/slack";
 
 function jsonError(error: string, status = 400, message?: string) {
@@ -44,6 +45,54 @@ export async function POST(
       return jsonError("already_posted", 409);
     }
 
+    // Instagram 投稿（画像必須、scheduled 非対応）
+    if (post.platform === "instagram") {
+      if (mode === "scheduled") {
+        return jsonError(
+          "ig_scheduled_unsupported",
+          400,
+          "Instagram は予約投稿に対応していません（即時投稿のみ）"
+        );
+      }
+      const imageUrl =
+        typeof body?.imageUrl === "string" ? body.imageUrl.trim() : "";
+      if (!imageUrl) {
+        return jsonError(
+          "image_url_required",
+          400,
+          "Instagram投稿には画像URLが必要です"
+        );
+      }
+
+      const igPostId = await postInstagram(post.postText, imageUrl);
+
+      const updatedIg = await prisma.snsPost.update({
+        where: { id },
+        data: {
+          fbPostId: igPostId, // Instagram の post ID も fbPostId 列に格納（カラム追加回避）
+          postedAt: new Date(),
+          status: "posted",
+        },
+      });
+
+      await sendSlackNotification(
+        [
+          "📸 [SNS] Instagram に投稿完了",
+          `operator: ${admin.email}`,
+          `event: ${post.event?.title ?? "(unknown)"}`,
+          `phase: ${post.phaseLabel}`,
+          `igPostId: ${igPostId}`,
+        ].join("\n")
+      );
+
+      return NextResponse.json({
+        ok: true,
+        post: updatedIg,
+        result: { ok: true, igPostId, scheduled: false },
+      });
+    }
+
+    // Facebook 投稿（既存ロジック）
     let result;
     if (mode === "scheduled") {
       if (!post.scheduledAt) {

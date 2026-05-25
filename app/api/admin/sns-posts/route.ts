@@ -102,12 +102,18 @@ export async function POST(req: Request) {
       return jsonError("invalid_scheduled_at");
     }
 
+    const platform =
+      typeof body.platform === "string" &&
+      ["facebook", "instagram"].includes(body.platform)
+        ? body.platform
+        : "facebook";
+
     const created = await prisma.snsPost.create({
       data: {
         eventId,
         phase: Math.trunc(phase),
         phaseLabel,
-        platform: "facebook",
+        platform,
         postText,
         scheduledAt,
         triggerType: scheduledAt ? "scheduled" : "scheduled",
