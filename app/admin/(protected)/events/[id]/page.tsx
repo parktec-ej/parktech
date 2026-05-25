@@ -73,6 +73,7 @@ type SnsPostRow = {
   scheduledAt: string | null;
   postedAt: string | null;
   fbPostId: string | null;
+  igPostId: string | null;
   triggerType: string;
   status: string;
   createdAt: string;
@@ -144,7 +145,6 @@ export default function EventDetailPage() {
   const [postsLoading, setPostsLoading] = useState(false);
   const [genBusyPhase, setGenBusyPhase] = useState<number | null>(null);
   const [postBusyId, setPostBusyId] = useState<string | null>(null);
-  const [genPlatform, setGenPlatform] = useState<"facebook" | "instagram">("facebook");
   const [postImageUrls, setPostImageUrls] = useState<Record<string, string>>({});
 
   async function fetchPosts() {
@@ -175,7 +175,7 @@ export default function EventDetailPage() {
           eventId: id,
           phase,
           autoGenerate: true,
-          platform: genPlatform,
+          platform: "both",
         }),
       });
       const json = await res.json();
@@ -222,25 +222,14 @@ export default function EventDetailPage() {
   }
 
   async function handlePostNow(post: SnsPostRow, mode: "now" | "scheduled") {
-    const platformLabel = post.platform === "instagram" ? "Instagram" : "Facebook";
+    const imageUrl = postImageUrls[post.id]?.trim() ?? "";
     const confirmMsg =
       mode === "now"
-        ? `${platformLabel} に今すぐ投稿します。よろしいですか？`
-        : `${platformLabel} 側に予約投稿として登録します。よろしいですか？`;
+        ? imageUrl
+          ? "Facebook と Instagram に今すぐ投稿します。よろしいですか？"
+          : "Facebook に今すぐ投稿します（画像URL未指定のためIGはスキップ）。よろしいですか？"
+        : "Facebook 側に予約投稿として登録します。よろしいですか？（Instagram は予約非対応）";
     if (!confirm(confirmMsg)) return;
-
-    // Instagram は画像URL必須・予約不可
-    const imageUrl = postImageUrls[post.id]?.trim() ?? "";
-    if (post.platform === "instagram") {
-      if (mode === "scheduled") {
-        alert("Instagram は予約投稿に対応していません（即時投稿のみ）");
-        return;
-      }
-      if (!imageUrl) {
-        alert("Instagram投稿には画像URLが必要です");
-        return;
-      }
-    }
 
     setPostBusyId(post.id);
     try {
@@ -249,20 +238,27 @@ export default function EventDetailPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           mode,
-          ...(post.platform === "instagram" ? { imageUrl } : {}),
+          ...(mode === "now" && imageUrl ? { imageUrl } : {}),
         }),
       });
       const json = await res.json();
       if (!json?.ok) {
+        const partialMsg =
+          json?.fbPostId || json?.igPostId
+            ? `\n（部分成功: FB=${json?.fbPostId ?? "失敗"}, IG=${json?.igPostId ?? "失敗"}）`
+            : "";
         alert(
-          `投稿失敗: ${json?.error ?? "unknown"}${json?.message ? " - " + json.message : ""}`
+          `投稿失敗: ${json?.error ?? "unknown"}${json?.message ? " - " + json.message : ""}${partialMsg}`
         );
+        await fetchPosts();
         return;
       }
       alert(
         mode === "scheduled"
-          ? `${platformLabel} 側に予約投稿を登録しました`
-          : `${platformLabel} への投稿が完了しました`
+          ? "Facebook 側に予約投稿を登録しました"
+          : imageUrl
+          ? "Facebook + Instagram 投稿が完了しました"
+          : "Facebook 投稿が完了しました"
       );
       await fetchPosts();
     } catch (e) {
@@ -688,43 +684,11 @@ export default function EventDetailPage() {
             📣 SNS投稿管理
           </div>
           <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 12 }}>
-            Claudeでフェーズごとの投稿文を自動生成し、FacebookまたはInstagramに投稿します。
+            Claudeでフェーズごとの投稿文を自動生成し、FacebookとInstagramに同時投稿します。
           </div>
 
           <div style={{ fontSize: 13, fontWeight: 700, margin: "8px 0 6px" }}>
             📝 投稿文をPhase別に生成
-          </div>
-
-          <div style={{ display: "flex", gap: 6, marginBottom: 10, flexWrap: "wrap" }}>
-            <span style={{ fontSize: 12, color: "#6b7280", alignSelf: "center", marginRight: 4 }}>
-              投稿先:
-            </span>
-            {(["facebook", "instagram"] as const).map((pf) => {
-              const active = genPlatform === pf;
-              const label = pf === "facebook" ? "📣 Facebook" : "📸 Instagram";
-              return (
-                <button
-                  key={pf}
-                  type="button"
-                  onClick={() => setGenPlatform(pf)}
-                  disabled={genBusyPhase !== null}
-                  style={{
-                    padding: "6px 12px",
-                    borderRadius: 999,
-                    border: "1px solid",
-                    borderColor: active ? "#111827" : "#d1d5db",
-                    background: active ? "#111827" : "#fff",
-                    color: active ? "#fff" : "#374151",
-                    fontSize: 12,
-                    fontWeight: 700,
-                    cursor: genBusyPhase !== null ? "not-allowed" : "pointer",
-                    opacity: genBusyPhase !== null ? 0.6 : 1,
-                  }}
-                >
-                  {label}
-                </button>
-              );
-            })}
           </div>
 
           <div
@@ -846,33 +810,34 @@ export default function EventDetailPage() {
                         >
                           {p.status}
                         </span>
-                        <span
-                          style={{
-                            background: p.platform === "instagram" ? "#fce7f3" : "#dbeafe",
-                            color: p.platform === "instagram" ? "#9d174d" : "#1e40af",
-                            padding: "3px 8px",
-                            borderRadius: 999,
-                            fontSize: 11,
-                            fontWeight: 700,
-                          }}
-                        >
-                          {p.platform === "instagram" ? "📸 IG" : "📣 FB"}
-                        </span>
                         <span style={{ fontSize: 13, fontWeight: 700 }}>
                           {p.phaseLabel}
                         </span>
                       </div>
-                      {p.fbPostId ? (
-                        <span
-                          style={{
-                            fontSize: 11,
-                            color: "#6b7280",
-                            fontFamily: "ui-monospace, monospace",
-                          }}
-                        >
-                          {p.platform === "instagram" ? "igPostId" : "fbPostId"}: {p.fbPostId}
-                        </span>
-                      ) : null}
+                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                        {p.fbPostId ? (
+                          <span
+                            style={{
+                              fontSize: 11,
+                              color: "#6b7280",
+                              fontFamily: "ui-monospace, monospace",
+                            }}
+                          >
+                            📣 fbPostId: {p.fbPostId}
+                          </span>
+                        ) : null}
+                        {p.igPostId ? (
+                          <span
+                            style={{
+                              fontSize: 11,
+                              color: "#6b7280",
+                              fontFamily: "ui-monospace, monospace",
+                            }}
+                          >
+                            📸 igPostId: {p.igPostId}
+                          </span>
+                        ) : null}
+                      </div>
                     </div>
 
                     <textarea
@@ -948,7 +913,7 @@ export default function EventDetailPage() {
                       ) : null}
                     </div>
 
-                    {p.platform === "instagram" && !isPosted && (
+                    {!isPosted && (
                       <div style={{ marginTop: 10 }}>
                         <div
                           style={{
@@ -958,7 +923,7 @@ export default function EventDetailPage() {
                             marginBottom: 4,
                           }}
                         >
-                          📸 画像URL（Instagram投稿に必須・公開アクセス可能なURL）
+                          📸 画像URL（Instagramにも投稿する場合に入力・公開アクセス可能なURL）
                         </div>
                         <input
                           type="url"
@@ -976,6 +941,15 @@ export default function EventDetailPage() {
                             fontSize: 13,
                           }}
                         />
+                        <div
+                          style={{
+                            fontSize: 10,
+                            color: "#9ca3af",
+                            marginTop: 2,
+                          }}
+                        >
+                          ※ 空欄の場合は Facebook のみに投稿されます
+                        </div>
                       </div>
                     )}
 

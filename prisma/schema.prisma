@@ -756,11 +756,12 @@ model SnsPost {
   eventId          String
   phase            Int
   phaseLabel       String
-  platform         String    @default("facebook")
+  platform         String    @default("both")
   postText         String
   scheduledAt      DateTime?
   postedAt         DateTime?
   fbPostId         String?
+  igPostId         String?
   triggerType      String    @default("scheduled")
   triggerCondition String?
   status           String    @default("draft")

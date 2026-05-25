@@ -104,9 +104,9 @@ export async function POST(req: Request) {
 
     const platform =
       typeof body.platform === "string" &&
-      ["facebook", "instagram"].includes(body.platform)
+      ["facebook", "instagram", "both"].includes(body.platform)
         ? body.platform
-        : "facebook";
+        : "both";
 
     const created = await prisma.snsPost.create({
       data: {
