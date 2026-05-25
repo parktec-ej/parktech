@@ -163,7 +163,7 @@ function HourlyStartPageInner() {
             <input
               value={customerName}
               onChange={(e) => setCustomerName(e.target.value)}
-              placeholder="例: 阿部龍昇"
+              placeholder="例: 山田 太郎"
               style={inputStyle}
             />
           </label>

@@ -429,7 +429,7 @@ function ReservePageInner() {
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="例: 阿部龍昇"
+            placeholder="例: 山田 太郎"
             style={styles.input}
           />
         </section>
