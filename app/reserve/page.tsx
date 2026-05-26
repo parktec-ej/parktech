@@ -307,6 +307,11 @@ function ReservePageInner() {
   if (!hasPlaceQuery) {
     return (
       <main style={styles.page}>
+        <div style={{ marginBottom: 12 }}>
+          <a href="https://parktec-ej.com" style={styles.backLink}>
+            ← ParkTec HPへ戻る
+          </a>
+        </div>
         <div style={styles.card}>
           <div style={styles.headerRow}>
             <div>
@@ -360,6 +365,11 @@ function ReservePageInner() {
 
   return (
     <main style={styles.page}>
+      <div style={{ marginBottom: 12 }}>
+        <a href="https://parktec-ej.com" style={styles.backLink}>
+          ← ParkTec HPへ戻る
+        </a>
+      </div>
       <div style={styles.card}>
         <div style={styles.headerRow}>
           <div>
