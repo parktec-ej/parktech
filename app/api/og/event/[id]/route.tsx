@@ -22,8 +22,73 @@ const VENUE_LABEL: Record<string, string> = {
 const RESERVE_URL_DISPLAY = "reserve.parktec-ej.com/places/rifu-main";
 const WEEKDAYS_EN = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
 
-const COLOR_GOLD = "#fbbf24";
 const COLOR_LIGHT_GRAY = "#e2e8f0";
+
+type ColorTheme = {
+  name: string;
+  gradientStops: [string, string, string]; // 0% / 50% / 100%
+  accent: string; // 装飾線・ダイヤ・"P"枠・ロゴ文字・CTAボーダー色
+  glowLeftTop: string; // 左上 radial-gradient の色 (with alpha)
+  glowRightBottom: string; // 右下 radial-gradient の色 (with alpha)
+};
+
+const THEMES: ColorTheme[] = [
+  {
+    name: "blue-purple",
+    gradientStops: ["#0f172a", "#1e1b4b", "#312e81"],
+    accent: "#3b82f6",
+    glowLeftTop: "rgba(59,130,246,0.35)",
+    glowRightBottom: "rgba(168,85,247,0.35)",
+  },
+  {
+    name: "red-pink",
+    gradientStops: ["#7f1d1d", "#991b1b", "#9f1239"],
+    accent: "#f43f5e",
+    glowLeftTop: "rgba(244,63,94,0.35)",
+    glowRightBottom: "rgba(251,113,133,0.32)",
+  },
+  {
+    name: "green-teal",
+    gradientStops: ["#064e3b", "#065f46", "#0d9488"],
+    accent: "#14b8a6",
+    glowLeftTop: "rgba(20,184,166,0.35)",
+    glowRightBottom: "rgba(45,212,191,0.32)",
+  },
+  {
+    name: "orange-yellow",
+    gradientStops: ["#7c2d12", "#9a3412", "#b45309"],
+    accent: "#f59e0b",
+    glowLeftTop: "rgba(245,158,11,0.35)",
+    glowRightBottom: "rgba(251,191,36,0.32)",
+  },
+  {
+    name: "purple-pink",
+    gradientStops: ["#4c1d95", "#6d28d9", "#7c3aed"],
+    accent: "#a78bfa",
+    glowLeftTop: "rgba(167,139,250,0.35)",
+    glowRightBottom: "rgba(236,72,153,0.32)",
+  },
+  {
+    name: "navy-cyan",
+    gradientStops: ["#0c4a6e", "#155e75", "#164e63"],
+    accent: "#22d3ee",
+    glowLeftTop: "rgba(34,211,238,0.35)",
+    glowRightBottom: "rgba(125,211,252,0.32)",
+  },
+];
+
+// 決定論的ハッシュ（同じ文字列は同じ数値）
+function simpleHash(s: string): number {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) {
+    h = (h * 31 + s.charCodeAt(i)) | 0;
+  }
+  return Math.abs(h);
+}
+
+function pickTheme(eventId: string): ColorTheme {
+  return THEMES[simpleHash(eventId) % THEMES.length];
+}
 
 function jstDateParts(d: Date | null | undefined) {
   if (!d) return null;
@@ -50,17 +115,19 @@ function fmtTimeEn(d: Date | null | undefined): string {
   return `${String(p.hour).padStart(2, "0")}:${String(p.minute).padStart(2, "0")}`;
 }
 
-// 四隅のダイヤモンド装飾（ゴールド・45度回転した四角）
+// 四隅のダイヤモンド装飾（45度回転した四角）
 function CornerDiamond({
   top,
   right,
   bottom,
   left,
+  color,
 }: {
   top?: number;
   right?: number;
   bottom?: number;
   left?: number;
+  color: string;
 }) {
   return (
     <div
@@ -69,7 +136,7 @@ function CornerDiamond({
         display: "flex",
         width: 8,
         height: 8,
-        background: COLOR_GOLD,
+        background: color,
         transform: "rotate(45deg)",
         ...(top !== undefined ? { top } : {}),
         ...(right !== undefined ? { right } : {}),
@@ -86,6 +153,7 @@ export async function GET(
 ) {
   try {
     const { id } = await context.params;
+    const theme = pickTheme(id);
 
     const event = await prisma.event.findUnique({
       where: { id },
@@ -120,8 +188,7 @@ export async function GET(
             display: "flex",
             fontFamily: "sans-serif",
             // ベースグラデーション
-            background:
-              "linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #312e81 100%)",
+            background: `linear-gradient(135deg, ${theme.gradientStops[0]} 0%, ${theme.gradientStops[1]} 50%, ${theme.gradientStops[2]} 100%)`,
             overflow: "hidden",
           }}
         >
@@ -134,8 +201,7 @@ export async function GET(
               width: 380,
               height: 380,
               display: "flex",
-              background:
-                "radial-gradient(circle, rgba(59,130,246,0.35) 0%, rgba(59,130,246,0) 70%)",
+              background: `radial-gradient(circle, ${theme.glowLeftTop} 0%, rgba(0,0,0,0) 70%)`,
             }}
           />
           {/* 光のアクセント (右下) */}
@@ -147,8 +213,7 @@ export async function GET(
               width: 380,
               height: 380,
               display: "flex",
-              background:
-                "radial-gradient(circle, rgba(168,85,247,0.35) 0%, rgba(168,85,247,0) 70%)",
+              background: `radial-gradient(circle, ${theme.glowRightBottom} 0%, rgba(0,0,0,0) 70%)`,
             }}
           />
 
@@ -161,7 +226,7 @@ export async function GET(
               right: 36,
               height: 1,
               display: "flex",
-              background: COLOR_GOLD,
+              background: theme.accent,
               opacity: 0.7,
             }}
           />
@@ -173,16 +238,16 @@ export async function GET(
               right: 36,
               height: 1,
               display: "flex",
-              background: COLOR_GOLD,
+              background: theme.accent,
               opacity: 0.7,
             }}
           />
 
           {/* 四隅ダイヤモンド */}
-          <CornerDiamond top={20} left={20} />
-          <CornerDiamond top={20} right={20} />
-          <CornerDiamond bottom={20} left={20} />
-          <CornerDiamond bottom={20} right={20} />
+          <CornerDiamond top={20} left={20} color={theme.accent} />
+          <CornerDiamond top={20} right={20} color={theme.accent} />
+          <CornerDiamond bottom={20} left={20} color={theme.accent} />
+          <CornerDiamond bottom={20} right={20} color={theme.accent} />
 
           {/* 中身 */}
           <div
@@ -214,9 +279,9 @@ export async function GET(
                   width: 56,
                   height: 56,
                   borderRadius: 999,
-                  border: `2px solid ${COLOR_GOLD}`,
+                  border: `2px solid ${theme.accent}`,
                   background: "rgba(251,191,36,0.08)",
-                  color: COLOR_GOLD,
+                  color: theme.accent,
                   fontSize: 32,
                   fontWeight: 900,
                   letterSpacing: 0,
@@ -231,7 +296,7 @@ export async function GET(
                   fontSize: 22,
                   fontWeight: 900,
                   letterSpacing: 6,
-                  color: COLOR_GOLD,
+                  color: theme.accent,
                 }}
               >
                 ParkTec East Japan
@@ -257,7 +322,7 @@ export async function GET(
                   justifyContent: "center",
                   gap: 12,
                   marginBottom: 18,
-                  color: COLOR_GOLD,
+                  color: theme.accent,
                   opacity: 0.8,
                 }}
               >
@@ -266,14 +331,14 @@ export async function GET(
                     display: "flex",
                     width: 56,
                     height: 1,
-                    background: COLOR_GOLD,
+                    background: theme.accent,
                   }}
                 />
                 <div
                   style={{
                     display: "flex",
                     fontSize: 14,
-                    color: COLOR_GOLD,
+                    color: theme.accent,
                   }}
                 >
                   ✦
@@ -283,7 +348,7 @@ export async function GET(
                     display: "flex",
                     width: 56,
                     height: 1,
-                    background: COLOR_GOLD,
+                    background: theme.accent,
                   }}
                 />
               </div>
@@ -319,14 +384,14 @@ export async function GET(
                     display: "flex",
                     width: 56,
                     height: 1,
-                    background: COLOR_GOLD,
+                    background: theme.accent,
                   }}
                 />
                 <div
                   style={{
                     display: "flex",
                     fontSize: 14,
-                    color: COLOR_GOLD,
+                    color: theme.accent,
                   }}
                 >
                   ✦
@@ -336,7 +401,7 @@ export async function GET(
                     display: "flex",
                     width: 56,
                     height: 1,
-                    background: COLOR_GOLD,
+                    background: theme.accent,
                   }}
                 />
               </div>
@@ -380,10 +445,10 @@ export async function GET(
                   display: "flex",
                   marginTop: 18,
                   background: "rgba(15,23,42,0.55)",
-                  color: COLOR_GOLD,
+                  color: theme.accent,
                   padding: "12px 28px",
                   borderRadius: 8,
-                  border: `2px solid ${COLOR_GOLD}`,
+                  border: `2px solid ${theme.accent}`,
                   fontSize: 19,
                   fontWeight: 900,
                   letterSpacing: 3,
@@ -429,7 +494,7 @@ export async function GET(
             alignItems: "center",
             justifyContent: "center",
             background: "#0f172a",
-            color: COLOR_GOLD,
+            color: "#fbbf24",
             fontSize: 32,
             fontWeight: 900,
             letterSpacing: 6,
