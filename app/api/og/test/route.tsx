@@ -1,6 +1,6 @@
 // 最小限の ImageResponse テスト用エンドポイント。
-// 絵文字なし・フォントなし・JSX 最小で edge runtime の動作確認。
-export const runtime = "edge";
+// 絵文字なし・フォントなし・JSX 最小で nodejs runtime の動作確認。
+export const runtime = "nodejs";
 
 import { ImageResponse } from "next/og";
 
