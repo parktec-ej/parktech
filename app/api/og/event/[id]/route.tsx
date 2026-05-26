@@ -13,6 +13,29 @@ export const preferredRegion = "hnd1";
 
 import { ImageResponse } from "next/og";
 import { prisma } from "@/lib/db";
+import { readFile } from "node:fs/promises";
+import path from "node:path";
+
+// Noto Sans JP Bold (Japanese subset) — 1回読込してメモリにキャッシュ
+let cachedFont: ArrayBuffer | null = null;
+async function loadBundledFont(): Promise<ArrayBuffer | null> {
+  if (cachedFont) return cachedFont;
+  try {
+    const filePath = path.join(
+      process.cwd(),
+      "public/fonts/NotoSansJP-700-japanese.woff2"
+    );
+    const buf = await readFile(filePath);
+    cachedFont = buf.buffer.slice(
+      buf.byteOffset,
+      buf.byteOffset + buf.byteLength
+    ) as ArrayBuffer;
+    return cachedFont;
+  } catch (e) {
+    console.warn("[og] bundled font read failed:", e);
+    return null;
+  }
+}
 
 const VENUE_LABEL: Record<string, string> = {
   sekisui_arena: "セキスイハイムスーパーアリーナ",
@@ -130,8 +153,18 @@ export async function GET(
         )
       : "";
 
-    // フォント読込を一時的に無効化（外部 fetch が function timeout を引き起こす可能性切り分け）
-    const fonts = undefined;
+    // bundle されたフォントを fs から読込（外部 fetch を回避）
+    const fontDataBold = await loadBundledFont();
+    const fonts = fontDataBold
+      ? [
+          {
+            name: "NotoJP",
+            data: fontDataBold,
+            weight: 700 as const,
+            style: "normal" as const,
+          },
+        ]
+      : undefined;
 
     const dateLine = dateStr
       ? `${dateStr}${timeStr ? ` / ${timeStr} 開演` : ""}`
