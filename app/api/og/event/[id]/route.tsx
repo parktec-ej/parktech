@@ -1,11 +1,11 @@
 /**
- * イベント告知用 OG画像 動的生成（1080x1080 / public / Node.js runtime）
+ * イベント告知用 OG画像 動的生成（600x600 / public / Node.js runtime）
  *
- * デザイン改善版 (フォント無し / 英語表記):
- * - 背景: 駐車場写真 + 青半透明オーバーレイ
- * - 上部: ParkTec East Japan ロゴ（大きく、letter-spacing 広め）
- * - 中央: イベント名（シャドウ付き）
- * - 下部: 日付 / 会場名（英語）/ PARKING RESERVATION ボタン / URL
+ * リッチデザイン版 (フォント無し / 英語表記):
+ * - 多層グラデーション背景（紺→紫 + radial-gradient の光アクセント）
+ * - ゴールドの装飾線・四隅ダイヤモンド
+ * - 中央タイトル + 装飾ライン
+ * - PARKING RESERVATION ボタン（ゴールドボーダー）
  */
 
 export const runtime = "nodejs";
@@ -20,8 +20,10 @@ const VENUE_LABEL: Record<string, string> = {
 };
 
 const RESERVE_URL_DISPLAY = "reserve.parktec-ej.com/places/rifu-main";
-const BG_IMAGE_URL = "https://reserve.parktec-ej.com/images/rifu-main/lot-full.jpg";
 const WEEKDAYS_EN = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
+
+const COLOR_GOLD = "#fbbf24";
+const COLOR_LIGHT_GRAY = "#e2e8f0";
 
 function jstDateParts(d: Date | null | undefined) {
   if (!d) return null;
@@ -39,16 +41,43 @@ function jstDateParts(d: Date | null | undefined) {
 function fmtDateEn(d: Date | null | undefined): string {
   const p = jstDateParts(d);
   if (!p) return "";
-  const y = p.year;
-  const mo = String(p.month).padStart(2, "0");
-  const day = String(p.day).padStart(2, "0");
-  return `${y}.${mo}.${day} ${p.weekday}`;
+  return `${p.year}.${String(p.month).padStart(2, "0")}.${String(p.day).padStart(2, "0")} ${p.weekday}`;
 }
 
 function fmtTimeEn(d: Date | null | undefined): string {
   const p = jstDateParts(d);
   if (!p) return "";
   return `${String(p.hour).padStart(2, "0")}:${String(p.minute).padStart(2, "0")}`;
+}
+
+// 四隅のダイヤモンド装飾（ゴールド・45度回転した四角）
+function CornerDiamond({
+  top,
+  right,
+  bottom,
+  left,
+}: {
+  top?: number;
+  right?: number;
+  bottom?: number;
+  left?: number;
+}) {
+  return (
+    <div
+      style={{
+        position: "absolute",
+        display: "flex",
+        width: 8,
+        height: 8,
+        background: COLOR_GOLD,
+        transform: "rotate(45deg)",
+        ...(top !== undefined ? { top } : {}),
+        ...(right !== undefined ? { right } : {}),
+        ...(bottom !== undefined ? { bottom } : {}),
+        ...(left !== undefined ? { left } : {}),
+      }}
+    />
+  );
 }
 
 export async function GET(
@@ -75,11 +104,11 @@ export async function GET(
     const timeStr = event
       ? fmtTimeEn(event.showStartAt ?? event.doorOpenAt ?? event.startAt)
       : "";
-    const dateLine = dateStr ? `${dateStr}${timeStr ? `  /  ${timeStr}` : ""}` : "";
+    const dateLine = dateStr ? `${dateStr}  /  ${timeStr || "TBA"}` : "";
 
-    // タイトル長に応じてフォントサイズを調整
+    // タイトル長で font size 調整 (600x600 用)
     const titleFontSize =
-      title.length > 30 ? 64 : title.length > 20 ? 80 : 96;
+      title.length > 28 ? 32 : title.length > 18 ? 40 : 50;
 
     return new ImageResponse(
       (
@@ -90,37 +119,72 @@ export async function GET(
             height: "100%",
             display: "flex",
             fontFamily: "sans-serif",
+            // ベースグラデーション
+            background:
+              "linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #312e81 100%)",
+            overflow: "hidden",
           }}
         >
-          {/* 背景写真 */}
-          <img
-            src={BG_IMAGE_URL}
-            width={1080}
-            height={1080}
-            style={{
-              position: "absolute",
-              top: 0,
-              left: 0,
-              width: "100%",
-              height: "100%",
-              objectFit: "cover",
-            }}
-          />
-
-          {/* 青半透明オーバーレイ */}
+          {/* 光のアクセント (左上) */}
           <div
             style={{
               position: "absolute",
-              top: 0,
-              left: 0,
-              width: "100%",
-              height: "100%",
-              background: "rgba(30, 64, 175, 0.85)",
+              top: -120,
+              left: -120,
+              width: 380,
+              height: 380,
               display: "flex",
+              background:
+                "radial-gradient(circle, rgba(59,130,246,0.35) 0%, rgba(59,130,246,0) 70%)",
+            }}
+          />
+          {/* 光のアクセント (右下) */}
+          <div
+            style={{
+              position: "absolute",
+              bottom: -120,
+              right: -120,
+              width: 380,
+              height: 380,
+              display: "flex",
+              background:
+                "radial-gradient(circle, rgba(168,85,247,0.35) 0%, rgba(168,85,247,0) 70%)",
             }}
           />
 
-          {/* コンテンツ */}
+          {/* 上下のゴールド細線 */}
+          <div
+            style={{
+              position: "absolute",
+              top: 24,
+              left: 36,
+              right: 36,
+              height: 1,
+              display: "flex",
+              background: COLOR_GOLD,
+              opacity: 0.7,
+            }}
+          />
+          <div
+            style={{
+              position: "absolute",
+              bottom: 24,
+              left: 36,
+              right: 36,
+              height: 1,
+              display: "flex",
+              background: COLOR_GOLD,
+              opacity: 0.7,
+            }}
+          />
+
+          {/* 四隅ダイヤモンド */}
+          <CornerDiamond top={20} left={20} />
+          <CornerDiamond top={20} right={20} />
+          <CornerDiamond bottom={20} left={20} />
+          <CornerDiamond bottom={20} right={20} />
+
+          {/* 中身 */}
           <div
             style={{
               position: "relative",
@@ -128,7 +192,7 @@ export async function GET(
               height: "100%",
               display: "flex",
               flexDirection: "column",
-              padding: "72px 64px 64px 64px",
+              padding: "60px 56px",
               color: "#fff",
               justifyContent: "space-between",
             }}
@@ -141,42 +205,40 @@ export async function GET(
                 alignItems: "center",
               }}
             >
+              {/* "P" マーク（金枠の円） */}
               <div
                 style={{
                   display: "flex",
-                  fontSize: 44,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  width: 56,
+                  height: 56,
+                  borderRadius: 999,
+                  border: `2px solid ${COLOR_GOLD}`,
+                  background: "rgba(251,191,36,0.08)",
+                  color: COLOR_GOLD,
+                  fontSize: 32,
                   fontWeight: 900,
-                  letterSpacing: 8,
-                  textTransform: "uppercase",
+                  letterSpacing: 0,
                 }}
               >
-                ParkTec
+                P
               </div>
               <div
                 style={{
                   display: "flex",
-                  fontSize: 18,
-                  fontWeight: 700,
-                  letterSpacing: 12,
-                  marginTop: 6,
-                  opacity: 0.85,
+                  marginTop: 14,
+                  fontSize: 22,
+                  fontWeight: 900,
+                  letterSpacing: 6,
+                  color: COLOR_GOLD,
                 }}
               >
-                EAST JAPAN
+                ParkTec East Japan
               </div>
-              <div
-                style={{
-                  display: "flex",
-                  width: 64,
-                  height: 3,
-                  background: "#fff",
-                  marginTop: 24,
-                  opacity: 0.7,
-                }}
-              />
             </div>
 
-            {/* 中央: イベント名 */}
+            {/* 中央: タイトル */}
             <div
               style={{
                 display: "flex",
@@ -184,22 +246,99 @@ export async function GET(
                 alignItems: "center",
                 justifyContent: "center",
                 flex: 1,
-                padding: "0 16px",
-                textAlign: "center",
+                padding: "0 8px",
               }}
             >
+              {/* 装飾ライン (上) ─── ✦ ─── */}
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 12,
+                  marginBottom: 18,
+                  color: COLOR_GOLD,
+                  opacity: 0.8,
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    width: 56,
+                    height: 1,
+                    background: COLOR_GOLD,
+                  }}
+                />
+                <div
+                  style={{
+                    display: "flex",
+                    fontSize: 14,
+                    color: COLOR_GOLD,
+                  }}
+                >
+                  ✦
+                </div>
+                <div
+                  style={{
+                    display: "flex",
+                    width: 56,
+                    height: 1,
+                    background: COLOR_GOLD,
+                  }}
+                />
+              </div>
+
               <div
                 style={{
                   display: "flex",
                   fontSize: titleFontSize,
                   fontWeight: 900,
-                  lineHeight: 1.15,
+                  lineHeight: 1.18,
                   textAlign: "center",
-                  textShadow: "0 4px 12px rgba(0,0,0,0.35)",
+                  textShadow: "0 4px 12px rgba(0,0,0,0.55)",
                   letterSpacing: 1,
+                  color: "#fff",
                 }}
               >
                 {title}
+              </div>
+
+              {/* 装飾ライン (下) */}
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 12,
+                  marginTop: 18,
+                  opacity: 0.8,
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    width: 56,
+                    height: 1,
+                    background: COLOR_GOLD,
+                  }}
+                />
+                <div
+                  style={{
+                    display: "flex",
+                    fontSize: 14,
+                    color: COLOR_GOLD,
+                  }}
+                >
+                  ✦
+                </div>
+                <div
+                  style={{
+                    display: "flex",
+                    width: 56,
+                    height: 1,
+                    background: COLOR_GOLD,
+                  }}
+                />
               </div>
             </div>
 
@@ -209,16 +348,16 @@ export async function GET(
                 display: "flex",
                 flexDirection: "column",
                 alignItems: "center",
-                gap: 14,
+                gap: 6,
               }}
             >
               <div
                 style={{
                   display: "flex",
-                  fontSize: 28,
+                  fontSize: 18,
                   fontWeight: 700,
                   letterSpacing: 2,
-                  opacity: 0.95,
+                  color: COLOR_LIGHT_GRAY,
                 }}
               >
                 {dateLine || " "}
@@ -226,8 +365,9 @@ export async function GET(
               <div
                 style={{
                   display: "flex",
-                  fontSize: 22,
+                  fontSize: 15,
                   fontWeight: 700,
+                  color: COLOR_LIGHT_GRAY,
                   opacity: 0.85,
                   letterSpacing: 1,
                 }}
@@ -239,27 +379,28 @@ export async function GET(
                 style={{
                   display: "flex",
                   marginTop: 18,
-                  background: "rgba(255,255,255,0.95)",
-                  color: "#1e40af",
-                  padding: "16px 40px",
-                  borderRadius: 12,
-                  border: "2px solid #fff",
-                  fontSize: 28,
+                  background: "rgba(15,23,42,0.55)",
+                  color: COLOR_GOLD,
+                  padding: "12px 28px",
+                  borderRadius: 8,
+                  border: `2px solid ${COLOR_GOLD}`,
+                  fontSize: 19,
                   fontWeight: 900,
-                  letterSpacing: 4,
-                  boxShadow: "0 6px 20px rgba(0,0,0,0.25)",
+                  letterSpacing: 3,
+                  boxShadow: "0 6px 18px rgba(0,0,0,0.45)",
                 }}
               >
-                PARKING RESERVATION
+                [P] PARKING RESERVATION
               </div>
 
               <div
                 style={{
                   display: "flex",
-                  fontSize: 18,
-                  opacity: 0.75,
-                  marginTop: 12,
+                  fontSize: 12,
+                  opacity: 0.7,
+                  marginTop: 10,
                   letterSpacing: 1,
+                  color: "#fff",
                 }}
               >
                 {RESERVE_URL_DISPLAY}
@@ -269,8 +410,8 @@ export async function GET(
         </div>
       ),
       {
-        width: 1080,
-        height: 1080,
+        width: 600,
+        height: 600,
         headers: {
           "Cache-Control": "public, max-age=3600, s-maxage=3600",
         },
@@ -287,9 +428,9 @@ export async function GET(
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            background: "#1e40af",
-            color: "#fff",
-            fontSize: 56,
+            background: "#0f172a",
+            color: COLOR_GOLD,
+            fontSize: 32,
             fontWeight: 900,
             letterSpacing: 6,
           }}
@@ -297,7 +438,7 @@ export async function GET(
           ParkTec East Japan
         </div>
       ),
-      { width: 1080, height: 1080 }
+      { width: 600, height: 600 }
     );
   }
 }
