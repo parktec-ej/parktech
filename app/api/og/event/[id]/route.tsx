@@ -13,26 +13,21 @@ export const preferredRegion = "hnd1";
 
 import { ImageResponse } from "next/og";
 import { prisma } from "@/lib/db";
-import { readFile } from "node:fs/promises";
-import { fileURLToPath } from "node:url";
+import { NOTO_SANS_JP_BOLD_BASE64 } from "@/lib/og-font";
 
-// Noto Sans JP Bold (Japanese subset) — 1回読込してメモリにキャッシュ
-// Vercel bundle 内に含めるため、route.tsx と同ディレクトリに配置し
-// import.meta.url で解決（Next.js が依存追跡してくれる）
+// Noto Sans JP Bold (Japanese subset) — Base64 デコード結果をキャッシュ
 let cachedFont: ArrayBuffer | null = null;
-async function loadBundledFont(): Promise<ArrayBuffer | null> {
+function loadBundledFont(): ArrayBuffer | null {
   if (cachedFont) return cachedFont;
   try {
-    const fontUrl = new URL("./NotoSansJP-700-japanese.woff2", import.meta.url);
-    const filePath = fileURLToPath(fontUrl);
-    const buf = await readFile(filePath);
+    const buf = Buffer.from(NOTO_SANS_JP_BOLD_BASE64, "base64");
     cachedFont = buf.buffer.slice(
       buf.byteOffset,
       buf.byteOffset + buf.byteLength
     ) as ArrayBuffer;
     return cachedFont;
   } catch (e) {
-    console.warn("[og] bundled font read failed:", e);
+    console.warn("[og] base64 font decode failed:", e);
     return null;
   }
 }
@@ -153,8 +148,8 @@ export async function GET(
         )
       : "";
 
-    // bundle されたフォントを fs から読込（外部 fetch を回避）
-    const fontDataBold = await loadBundledFont();
+    // bundle 内に Base64 で同梱されたフォントをデコード
+    const fontDataBold = loadBundledFont();
     const fonts = fontDataBold
       ? [
           {
