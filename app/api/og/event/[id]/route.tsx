@@ -130,27 +130,8 @@ export async function GET(
         )
       : "";
 
-    const allText = [
-      "ParkTec East Japan",
-      title,
-      dateStr,
-      timeStr,
-      venue,
-      "駐車場予約受付中",
-      RESERVE_URL_DISPLAY,
-    ].join("");
-    const fontDataBold = await loadJpFont(allText);
-
-    const fonts = fontDataBold
-      ? [
-          {
-            name: "NotoJP",
-            data: fontDataBold,
-            weight: 700 as const,
-            style: "normal" as const,
-          },
-        ]
-      : undefined;
+    // フォント読込を一時的に無効化（外部 fetch が function timeout を引き起こす可能性切り分け）
+    const fonts = undefined;
 
     const dateLine = dateStr
       ? `${dateStr}${timeStr ? ` / ${timeStr} 開演` : ""}`
