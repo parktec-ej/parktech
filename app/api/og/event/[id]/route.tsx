@@ -1,11 +1,10 @@
 /**
  * イベント告知用 OG画像 動的生成（600x600 / public / Node.js runtime）
  *
- * 設計メモ:
- * - 600x600 + フォント1種類でメモリを抑える（Edge は white image 問題で却下）
- * - 内部公開 API を経由せず Prisma 直接取得（Node ランタイムのみ可）
- * - フォント取得失敗 / event 取得失敗でも 500 を返さず英数字 fallback
- * - 絵文字は使用しない（Satori デフォルトで絵文字描画できないため）
+ * 確実動作を優先しフォント無し版：
+ * - システム表示テキストは英語にして system font で描画
+ * - イベントタイトル等の日本語は □（豆腐）になる
+ * - フォント外部fetch・Base64インラインともに function invocation failure を引き起こすため断念
  */
 
 export const runtime = "nodejs";
@@ -13,110 +12,36 @@ export const preferredRegion = "hnd1";
 
 import { ImageResponse } from "next/og";
 import { prisma } from "@/lib/db";
-import { NOTO_SANS_JP_BOLD_BASE64 } from "@/lib/og-font";
-
-// Noto Sans JP Bold (Japanese subset) — Base64 デコード結果をキャッシュ
-let cachedFont: ArrayBuffer | null = null;
-function loadBundledFont(): ArrayBuffer | null {
-  if (cachedFont) return cachedFont;
-  try {
-    const buf = Buffer.from(NOTO_SANS_JP_BOLD_BASE64, "base64");
-    cachedFont = buf.buffer.slice(
-      buf.byteOffset,
-      buf.byteOffset + buf.byteLength
-    ) as ArrayBuffer;
-    return cachedFont;
-  } catch (e) {
-    console.warn("[og] base64 font decode failed:", e);
-    return null;
-  }
-}
 
 const VENUE_LABEL: Record<string, string> = {
-  sekisui_arena: "セキスイハイムスーパーアリーナ",
-  qanda_stadium: "キューアンドエースタジアムみやぎ",
+  sekisui_arena: "Sekisui Heim Super Arena",
+  qanda_stadium: "Q&A Stadium Miyagi",
 };
 
 const RESERVE_URL_DISPLAY = "reserve.parktec-ej.com/places/rifu-main";
-const WEEKDAYS_JP = ["日", "月", "火", "水", "木", "金", "土"];
+const WEEKDAYS_EN = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-async function fetchWithTimeout(
-  url: string,
-  init: RequestInit | undefined,
-  timeoutMs: number
-): Promise<Response | null> {
-  const controller = new AbortController();
-  const t = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    return await fetch(url, { ...init, signal: controller.signal });
-  } catch {
-    return null;
-  } finally {
-    clearTimeout(t);
-  }
-}
-
-async function loadJpFont(text: string): Promise<ArrayBuffer | null> {
-  try {
-    const cssUrl = `https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@700&text=${encodeURIComponent(
-      text
-    )}`;
-    const cssRes = await fetchWithTimeout(
-      cssUrl,
-      {
-        headers: {
-          "User-Agent":
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
-        },
-      },
-      3000
-    );
-    if (!cssRes || !cssRes.ok) {
-      console.warn("[og] font CSS fetch failed:", cssRes?.status);
-      return null;
-    }
-    const css = await cssRes.text();
-    const m = css.match(/src:\s*url\(([^)]+)\)\s*format\('(?:woff2|woff)'\)/);
-    if (!m) {
-      console.warn("[og] font url not matched");
-      return null;
-    }
-    const fontRes = await fetchWithTimeout(m[1], undefined, 3000);
-    if (!fontRes || !fontRes.ok) {
-      console.warn("[og] font binary fetch failed");
-      return null;
-    }
-    return await fontRes.arrayBuffer();
-  } catch (e) {
-    console.warn("[og] loadJpFont error:", e);
-    return null;
-  }
-}
-
-// Edge ICU 不安定対策で手書きの JST 計算（nodejs でも同じ使用）
-function jstDateParts(iso: string | null | undefined) {
-  if (!iso) return null;
-  const dt = new Date(iso);
-  if (Number.isNaN(dt.getTime())) return null;
-  const jst = new Date(dt.getTime() + 9 * 60 * 60 * 1000);
+function jstDateParts(d: Date | null | undefined) {
+  if (!d) return null;
+  const jst = new Date(d.getTime() + 9 * 60 * 60 * 1000);
   return {
     year: jst.getUTCFullYear(),
     month: jst.getUTCMonth() + 1,
     day: jst.getUTCDate(),
-    weekday: WEEKDAYS_JP[jst.getUTCDay()],
+    weekday: WEEKDAYS_EN[jst.getUTCDay()],
     hour: jst.getUTCHours(),
     minute: jst.getUTCMinutes(),
   };
 }
 
-function fmtJstDate(iso: string | null | undefined): string {
-  const p = jstDateParts(iso);
+function fmtDateEn(d: Date | null | undefined): string {
+  const p = jstDateParts(d);
   if (!p) return "";
-  return `${p.year}年${p.month}月${p.day}日（${p.weekday}）`;
+  return `${p.year}/${String(p.month).padStart(2, "0")}/${String(p.day).padStart(2, "0")} (${p.weekday})`;
 }
 
-function fmtJstTime(iso: string | null | undefined): string {
-  const p = jstDateParts(iso);
+function fmtTimeEn(d: Date | null | undefined): string {
+  const p = jstDateParts(d);
   if (!p) return "";
   return `${String(p.hour).padStart(2, "0")}:${String(p.minute).padStart(2, "0")}`;
 }
@@ -139,32 +64,14 @@ export async function GET(
       },
     });
 
-    const title = event?.title ?? "イベント情報";
+    const title = event?.title ?? "Event";
     const venue = event ? VENUE_LABEL[event.venue] ?? event.venue : "";
-    const dateStr = event ? fmtJstDate(event.startAt.toISOString()) : "";
+    const dateStr = event ? fmtDateEn(event.startAt) : "";
     const timeStr = event
-      ? fmtJstTime(
-          (event.showStartAt ?? event.doorOpenAt ?? event.startAt).toISOString()
-        )
+      ? fmtTimeEn(event.showStartAt ?? event.doorOpenAt ?? event.startAt)
       : "";
 
-    // bundle 内に Base64 で同梱されたフォントをデコード
-    const fontDataBold = loadBundledFont();
-    const fonts = fontDataBold
-      ? [
-          {
-            name: "NotoJP",
-            data: fontDataBold,
-            weight: 700 as const,
-            style: "normal" as const,
-          },
-        ]
-      : undefined;
-
-    const dateLine = dateStr
-      ? `${dateStr}${timeStr ? ` / ${timeStr} 開演` : ""}`
-      : "";
-    const venueLine = venue || "";
+    const dateLine = dateStr ? `${dateStr}${timeStr ? `  /  ${timeStr}` : ""}` : "";
 
     return new ImageResponse(
       (
@@ -174,11 +81,11 @@ export async function GET(
             height: "100%",
             display: "flex",
             flexDirection: "column",
-            background: "linear-gradient(135deg, #1e40af 0%, #3b82f6 100%)",
+            background: "#1e40af",
             color: "#fff",
-            fontFamily: "NotoJP, sans-serif",
             padding: "40px 36px",
             justifyContent: "space-between",
+            fontFamily: "sans-serif",
           }}
         >
           {/* 上部 */}
@@ -227,13 +134,7 @@ export async function GET(
               gap: 8,
             }}
           >
-            <div
-              style={{
-                display: "flex",
-                fontSize: 20,
-                fontWeight: 700,
-              }}
-            >
+            <div style={{ display: "flex", fontSize: 20, fontWeight: 700 }}>
               {dateLine || " "}
             </div>
             <div
@@ -244,7 +145,7 @@ export async function GET(
                 opacity: 0.92,
               }}
             >
-              {venueLine || " "}
+              {venue || " "}
             </div>
             <div
               style={{
@@ -256,9 +157,10 @@ export async function GET(
                 borderRadius: 999,
                 fontSize: 20,
                 fontWeight: 700,
+                letterSpacing: 1,
               }}
             >
-              駐車場予約受付中
+              PARKING RESERVATION
             </div>
             <div
               style={{
@@ -276,7 +178,6 @@ export async function GET(
       {
         width: 600,
         height: 600,
-        fonts,
         headers: {
           "Cache-Control": "public, max-age=3600, s-maxage=3600",
         },
@@ -284,7 +185,6 @@ export async function GET(
     );
   } catch (e) {
     console.error("[og] render error:", e);
-    // 最後の手段: シンプルな PNG を返す
     return new ImageResponse(
       (
         <div
