@@ -14,17 +14,17 @@ export const preferredRegion = "hnd1";
 import { ImageResponse } from "next/og";
 import { prisma } from "@/lib/db";
 import { readFile } from "node:fs/promises";
-import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 // Noto Sans JP Bold (Japanese subset) — 1回読込してメモリにキャッシュ
+// Vercel bundle 内に含めるため、route.tsx と同ディレクトリに配置し
+// import.meta.url で解決（Next.js が依存追跡してくれる）
 let cachedFont: ArrayBuffer | null = null;
 async function loadBundledFont(): Promise<ArrayBuffer | null> {
   if (cachedFont) return cachedFont;
   try {
-    const filePath = path.join(
-      process.cwd(),
-      "public/fonts/NotoSansJP-700-japanese.woff2"
-    );
+    const fontUrl = new URL("./NotoSansJP-700-japanese.woff2", import.meta.url);
+    const filePath = fileURLToPath(fontUrl);
     const buf = await readFile(filePath);
     cachedFont = buf.buffer.slice(
       buf.byteOffset,
