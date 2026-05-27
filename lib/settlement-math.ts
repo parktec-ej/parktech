@@ -55,72 +55,41 @@ export function calcSettlementTotals(
   };
 }
 
-function parseYmdAsJstDate(ymd: string) {
-  const [y, m, d] = ymd.split("-").map(Number);
-  return new Date(y, m - 1, d);
+function startOfUseDateJst(ymd: string) {
+  // YYYY-MM-DD を JST (UTC+9) の 00:00:00 として解釈
+  return new Date(`${ymd}T00:00:00+09:00`);
 }
 
-function startOfTodayJst() {
-  const now = new Date();
-  return new Date(now.getFullYear(), now.getMonth(), now.getDate());
-}
+export const CANCELLATION_FEE_YEN = 320;
+export const CANCELLATION_CUTOFF_HOURS = 48;
 
 export function calcCancellationPolicy(
   price: number,
   useDate: string,
-  todayJst: Date = startOfTodayJst(),
-  paidAt?: Date | null
+  now: Date = new Date()
 ) {
-  const refundFee = 300;
-  const useDateObj = parseYmdAsJstDate(useDate);
-  const diffMs = useDateObj.getTime() - todayJst.getTime();
-  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+  const useDateObj = startOfUseDateJst(useDate);
+  const hoursUntilUse = (useDateObj.getTime() - now.getTime()) / (1000 * 60 * 60);
 
-  // 当日キャンセル
-  if (diffDays < 1) {
+  // 利用日まで48時間未満: キャンセル不可（全額請求）
+  if (hoursUntilUse < CANCELLATION_CUTOFF_HOURS) {
     return {
-      rule: "same_day" as const,
+      rule: "within_48h" as const,
+      canCancel: false,
       cancelFee: price,
       refundFee: 0,
       refundAmount: 0,
     };
   }
 
-  // 前日キャンセル（1日前）
-  if (diffDays < 2) {
-    const cancelFee = Math.floor(price * 0.5);
-    const refundAmount = Math.max(0, price - cancelFee - refundFee);
-    return {
-      rule: "day_before" as const,
-      cancelFee,
-      refundFee,
-      refundAmount,
-    };
-  }
-
-  // 2日前以前：予約から48時間以内なら手数料300円のみ
-  if (paidAt) {
-    const now = new Date();
-    const hoursSincePaid = (now.getTime() - paidAt.getTime()) / (1000 * 60 * 60);
-    if (hoursSincePaid <= 48) {
-      const cancelFee = refundFee; // 300円
-      const refundAmount = Math.max(0, price - cancelFee);
-      return {
-        rule: "within_48h" as const,
-        cancelFee,
-        refundFee: 0,
-        refundAmount,
-      };
-    }
-  }
-
-  // 2日前以前：通常（50%）
-  const cancelFee = Math.floor(price * 0.5);
-  const refundAmount = Math.max(0, price - cancelFee - refundFee);
+  // 利用日まで48時間以上: キャンセル可、手数料 ¥320
+  const cancelFee = CANCELLATION_FEE_YEN;
+  const refundAmount = Math.max(0, price - cancelFee);
   return {
-    rule: "until_2_days_before" as const,
+    rule: "before_48h" as const,
+    canCancel: true,
     cancelFee,
-    refundFee,
+    refundFee: 0,
     refundAmount,
   };
 }

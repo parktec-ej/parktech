@@ -89,7 +89,19 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const policy = calcCancellationPolicy(reservation.price, reservation.date, undefined, reservation.paidAt);
+    const policy = calcCancellationPolicy(reservation.price, reservation.date);
+
+    if (!policy.canCancel) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "too_late",
+          message: "利用日の48時間前を過ぎているためキャンセルできません",
+        },
+        { status: 400 }
+      );
+    }
+
     const canceledAt = new Date();
 
     const payment = await prisma.payment.findFirst({

@@ -30,70 +30,60 @@ describe("calcTax", () => {
 });
 
 describe("calcCancellationPolicy", () => {
-  // Pin "today" so the test is deterministic (function accepts an explicit JST today).
-  const today = new Date(2026, 4, 1); // 2026-05-01 local midnight
+  // 利用日 = 2026-05-05 JST (00:00:00 JST = 2026-05-04T15:00:00Z)
+  const useDate = "2026-05-05";
+  const useDateJstStart = new Date("2026-05-05T00:00:00+09:00");
 
-  it("price=1000, 2+ days before, no paidAt → 50% cancelFee + 300円, refundAmount=200", () => {
-    const r = calcCancellationPolicy(1000, "2026-05-05", today);
-    expect(r.rule).toBe("until_2_days_before");
-    expect(r.cancelFee).toBe(500);
-    expect(r.refundFee).toBe(300);
-    expect(r.refundAmount).toBe(200);
-  });
-
-  it("price=1000, 2+ days before, paidAt > 48h ago → until_2_days_before (50%)", () => {
-    // paidAt = 72時間前
-    const paidAt = new Date(Date.now() - 72 * 60 * 60 * 1000);
-    const r = calcCancellationPolicy(1000, "2026-05-05", today, paidAt);
-    expect(r.rule).toBe("until_2_days_before");
-    expect(r.cancelFee).toBe(500);
-    expect(r.refundFee).toBe(300);
-    expect(r.refundAmount).toBe(200);
-  });
-
-  it("price=1000, 2+ days before, paidAt within 48h → within_48h (300円のみ)", () => {
-    // paidAt = 1時間前
-    const paidAt = new Date(Date.now() - 60 * 60 * 1000);
-    const r = calcCancellationPolicy(1000, "2026-05-05", today, paidAt);
-    expect(r.rule).toBe("within_48h");
-    expect(r.cancelFee).toBe(300);
+  it("利用日まで72時間 → キャンセル可、手数料320円", () => {
+    const now = new Date(useDateJstStart.getTime() - 72 * 60 * 60 * 1000);
+    const r = calcCancellationPolicy(1000, useDate, now);
+    expect(r.rule).toBe("before_48h");
+    expect(r.canCancel).toBe(true);
+    expect(r.cancelFee).toBe(320);
     expect(r.refundFee).toBe(0);
-    expect(r.refundAmount).toBe(700);
+    expect(r.refundAmount).toBe(680);
   });
 
-  it("price=1000, day before → day_before, 50% + 300円, refundAmount=200", () => {
-    const r = calcCancellationPolicy(1000, "2026-05-02", today);
-    expect(r.rule).toBe("day_before");
-    expect(r.cancelFee).toBe(500);
-    expect(r.refundFee).toBe(300);
-    expect(r.refundAmount).toBe(200);
+  it("利用日まで丁度48時間 → キャンセル可（境界包含）", () => {
+    const now = new Date(useDateJstStart.getTime() - 48 * 60 * 60 * 1000);
+    const r = calcCancellationPolicy(1000, useDate, now);
+    expect(r.rule).toBe("before_48h");
+    expect(r.canCancel).toBe(true);
+    expect(r.cancelFee).toBe(320);
+    expect(r.refundAmount).toBe(680);
   });
 
-  it("price=1000, day before, paidAt within 48h → still day_before (48h rule doesn't apply)", () => {
-    const paidAt = new Date(Date.now() - 60 * 60 * 1000);
-    const r = calcCancellationPolicy(1000, "2026-05-02", today, paidAt);
-    expect(r.rule).toBe("day_before");
-    expect(r.refundAmount).toBe(200);
-  });
-
-  it("price=1000, same day → same_day, no refund", () => {
-    const r = calcCancellationPolicy(1000, "2026-05-01", today);
-    expect(r.rule).toBe("same_day");
+  it("利用日まで47時間59分 → キャンセル不可、全額請求", () => {
+    const now = new Date(useDateJstStart.getTime() - (48 * 60 - 1) * 60 * 1000);
+    const r = calcCancellationPolicy(1000, useDate, now);
+    expect(r.rule).toBe("within_48h");
+    expect(r.canCancel).toBe(false);
     expect(r.cancelFee).toBe(1000);
     expect(r.refundFee).toBe(0);
     expect(r.refundAmount).toBe(0);
   });
 
-  it("price=1000, same day, paidAt within 48h → still same_day (48h rule doesn't apply)", () => {
-    const paidAt = new Date(Date.now() - 60 * 60 * 1000);
-    const r = calcCancellationPolicy(1000, "2026-05-01", today, paidAt);
-    expect(r.rule).toBe("same_day");
+  it("利用日当日 → キャンセル不可", () => {
+    const now = new Date(useDateJstStart.getTime() + 6 * 60 * 60 * 1000);
+    const r = calcCancellationPolicy(1000, useDate, now);
+    expect(r.rule).toBe("within_48h");
+    expect(r.canCancel).toBe(false);
     expect(r.refundAmount).toBe(0);
   });
 
-  it("price=1000, paidAt exactly 48h ago → still within_48h (boundary inclusive)", () => {
-    const paidAt = new Date(Date.now() - 48 * 60 * 60 * 1000);
-    const r = calcCancellationPolicy(1000, "2026-05-05", today, paidAt);
-    expect(r.rule).toBe("within_48h");
+  it("price=320 → 手数料320円、返金0円", () => {
+    const now = new Date(useDateJstStart.getTime() - 72 * 60 * 60 * 1000);
+    const r = calcCancellationPolicy(320, useDate, now);
+    expect(r.canCancel).toBe(true);
+    expect(r.cancelFee).toBe(320);
+    expect(r.refundAmount).toBe(0);
+  });
+
+  it("price=200 (手数料未満) → 返金は負にならず0円", () => {
+    const now = new Date(useDateJstStart.getTime() - 72 * 60 * 60 * 1000);
+    const r = calcCancellationPolicy(200, useDate, now);
+    expect(r.canCancel).toBe(true);
+    expect(r.cancelFee).toBe(320);
+    expect(r.refundAmount).toBe(0);
   });
 });

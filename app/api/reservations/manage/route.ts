@@ -53,18 +53,28 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const canCancel =
+    const policy = calcCancellationPolicy(reservation.price, reservation.date);
+
+    const baseEligible =
       reservation.status === "CONFIRMED" &&
       reservation.paid === true &&
       reservation.checkedIn === false &&
       reservation.canceledAt == null;
 
-    const policy = calcCancellationPolicy(
-      reservation.price,
-      reservation.date,
-      undefined,
-      reservation.paidAt
-    );
+    const canCancel = baseEligible && policy.canCancel;
+
+    let message: string;
+    if (reservation.checkedIn) {
+      message = "チェックイン済みのためキャンセルできません";
+    } else if (reservation.status === "CANCELED") {
+      message = "すでにキャンセル済みです";
+    } else if (!policy.canCancel) {
+      message = "利用日の48時間前を過ぎているためキャンセルできません";
+    } else if (canCancel) {
+      message = "キャンセル可能です";
+    } else {
+      message = "キャンセルできません";
+    }
 
     return NextResponse.json({
       ok: true,
@@ -76,6 +86,7 @@ export async function GET(req: NextRequest) {
         plate: reservation.plate,
         email: reservation.email,
         price: reservation.price,
+        pin: reservation.pin,
         status: reservation.status,
         checkedIn: reservation.checkedIn,
         checkedInAt: reservation.checkedInAt,
@@ -90,27 +101,20 @@ export async function GET(req: NextRequest) {
           reservation.slot,
       },
       canCancel,
-      policy: canCancel
-        ? policy
-        : {
-            rule: null,
-            cancelFee:
-              reservation.status === "CANCELED"
-                ? Math.max(
-                    0,
-                    reservation.price - (reservation.refundAmount ?? 0)
-                  )
-                : 0,
-            refundFee: 0,
-            refundAmount: reservation.refundAmount ?? 0,
-          },
-      message: canCancel
-        ? "キャンセル可能です"
-        : reservation.checkedIn
-        ? "チェックイン済みのためキャンセルできません"
-        : reservation.status === "CANCELED"
-        ? "すでにキャンセル済みです"
-        : "キャンセルできません",
+      policy:
+        reservation.status === "CANCELED"
+          ? {
+              rule: null,
+              canCancel: false,
+              cancelFee: Math.max(
+                0,
+                reservation.price - (reservation.refundAmount ?? 0)
+              ),
+              refundFee: 0,
+              refundAmount: reservation.refundAmount ?? 0,
+            }
+          : policy,
+      message,
     });
   } catch (error) {
     console.error(error);
