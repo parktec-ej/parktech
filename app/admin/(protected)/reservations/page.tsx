@@ -33,6 +33,14 @@ type ReservationItem = {
     code: string;
     label: string | null;
   } | null;
+  changeLogs?: {
+    id: string;
+    oldDate: string;
+    newDate: string;
+    changedAt: string;
+    changedBy: string;
+    reason: string | null;
+  }[];
 };
 
 type ApiResponse = {
@@ -144,6 +152,10 @@ function AdminReservationsPageInner() {
   const [err, setErr] = useState("");
   const [msg, setMsg] = useState("");
   const [data, setData] = useState<ApiResponse | null>(null);
+
+  const [changeDateId, setChangeDateId] = useState<string | null>(null);
+  const [changeDateValue, setChangeDateValue] = useState("");
+  const [changeDateReason, setChangeDateReason] = useState("");
 
   const currentSearchParams = useMemo(
     () => new URLSearchParams(searchParams.toString()),
@@ -313,6 +325,54 @@ function AdminReservationsPageInner() {
       }
 
       setMsg("予約をキャンセルしました");
+      await loadReservations({ placeId, date, status, sort, q: qApplied });
+    } catch (e: any) {
+      setErr(String(e?.message ?? e));
+    } finally {
+      setActionBusyId(null);
+    }
+  }
+
+  async function doAdminDateChange(reservationId: string) {
+    if (!changeDateValue) {
+      setErr("日付を入力してください");
+      return;
+    }
+    if (!confirm(`日付を ${changeDateValue} に変更しますか？`)) return;
+
+    setActionBusyId(reservationId);
+    setErr("");
+    setMsg("");
+
+    try {
+      const res = await fetch("/api/admin/reservations/change-date", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          reservationId,
+          newDate: changeDateValue,
+          reason: changeDateReason || "管理者による代理変更",
+        }),
+      });
+
+      const text = await res.text();
+      let json: any = null;
+      try {
+        json = text ? JSON.parse(text) : null;
+      } catch {
+        setErr(`日付変更APIがJSONを返していません (${res.status})`);
+        return;
+      }
+
+      if (!json?.ok) {
+        setErr(json?.message ?? json?.error ?? "日付変更に失敗しました");
+        return;
+      }
+
+      setMsg(`日付を ${json.newDate} に変更しました（区画: ${json.newSpotLabel ?? "-"}）`);
+      setChangeDateId(null);
+      setChangeDateValue("");
+      setChangeDateReason("");
       await loadReservations({ placeId, date, status, sort, q: qApplied });
     } catch (e: any) {
       setErr(String(e?.message ?? e));
@@ -760,7 +820,108 @@ function AdminReservationsPageInner() {
                     {actionBusyId === r.id ? "処理中..." : "強制出庫"}
                   </button>
                 )}
+
+                {(r.status === "RESERVED" || r.status === "UNPAID") && (
+                  <>
+                    {changeDateId === r.id ? (
+                      <div style={{ marginTop: 10, padding: 12, border: "1px solid #d1d5db", borderRadius: 10, background: "#f9fafb", width: "100%" }}>
+                        <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>代理日付変更</div>
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "end" }}>
+                          <div>
+                            <div style={{ fontSize: 11, color: "#666", marginBottom: 4 }}>新しい日付</div>
+                            <input
+                              type="date"
+                              value={changeDateValue}
+                              onChange={(e) => setChangeDateValue(e.target.value)}
+                              style={{ padding: 8, borderRadius: 6, border: "1px solid #d1d5db", fontSize: 14 }}
+                            />
+                          </div>
+                          <div>
+                            <div style={{ fontSize: 11, color: "#666", marginBottom: 4 }}>理由（任意）</div>
+                            <input
+                              value={changeDateReason}
+                              onChange={(e) => setChangeDateReason(e.target.value)}
+                              placeholder="電話依頼 等"
+                              style={{ padding: 8, borderRadius: 6, border: "1px solid #d1d5db", fontSize: 14, width: 180 }}
+                            />
+                          </div>
+                          <button
+                            onClick={() => doAdminDateChange(r.id)}
+                            disabled={actionBusyId === r.id || !changeDateValue}
+                            style={{
+                              padding: "8px 14px",
+                              borderRadius: 8,
+                              border: "none",
+                              background: actionBusyId === r.id || !changeDateValue ? "#d1d5db" : "#111",
+                              color: "#fff",
+                              fontWeight: 700,
+                              fontSize: 13,
+                              cursor: actionBusyId === r.id || !changeDateValue ? "not-allowed" : "pointer",
+                            }}
+                          >
+                            {actionBusyId === r.id ? "変更中..." : "変更確定"}
+                          </button>
+                          <button
+                            onClick={() => { setChangeDateId(null); setChangeDateValue(""); setChangeDateReason(""); }}
+                            style={{
+                              padding: "8px 14px",
+                              borderRadius: 8,
+                              border: "1px solid #d1d5db",
+                              background: "#fff",
+                              fontWeight: 700,
+                              fontSize: 13,
+                              cursor: "pointer",
+                            }}
+                          >
+                            キャンセル
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => { setChangeDateId(r.id); setChangeDateValue(""); setChangeDateReason(""); }}
+                        style={{
+                          padding: "10px 14px",
+                          borderRadius: 10,
+                          border: "1px solid #2563eb",
+                          background: "#fff",
+                          color: "#2563eb",
+                          fontWeight: 800,
+                          cursor: "pointer",
+                        }}
+                      >
+                        📅 代理日付変更
+                      </button>
+                    )}
+                  </>
+                )}
               </div>
+
+              {r.changeLogs && r.changeLogs.length > 0 && (
+                <div style={{ marginTop: 14, padding: 12, border: "1px solid #e5e7eb", borderRadius: 10, background: "#f9fafb" }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8, color: "#666" }}>
+                    📋 変更履歴
+                  </div>
+                  {r.changeLogs.map((log) => (
+                    <div key={log.id} style={{ fontSize: 13, lineHeight: 1.8, borderBottom: "1px solid #e5e7eb", paddingBottom: 6, marginBottom: 6 }}>
+                      <span style={{ textDecoration: "line-through", color: "#999" }}>{log.oldDate}</span>
+                      {" → "}
+                      <span style={{ fontWeight: 700 }}>{log.newDate}</span>
+                      <span style={{ color: "#888", marginLeft: 8 }}>
+                        ({log.changedBy === "admin" ? "管理者" : "お客様"})
+                      </span>
+                      <span style={{ color: "#aaa", marginLeft: 8, fontSize: 12 }}>
+                        {new Date(log.changedAt).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" })}
+                      </span>
+                      {log.reason && (
+                        <span style={{ color: "#888", marginLeft: 8, fontSize: 12 }}>
+                          — {log.reason}
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           ))}
         </div>

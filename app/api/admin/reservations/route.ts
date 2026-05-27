@@ -29,11 +29,21 @@ type ReservationRow = {
   createdAt: Date;
   spotId: string | null;
   qrToken: string | null;
+  status: string;
+  canceledAt: Date | null;
   spot: {
     id: string;
     code: string;
     label: string | null;
   } | null;
+  changeLogs: {
+    id: string;
+    oldDate: string;
+    newDate: string;
+    changedAt: Date;
+    changedBy: string;
+    reason: string | null;
+  }[];
 };
 
 type ReservationItem = {
@@ -60,6 +70,14 @@ type ReservationItem = {
     code: string;
     label: string | null;
   } | null;
+  changeLogs: {
+    id: string;
+    oldDate: string;
+    newDate: string;
+    changedAt: Date;
+    changedBy: string;
+    reason: string | null;
+  }[];
 };
 
 function normalizeDate(input: string) {
@@ -181,12 +199,25 @@ export async function GET(req: Request) {
         createdAt: true,
         spotId: true,
         qrToken: true,
+        status: true,
+        canceledAt: true,
         spot: {
           select: {
             id: true,
             code: true,
             label: true,
           },
+        },
+        changeLogs: {
+          select: {
+            id: true,
+            oldDate: true,
+            newDate: true,
+            changedAt: true,
+            changedBy: true,
+            reason: true,
+          },
+          orderBy: { changedAt: "desc" as const },
         },
       },
     });
@@ -219,6 +250,7 @@ export async function GET(req: Request) {
             label: r.spot.label,
           }
         : null,
+      changeLogs: r.changeLogs ?? [],
     }));
 
     if (q) {
