@@ -96,7 +96,7 @@ export async function POST(req: NextRequest) {
         {
           ok: false,
           error: "too_late",
-          message: "利用日の48時間前を過ぎているためキャンセルできません",
+          message: "キャンセル期限を過ぎています（予約日の48時間前まで）",
         },
         { status: 400 }
       );
@@ -244,7 +244,7 @@ export async function POST(req: NextRequest) {
           canceledAt: formatJst(canceledAt),
           refundAmount: policy.refundAmount,
           cancelFee: policy.cancelFee,
-          refundFee: policy.refundFee,
+          refundFee: 0,
           reservationId: reservation.id,
         });
       } catch (e) {

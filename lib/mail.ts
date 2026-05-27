@@ -287,6 +287,60 @@ ParkTec
     `.trim(),
   });
 }
+export async function sendReservationDateChangedMail(params: {
+  to: string;
+  placeName: string;
+  spotLabel: string;
+  oldDate: string;
+  newDate: string;
+  name: string;
+  plate: string;
+}) {
+  const { to, placeName, spotLabel, oldDate, newDate, name, plate } = params;
+
+  return getResend().emails.send({
+    from: MAIL_FROM,
+    to,
+    subject: "【ParkTec】予約日変更完了のお知らせ",
+    html: `
+      <div style="font-family:Arial,sans-serif;line-height:1.8;color:#111">
+        <h2>予約日の変更が完了しました。</h2>
+        <p>以下の内容で日付変更を受け付けました。</p>
+
+        <div style="padding:16px;border:1px solid #ddd;border-radius:8px;background:#fafafa">
+          <div><strong>駐車場:</strong> ${safe(placeName)}</div>
+          <div><strong>区画:</strong> ${safe(spotLabel)}</div>
+          <div><strong>変更前の利用日:</strong> <span style="text-decoration:line-through;color:#999">${safe(oldDate)}</span></div>
+          <div><strong>変更後の利用日:</strong> <span style="color:#166534;font-weight:bold">${safe(newDate)}</span></div>
+          <div><strong>氏名:</strong> ${safe(name)}</div>
+          <div><strong>車両ナンバー:</strong> ${safe(plate)}</div>
+        </div>
+
+        <p style="margin-top:16px;font-size:13px;color:#555">
+          ※ 日付変更は1回のみ可能です。再度の変更はお受けできませんのでご了承ください。
+        </p>
+
+        <hr style="margin:24px 0" />
+        <p>ParkTec</p>
+      </div>
+    `,
+    text: `
+予約日の変更が完了しました。
+
+駐車場: ${safe(placeName)}
+区画: ${safe(spotLabel)}
+変更前の利用日: ${safe(oldDate)}
+変更後の利用日: ${safe(newDate)}
+氏名: ${safe(name)}
+車両ナンバー: ${safe(plate)}
+
+※ 日付変更は1回のみ可能です。再度の変更はお受けできませんのでご了承ください。
+
+ParkTec
+    `.trim(),
+  });
+}
+
 export async function sendGateUrlMail(params: {
   to: string;
   placeName: string;

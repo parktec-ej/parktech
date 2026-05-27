@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { calcCancellationPolicy } from "@/lib/settlement-math";
+import { calcCancellationPolicy, calcDateChangePolicy } from "@/lib/settlement-math";
 
 export const runtime = "nodejs";
 export const preferredRegion = "hnd1";
@@ -39,6 +39,9 @@ export async function GET(req: NextRequest) {
             label: true,
           },
         },
+        changeLogs: {
+          select: { id: true },
+        },
       },
     });
 
@@ -53,28 +56,26 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const policy = calcCancellationPolicy(reservation.price, reservation.date);
+    const policy = calcCancellationPolicy(
+      reservation.price,
+      reservation.date
+    );
 
-    const baseEligible =
+    const canCancel =
+      policy.canCancel &&
       reservation.status === "CONFIRMED" &&
       reservation.paid === true &&
       reservation.checkedIn === false &&
       reservation.canceledAt == null;
 
-    const canCancel = baseEligible && policy.canCancel;
-
-    let message: string;
-    if (reservation.checkedIn) {
-      message = "チェックイン済みのためキャンセルできません";
-    } else if (reservation.status === "CANCELED") {
-      message = "すでにキャンセル済みです";
-    } else if (!policy.canCancel) {
-      message = "利用日の48時間前を過ぎているためキャンセルできません";
-    } else if (canCancel) {
-      message = "キャンセル可能です";
-    } else {
-      message = "キャンセルできません";
-    }
+    const dateChangeCount = reservation.changeLogs.length;
+    const dateChangePolicy =
+      reservation.paidAt &&
+      reservation.status === "CONFIRMED" &&
+      reservation.checkedIn === false &&
+      reservation.canceledAt == null
+        ? calcDateChangePolicy(reservation.paidAt, dateChangeCount)
+        : { rule: "too_late" as const, canChange: false, deadline: new Date() };
 
     return NextResponse.json({
       ok: true,
@@ -86,8 +87,8 @@ export async function GET(req: NextRequest) {
         plate: reservation.plate,
         email: reservation.email,
         price: reservation.price,
-        pin: reservation.pin,
         status: reservation.status,
+        pin: reservation.pin ?? null,
         checkedIn: reservation.checkedIn,
         checkedInAt: reservation.checkedInAt,
         checkedOutAt: reservation.checkedOutAt,
@@ -101,20 +102,24 @@ export async function GET(req: NextRequest) {
           reservation.slot,
       },
       canCancel,
-      policy:
-        reservation.status === "CANCELED"
-          ? {
-              rule: null,
-              canCancel: false,
-              cancelFee: Math.max(
-                0,
-                reservation.price - (reservation.refundAmount ?? 0)
-              ),
-              refundFee: 0,
-              refundAmount: reservation.refundAmount ?? 0,
-            }
-          : policy,
-      message,
+      policy: {
+        rule: policy.rule,
+        canCancel: policy.canCancel,
+        cancelFee: canCancel ? policy.cancelFee : 0,
+        refundAmount: canCancel ? policy.refundAmount : 0,
+      },
+      dateChange: {
+        canChange: dateChangePolicy.canChange,
+        rule: dateChangePolicy.rule,
+        dateChangeCount,
+      },
+      message: canCancel
+        ? "キャンセル可能です"
+        : reservation.checkedIn
+        ? "チェックイン済みのためキャンセルできません"
+        : reservation.status === "CANCELED"
+        ? "すでにキャンセル済みです"
+        : "キャンセルできません",
     });
   } catch (error) {
     console.error(error);

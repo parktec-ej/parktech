@@ -105,6 +105,7 @@ model Reservation {
   receipts          Receipt[]
   place             Place?            @relation(fields: [placeId], references: [id])
   spot              Spot?             @relation(fields: [spotId], references: [id])
+  changeLogs        ReservationChangeLog[]
 
   @@index([placeId])
   @@index([spotId])
@@ -578,6 +579,19 @@ model BusPartner {
   companyPhone String?
 
   @@index([isActive])
+}
+
+model ReservationChangeLog {
+  id            String      @id @default(uuid())
+  reservationId String
+  oldDate       String
+  newDate       String
+  changedAt     DateTime    @default(now())
+  changedBy     String      @default("customer")
+  reason        String?
+  reservation   Reservation @relation(fields: [reservationId], references: [id])
+
+  @@index([reservationId])
 }
 
 enum SessionType {

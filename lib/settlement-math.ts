@@ -55,41 +55,80 @@ export function calcSettlementTotals(
   };
 }
 
-function startOfUseDateJst(ymd: string) {
-  // YYYY-MM-DD を JST (UTC+9) の 00:00:00 として解釈
-  return new Date(`${ymd}T00:00:00+09:00`);
+function getDeadlineJst(useDate: string): Date {
+  const [y, m, d] = useDate.split("-").map(Number);
+  const useDateMidnightUtc = new Date(Date.UTC(y, m - 1, d, -9, 0, 0));
+  return new Date(useDateMidnightUtc.getTime() - 48 * 60 * 60 * 1000);
 }
 
-export const CANCELLATION_FEE_YEN = 320;
-export const CANCELLATION_CUTOFF_HOURS = 48;
+export type CancellationPolicy = {
+  rule: "cancellable" | "too_late";
+  canCancel: boolean;
+  cancelFee: number;
+  refundAmount: number;
+  deadline: Date;
+};
 
 export function calcCancellationPolicy(
   price: number,
   useDate: string,
   now: Date = new Date()
-) {
-  const useDateObj = startOfUseDateJst(useDate);
-  const hoursUntilUse = (useDateObj.getTime() - now.getTime()) / (1000 * 60 * 60);
+): CancellationPolicy {
+  const CANCEL_FEE = 320;
+  const deadline = getDeadlineJst(useDate);
 
-  // 利用日まで48時間未満: キャンセル不可（全額請求）
-  if (hoursUntilUse < CANCELLATION_CUTOFF_HOURS) {
+  if (now.getTime() < deadline.getTime()) {
+    const refundAmount = Math.max(0, price - CANCEL_FEE);
     return {
-      rule: "within_48h" as const,
-      canCancel: false,
-      cancelFee: price,
-      refundFee: 0,
-      refundAmount: 0,
+      rule: "cancellable",
+      canCancel: true,
+      cancelFee: CANCEL_FEE,
+      refundAmount,
+      deadline,
     };
   }
 
-  // 利用日まで48時間以上: キャンセル可、手数料 ¥320
-  const cancelFee = CANCELLATION_FEE_YEN;
-  const refundAmount = Math.max(0, price - cancelFee);
   return {
-    rule: "before_48h" as const,
-    canCancel: true,
-    cancelFee,
-    refundFee: 0,
-    refundAmount,
+    rule: "too_late",
+    canCancel: false,
+    cancelFee: price,
+    refundAmount: 0,
+    deadline,
+  };
+}
+
+export type DateChangePolicy = {
+  rule: "changeable" | "too_late" | "already_changed";
+  canChange: boolean;
+  deadline: Date;
+};
+
+export function calcDateChangePolicy(
+  paidAt: Date,
+  dateChangeCount: number,
+  now: Date = new Date()
+): DateChangePolicy {
+  const deadline = new Date(paidAt.getTime() + 24 * 60 * 60 * 1000);
+
+  if (dateChangeCount >= 1) {
+    return {
+      rule: "already_changed",
+      canChange: false,
+      deadline,
+    };
+  }
+
+  if (now.getTime() < deadline.getTime()) {
+    return {
+      rule: "changeable",
+      canChange: true,
+      deadline,
+    };
+  }
+
+  return {
+    rule: "too_late",
+    canChange: false,
+    deadline,
   };
 }
