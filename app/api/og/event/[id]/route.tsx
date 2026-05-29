@@ -509,7 +509,7 @@ export async function GET(
               fonts: [
                 {
                   name: "NotoSansJP",
-                  data: fontData,
+                  data: Buffer.from(fontData),
                   style: "normal" as const,
                   weight: 700 as const,
                 },
