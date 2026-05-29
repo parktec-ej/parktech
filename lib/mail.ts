@@ -76,7 +76,7 @@ export async function sendReservationPinMail(params: {
           manageUrl
             ? `
           <p style="margin-top:20px">
-            <strong>予約確認・キャンセル</strong><br />
+            <strong>予約管理（日付変更・キャンセル）</strong><br />
             <a href="${manageUrl}" target="_blank" rel="noopener noreferrer">${manageUrl}</a>
           </p>
         `
@@ -105,7 +105,7 @@ PINコード: ${safe(pin)}
 
 ※ 領収書の発行は出庫後にメールでご案内いたします。
 ${googleMapUrl ? `Google Map: ${googleMapUrl}` : ""}
-${manageUrl ? `予約確認・キャンセル: ${manageUrl}` : ""}
+${manageUrl ? `予約管理（日付変更・キャンセル）: ${manageUrl}` : ""}
 
 ParkTec
     `.trim(),
