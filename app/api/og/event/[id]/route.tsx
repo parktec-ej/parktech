@@ -168,10 +168,13 @@ export async function GET(
   _req: Request,
   context: { params: Promise<{ id: string }> }
 ) {
+  console.log("[og] handler start");
   try {
     const { id } = await context.params;
+    console.log("[og] params got", id);
     const theme = pickTheme(id);
     const fontData = await loadFont();
+    console.log("[og] font loaded", fontData ? fontData.byteLength : "null");
 
     const event = await prisma.event.findUnique({
       where: { id },
