@@ -22,7 +22,7 @@ async function loadFont(): Promise<Buffer | null> {
   if (fontCache) return fontCache;
   try {
     fontCache = await readFile(
-      join(process.cwd(), "public/fonts/NotoSansJP-Subset.ttf")
+      join(process.cwd(), "app/api/og/event/[id]/NotoSansJP-Subset.ttf")
     );
     return fontCache;
   } catch (e) {
