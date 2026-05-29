@@ -12,17 +12,18 @@ export const runtime = "nodejs";
 export const preferredRegion = "hnd1";
 
 import { ImageResponse } from "next/og";
-import { readFile } from "fs/promises";
 import { prisma } from "@/lib/db";
 
-let fontCache: Buffer | null = null;
+let fontCache: ArrayBuffer | null = null;
 
-async function loadFont(): Promise<Buffer | null> {
+async function loadFont(): Promise<ArrayBuffer | null> {
   if (fontCache) return fontCache;
   try {
-    fontCache = Buffer.from(
-      await readFile(new URL("./NotoSansJP-Subset.ttf", import.meta.url))
+    const res = await fetch(
+      "https://reserve.parktec-ej.com/fonts/NotoSansJP-Subset.ttf"
     );
+    if (!res.ok) throw new Error(`font fetch failed: ${res.status}`);
+    fontCache = await res.arrayBuffer();
     return fontCache;
   } catch (e) {
     console.error("[og] font load failed:", e);
