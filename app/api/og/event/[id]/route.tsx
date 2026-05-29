@@ -186,6 +186,7 @@ export async function GET(
         doorOpenAt: true,
       },
     });
+    console.log("[og] event fetched", event ? "found" : "null");
 
     const title = event?.title ?? "Event";
     const venue = event ? VENUE_LABEL[event.venue] ?? event.venue : "";
@@ -198,6 +199,8 @@ export async function GET(
     // タイトル長で font size 調整 (600x600 用)
     const titleFontSize =
       title.length > 28 ? 32 : title.length > 18 ? 40 : 50;
+
+    console.log("[og] about to render", { title, venue, dateLine, hasFont: !!fontData });
 
     return new ImageResponse(
       (
