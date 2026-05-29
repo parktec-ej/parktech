@@ -12,11 +12,28 @@ export const runtime = "nodejs";
 export const preferredRegion = "hnd1";
 
 import { ImageResponse } from "next/og";
+import { readFile } from "fs/promises";
+import { join } from "path";
 import { prisma } from "@/lib/db";
 
+let fontCache: Buffer | null = null;
+
+async function loadFont(): Promise<Buffer | null> {
+  if (fontCache) return fontCache;
+  try {
+    fontCache = await readFile(
+      join(process.cwd(), "public/fonts/NotoSansJP-Subset.ttf")
+    );
+    return fontCache;
+  } catch (e) {
+    console.error("[og] font load failed:", e);
+    return null;
+  }
+}
+
 const VENUE_LABEL: Record<string, string> = {
-  sekisui_arena: "Sekisui Heim Super Arena",
-  qanda_stadium: "Q&A Stadium Miyagi",
+  sekisui_arena: "セキスイハイムスーパーアリーナ",
+  qanda_stadium: "QアンドAスタジアムみやぎ",
 };
 
 const RESERVE_URL_DISPLAY = "reserve.parktec-ej.com/places/rifu-main";
@@ -154,6 +171,7 @@ export async function GET(
   try {
     const { id } = await context.params;
     const theme = pickTheme(id);
+    const fontData = await loadFont();
 
     const event = await prisma.event.findUnique({
       where: { id },
@@ -186,7 +204,7 @@ export async function GET(
             width: "100%",
             height: "100%",
             display: "flex",
-            fontFamily: "sans-serif",
+            fontFamily: fontData ? "NotoSansJP, sans-serif" : "sans-serif",
             // ベースグラデーション
             background: `linear-gradient(135deg, ${theme.gradientStops[0]} 0%, ${theme.gradientStops[1]} 50%, ${theme.gradientStops[2]} 100%)`,
             overflow: "hidden",
@@ -480,6 +498,18 @@ export async function GET(
         headers: {
           "Cache-Control": "public, max-age=3600, s-maxage=3600",
         },
+        ...(fontData
+          ? {
+              fonts: [
+                {
+                  name: "NotoSansJP",
+                  data: fontData,
+                  style: "normal" as const,
+                  weight: 700 as const,
+                },
+              ],
+            }
+          : {}),
       }
     );
   } catch (e) {
