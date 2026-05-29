@@ -13,7 +13,6 @@ export const preferredRegion = "hnd1";
 
 import { ImageResponse } from "next/og";
 import { readFile } from "fs/promises";
-import { join } from "path";
 import { prisma } from "@/lib/db";
 
 let fontCache: Buffer | null = null;
@@ -21,8 +20,8 @@ let fontCache: Buffer | null = null;
 async function loadFont(): Promise<Buffer | null> {
   if (fontCache) return fontCache;
   try {
-    fontCache = await readFile(
-      join(process.cwd(), "app/api/og/event/[id]/NotoSansJP-Subset.ttf")
+    fontCache = Buffer.from(
+      await readFile(new URL("./NotoSansJP-Subset.ttf", import.meta.url))
     );
     return fontCache;
   } catch (e) {
