@@ -28,5 +28,10 @@
       "path": "/api/cron/monthly-reminder",
       "schedule": "0 1 * * *"
     }
-  ]
+  ],
+  "functions": {
+    "app/api/og/event/[id]/route.tsx": {
+      "memory": 512
+    }
+  }
 }
