@@ -76,9 +76,17 @@ export async function sendReservationPinMail(params: {
           manageUrl
             ? `
           <p style="margin-top:20px">
-            <strong>予約管理（日付変更・キャンセル）</strong><br />
+            <strong>予約管理（予約確認・日付変更・キャンセル）</strong><br />
             <a href="${manageUrl}" target="_blank" rel="noopener noreferrer">${manageUrl}</a>
           </p>
+
+          <div style="margin-top:16px;padding:12px 16px;border:1px solid #ddd;border-radius:8px;background:#fafafa;font-size:12px;color:#555;line-height:1.7">
+            <strong>キャンセルポリシー</strong><br>
+            ・利用日の48時間前まで: 手数料320円でキャンセル可能<br>
+            ・利用日の48時間以内: キャンセル不可（全額請求）<br>
+            <strong>日付変更</strong><br>
+            ・予約受付から24時間以内: 1回まで無料で変更可能
+          </div>
         `
             : ""
         }
@@ -105,7 +113,7 @@ PINコード: ${safe(pin)}
 
 ※ 領収書の発行は出庫後にメールでご案内いたします。
 ${googleMapUrl ? `Google Map: ${googleMapUrl}` : ""}
-${manageUrl ? `予約管理（日付変更・キャンセル）: ${manageUrl}` : ""}
+${manageUrl ? `予約管理（予約確認・日付変更・キャンセル）: ${manageUrl}` : ""}
 
 ParkTec
     `.trim(),
