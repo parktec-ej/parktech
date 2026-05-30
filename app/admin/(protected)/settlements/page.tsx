@@ -203,6 +203,20 @@ export default async function SettlementsPage({
         address: true,
       },
     },
+    Payout: {
+      select: {
+        id: true,
+        payoutTarget: true,
+        status: true,
+        scheduledAmount: true,
+        actualAmount: true,
+        stripeTransferId: true,
+        failedReason: true,
+        executedAt: true,
+        note: true,
+      },
+      orderBy: { createdAt: "desc" as const },
+    },
   },
   orderBy: [{ createdAt: "desc" }],
 });
@@ -496,6 +510,67 @@ export default async function SettlementsPage({
               </div>
             </div>
 
+            {latestSettlement && latestSettlement.status !== "PAID" && latestSettlement.Payout && latestSettlement.Payout.some((p) => p.status === "FAILED") && (
+              <div style={{
+                marginTop: 16,
+                padding: 16,
+                border: "1px solid #fecaca",
+                borderRadius: 12,
+                background: "#fef2f2",
+              }}>
+                <div style={{ fontWeight: 800, fontSize: 15, color: "#991b1b", marginBottom: 12 }}>
+                  ❌ 送金失敗
+                </div>
+                {latestSettlement.Payout
+                  .filter((p) => p.status === "FAILED")
+                  .map((p) => (
+                    <div key={p.id} style={{
+                      padding: 12,
+                      border: "1px solid #fecaca",
+                      borderRadius: 8,
+                      background: "#fff",
+                      marginBottom: 8,
+                      fontSize: 14,
+                    }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <div>
+                          <span style={{ fontWeight: 700 }}>
+                            {p.payoutTarget === "OWNER" ? "オーナー" : "代理店"}
+                          </span>
+                          <span style={{ color: "#666", marginLeft: 8 }}>
+                            ¥{(p.scheduledAmount ?? 0).toLocaleString("ja-JP")}
+                          </span>
+                        </div>
+                        <span style={{
+                          display: "inline-block",
+                          padding: "2px 8px",
+                          borderRadius: 999,
+                          fontSize: 12,
+                          fontWeight: 700,
+                          background: "#fee2e2",
+                          color: "#991b1b",
+                        }}>
+                          FAILED
+                        </span>
+                      </div>
+                      {p.failedReason && (
+                        <div style={{ marginTop: 6, fontSize: 13, color: "#666" }}>
+                          理由: {p.failedReason}
+                        </div>
+                      )}
+                      {p.note && (
+                        <div style={{ marginTop: 4, fontSize: 12, color: "#888" }}>
+                          {p.note}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                <div style={{ marginTop: 8, fontSize: 13, color: "#666" }}>
+                  下の「送金リトライ」ボタンで再試行できます。失敗した送金は削除され、新しい送金が作成されます。
+                </div>
+              </div>
+            )}
+
             {latestSettlement && latestSettlement.status !== "PAID" ? (
               <form
                 action={`/api/admin/settlements/${latestSettlement.id}/pay`}
@@ -503,10 +578,70 @@ export default async function SettlementsPage({
                 style={{ marginTop: 20 }}
               >
                 <button type="submit" style={primaryButtonStyle}>
-                  送金確定
+                  {latestSettlement.Payout?.some((p) => p.status === "FAILED")
+                    ? "🔄 送金リトライ"
+                    : "送金確定"}
                 </button>
               </form>
             ) : null}
+
+            {latestSettlement && latestSettlement.status === "PAID" && latestSettlement.Payout && (
+              <div style={{
+                marginTop: 16,
+                padding: 16,
+                border: "1px solid #d1e7dd",
+                borderRadius: 12,
+                background: "#f0fdf4",
+              }}>
+                <div style={{ fontWeight: 800, fontSize: 15, color: "#166534", marginBottom: 12 }}>
+                  ✅ 送金完了
+                </div>
+                {latestSettlement.Payout
+                  .filter((p) => p.status === "PAID")
+                  .map((p) => (
+                    <div key={p.id} style={{
+                      padding: 12,
+                      border: "1px solid #d1e7dd",
+                      borderRadius: 8,
+                      background: "#fff",
+                      marginBottom: 8,
+                      fontSize: 14,
+                    }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <div>
+                          <span style={{ fontWeight: 700 }}>
+                            {p.payoutTarget === "OWNER" ? "オーナー" : "代理店"}
+                          </span>
+                          <span style={{ color: "#666", marginLeft: 8 }}>
+                            ¥{(p.actualAmount ?? 0).toLocaleString("ja-JP")}
+                          </span>
+                        </div>
+                        <span style={{
+                          display: "inline-block",
+                          padding: "2px 8px",
+                          borderRadius: 999,
+                          fontSize: 12,
+                          fontWeight: 700,
+                          background: "#dcfce7",
+                          color: "#166534",
+                        }}>
+                          PAID
+                        </span>
+                      </div>
+                      {p.stripeTransferId && (
+                        <div style={{ marginTop: 4, fontSize: 12, color: "#888" }}>
+                          Transfer: {p.stripeTransferId}
+                        </div>
+                      )}
+                      {p.executedAt && (
+                        <div style={{ marginTop: 2, fontSize: 12, color: "#888" }}>
+                          実行日時: {new Date(p.executedAt).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" })}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+              </div>
+            )}
           </div>
 
           <section style={cardStyle}>
