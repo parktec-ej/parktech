@@ -4,6 +4,7 @@ export const preferredRegion = "hnd1";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getAdminSession } from "@/lib/admin-auth";
+import { getOwnerSession } from "@/lib/owner-auth";
 
 function jsonError(error: string, status = 400, message?: string) {
   return NextResponse.json(
@@ -17,13 +18,18 @@ export async function GET(
   context: { params: Promise<{ id: string }> }
 ) {
   const admin = await getAdminSession();
-  if (!admin) return jsonError("unauthorized", 401);
+  const owner = admin ? null : await getOwnerSession();
+
+  if (!admin && !owner) return jsonError("unauthorized", 401);
 
   try {
     const { id } = await context.params;
 
     const settlement = await prisma.settlement.findUnique({
-      where: { id },
+      where: {
+        id,
+        ...(owner ? { ownerId: owner.id } : {}),
+      },
       include: {
         Owner: {
           select: {
