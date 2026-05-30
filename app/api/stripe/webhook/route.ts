@@ -416,7 +416,16 @@ export async function POST(req: Request) {
               },
             });
           } catch (paymentErr) {
-            console.error("Payment/settlement creation skipped:", paymentErr);
+            console.error("Payment creation failed:", paymentErr);
+            await sendSlackNotification(
+              [
+                "🔴 [CRITICAL] Payment作成失敗",
+                `reservationId: ${reservationId}`,
+                `error: ${paymentErr instanceof Error ? paymentErr.message : String(paymentErr)}`,
+                "Stripe webhook will retry",
+              ].join("\n")
+            ).catch(() => {});
+            throw paymentErr;
           }
         }
 
@@ -759,7 +768,16 @@ export async function POST(req: Request) {
               },
             });
           } catch (paymentErr) {
-            console.error("Bus payment/settlement creation skipped:", paymentErr);
+            console.error("Bus payment creation failed:", paymentErr);
+            await sendSlackNotification(
+              [
+                "🔴 [CRITICAL] Bus Payment作成失敗",
+                `reservationId: ${reservationId}`,
+                `error: ${paymentErr instanceof Error ? paymentErr.message : String(paymentErr)}`,
+                "Stripe webhook will retry",
+              ].join("\n")
+            ).catch(() => {});
+            throw paymentErr;
           }
         }
 
