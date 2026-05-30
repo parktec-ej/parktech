@@ -149,6 +149,43 @@ export async function POST(
         })
       : null;
 
+    const shouldCreateOwnerPayout =
+      !hasOwnerPayout && settlement.finalOwnerPayoutAmount > 0;
+
+    const shouldCreateAgentPayout =
+      !hasAgentPayout &&
+      Boolean(settlement.agentId) &&
+      settlement.finalAgentPayoutAmount > 0;
+
+    // --- Stripe残高チェック ---
+    const totalTransferAmount =
+      (shouldCreateOwnerPayout ? settlement.finalOwnerPayoutAmount : 0) +
+      (shouldCreateAgentPayout ? settlement.finalAgentPayoutAmount : 0);
+
+    if (totalTransferAmount > 0) {
+      try {
+        const balance = await stripe.balance.retrieve();
+        const jpyBalance = balance.available.find((b) => b.currency === "jpy");
+        const availableAmount = jpyBalance?.amount ?? 0;
+
+        if (availableAmount < totalTransferAmount) {
+          return NextResponse.json(
+            {
+              ok: false,
+              error: "insufficient_balance",
+              message: `Stripe残高不足: 必要額 ¥${totalTransferAmount.toLocaleString()} / 利用可能 ¥${availableAmount.toLocaleString()}`,
+              required: totalTransferAmount,
+              available: availableAmount,
+            },
+            { status: 400 }
+          );
+        }
+      } catch (e: any) {
+        console.error("[settlements/pay] balance check failed:", e);
+        // 残高チェック失敗は警告のみ（Transferは続行）
+      }
+    }
+
     // 2. Owner Transfer
     let ownerResult: TransferResult = {
       stripeTransferId: null,
@@ -156,9 +193,6 @@ export async function POST(
       failedReason: null,
       note: `Manual payout by ${admin.email}`,
     };
-
-    const shouldCreateOwnerPayout =
-      !hasOwnerPayout && settlement.finalOwnerPayoutAmount > 0;
 
     if (
       shouldCreateOwnerPayout &&
@@ -191,11 +225,6 @@ export async function POST(
       failedReason: null,
       note: `Manual payout by ${admin.email}`,
     };
-
-    const shouldCreateAgentPayout =
-      !hasAgentPayout &&
-      Boolean(settlement.agentId) &&
-      settlement.finalAgentPayoutAmount > 0;
 
     if (
       shouldCreateAgentPayout &&
