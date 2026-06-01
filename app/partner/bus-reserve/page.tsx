@@ -32,6 +32,8 @@ type AvailabilityResponse = {
   eventDay?: {
     id: string;
     label: string | null;
+    fixedYenOverride: number | null;
+    hourlyYenOverride: number | null;
     busFixedYen: number | null;
     reservationOpenDaysBefore: number | null;
   } | null;
@@ -58,7 +60,15 @@ type BusPartner = {
   contact: string;
   phone: string;
   email: string;
+  companyPhone?: string | null;
+  address?: string | null;
 };
+
+type VehicleType = "bus" | "car";
+
+const PRICE_BUS = 10000;
+const PRICE_CAR = 4000;
+const PRICE_EXTRA_CAR = 4000;
 
 type PartnersResponse = {
   ok: boolean;
@@ -114,7 +124,9 @@ function PartnerBusReservePageInner() {
 
   const [partners, setPartners] = useState<BusPartner[]>([]);
   const [busPartnerId, setBusPartnerId] = useState("");
-  const [plate, setPlate] = useState("");
+  const [eventName, setEventName] = useState("");
+  const [vehicleType, setVehicleType] = useState<VehicleType>("bus");
+  const [hasExtraCar, setHasExtraCar] = useState(false);
   const [arrivalTime, setArrivalTime] = useState("");
   const [note, setNote] = useState("");
 
@@ -130,6 +142,19 @@ function PartnerBusReservePageInner() {
     () => partners.find((p) => p.id === busPartnerId) ?? null,
     [partners, busPartnerId]
   );
+
+  // 合計金額（サーバ側の computeBusPrice と同じルール）
+  const totalPrice = useMemo(() => {
+    if (vehicleType === "car") return PRICE_CAR;
+    return hasExtraCar ? PRICE_BUS + PRICE_EXTRA_CAR : PRICE_BUS;
+  }, [vehicleType, hasExtraCar]);
+
+  // 普通車選択時は追加普通車の概念が無いので解除
+  useEffect(() => {
+    if (vehicleType === "car" && hasExtraCar) {
+      setHasExtraCar(false);
+    }
+  }, [vehicleType, hasExtraCar]);
 
   useEffect(() => {
     let cancelled = false;
@@ -229,8 +254,13 @@ function PartnerBusReservePageInner() {
       return;
     }
 
-    if (!plate.trim()) {
-      setErr("車両ナンバーを入力してください");
+    if (!eventName.trim()) {
+      setErr("イベント名を入力してください");
+      return;
+    }
+
+    if (vehicleType !== "bus" && vehicleType !== "car") {
+      setErr("車両タイプを選択してください");
       return;
     }
 
@@ -245,9 +275,11 @@ function PartnerBusReservePageInner() {
         body: JSON.stringify({
           date,
           busPartnerId,
-          plate,
           arrivalTime,
           note,
+          eventName,
+          vehicleType,
+          hasExtraCar,
         }),
       });
 
@@ -421,6 +453,22 @@ function PartnerBusReservePageInner() {
                       {selectedPartner.phone}
                     </span>
                   </div>
+                  {selectedPartner.companyPhone ? (
+                    <div style={summaryRowStyle}>
+                      <span style={summaryLabelStyle}>会社電話</span>
+                      <span style={summaryValueStyle}>
+                        {selectedPartner.companyPhone}
+                      </span>
+                    </div>
+                  ) : null}
+                  {selectedPartner.address ? (
+                    <div style={summaryRowStyle}>
+                      <span style={summaryLabelStyle}>住所</span>
+                      <span style={summaryValueStyle}>
+                        {selectedPartner.address}
+                      </span>
+                    </div>
+                  ) : null}
                   <div style={summaryRowStyle}>
                     <span style={summaryLabelStyle}>メール</span>
                     <span style={summaryValueStyle}>
@@ -431,17 +479,60 @@ function PartnerBusReservePageInner() {
               ) : null}
 
               <div style={fieldStyle}>
-                <label style={labelStyle}>車両ナンバー</label>
+                <label style={labelStyle}>イベント名</label>
                 <input
-                  value={plate}
-                  onChange={(e) => setPlate(e.target.value)}
+                  value={eventName}
+                  onChange={(e) => setEventName(e.target.value)}
                   style={inputStyle}
-                  placeholder="例: 宮城200 あ 1234"
+                  placeholder="例: 〇〇コンサート"
                 />
               </div>
 
               <div style={fieldStyle}>
-                <label style={labelStyle}>到着予定時刻</label>
+                <label style={labelStyle}>車両タイプ</label>
+                <div style={vehicleToggleRowStyle}>
+                  <button
+                    type="button"
+                    onClick={() => setVehicleType("bus")}
+                    style={{
+                      ...vehicleButtonStyle,
+                      ...(vehicleType === "bus"
+                        ? vehicleButtonActiveStyle
+                        : null),
+                    }}
+                  >
+                    バス（{formatYen(PRICE_BUS)}）
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setVehicleType("car")}
+                    style={{
+                      ...vehicleButtonStyle,
+                      ...(vehicleType === "car"
+                        ? vehicleButtonActiveStyle
+                        : null),
+                    }}
+                  >
+                    普通車（{formatYen(PRICE_CAR)}）
+                  </button>
+                </div>
+              </div>
+
+              {vehicleType === "bus" ? (
+                <label style={checkboxRowStyle}>
+                  <input
+                    type="checkbox"
+                    checked={hasExtraCar}
+                    onChange={(e) => setHasExtraCar(e.target.checked)}
+                  />
+                  <span>
+                    追加の普通車を駐車する（+{formatYen(PRICE_EXTRA_CAR)}、A-20区画）
+                  </span>
+                </label>
+              ) : null}
+
+              <div style={fieldStyle}>
+                <label style={labelStyle}>入庫予定時間</label>
                 <input
                   value={arrivalTime}
                   onChange={(e) => setArrivalTime(e.target.value)}
@@ -458,6 +549,11 @@ function PartnerBusReservePageInner() {
                   style={textareaStyle}
                   placeholder="団体名、連絡事項など"
                 />
+              </div>
+
+              <div style={totalBoxStyle}>
+                <span style={totalLabelStyle}>合計金額</span>
+                <span style={totalValueStyle}>{formatYen(totalPrice)}</span>
               </div>
 
               <button
@@ -683,4 +779,59 @@ const linkStyle: React.CSSProperties = {
   color: "#2563eb",
   textDecoration: "none",
   fontWeight: 700,
+};
+
+const vehicleToggleRowStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "1fr 1fr",
+  gap: 10,
+};
+
+const vehicleButtonStyle: React.CSSProperties = {
+  border: "1px solid #d1d5db",
+  borderRadius: 12,
+  background: "#fff",
+  color: "#374151",
+  padding: "12px 14px",
+  fontSize: 15,
+  fontWeight: 800,
+  cursor: "pointer",
+};
+
+const vehicleButtonActiveStyle: React.CSSProperties = {
+  border: "2px solid #111827",
+  background: "#111827",
+  color: "#fff",
+};
+
+const checkboxRowStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 10,
+  fontSize: 14,
+  fontWeight: 700,
+  color: "#374151",
+  lineHeight: 1.6,
+};
+
+const totalBoxStyle: React.CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  border: "1px solid #e5e7eb",
+  borderRadius: 14,
+  background: "#f9fafb",
+  padding: "14px 16px",
+};
+
+const totalLabelStyle: React.CSSProperties = {
+  color: "#6b7280",
+  fontSize: 15,
+  fontWeight: 800,
+};
+
+const totalValueStyle: React.CSSProperties = {
+  color: "#111827",
+  fontSize: 22,
+  fontWeight: 900,
 };

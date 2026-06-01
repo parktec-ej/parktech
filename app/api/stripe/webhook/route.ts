@@ -476,8 +476,9 @@ export async function POST(req: Request) {
 
       if (session.metadata?.flow === "bus_reservation") {
         const placeId = String(session.metadata.placeId ?? "").trim();
-        const spotId = String(session.metadata.spotId ?? "").trim();
-        const slot = String(session.metadata.slot ?? "").trim();
+        // A-20 使用時のみ spotId が入る。BUS_LANE のときは null。
+        const spotId = String(session.metadata.spotId ?? "").trim() || null;
+        const slot = String(session.metadata.slot ?? "").trim() || "BUS_LANE";
         const date = String(session.metadata.date ?? "").trim();
 
         const contactName =
@@ -491,11 +492,20 @@ export async function POST(req: Request) {
         const arrivalTime = String(session.metadata.arrivalTime ?? "").trim();
         const note = String(session.metadata.note ?? "").trim();
 
+        // 構造化カラム用（新仕様）
+        const eventName = String(session.metadata.eventName ?? "").trim();
+        const vehicleType: "bus" | "car" =
+          session.metadata.vehicleType === "car" ? "car" : "bus";
+        const hasExtraCar = session.metadata.hasExtraCar === "true";
+        const busPartnerId =
+          String(session.metadata.busPartnerId ?? "").trim() || null;
+
         const reservationName = companyName
           ? `${companyName} / ${contactName}`
           : contactName;
 
-        const plate = String(session.metadata.plate ?? "").trim() || "未登録";
+        // バス予約では車両ナンバーを取らないため固定値
+        const plate = "未登録";
 
         const email =
           session.metadata.email ??
@@ -612,6 +622,14 @@ export async function POST(req: Request) {
               cancelToken: crypto.randomUUID(),
               refundStatus: "NONE",
               refundAmount: null,
+              // 構造化カラム（新仕様。memo は後方互換の補助情報として残す）
+              reservationType: "bus",
+              busPartnerId,
+              vehicleType,
+              hasExtraCar,
+              eventName: eventName || null,
+              arrivalTime: arrivalTime || null,
+              note: note || null,
             },
           });
 
@@ -725,7 +743,8 @@ export async function POST(req: Request) {
                 agentId: snapshot.agentId,
 
                 placeNameSnapshot: snapshot.placeNameSnapshot,
-                spotCodeSnapshot: snapshot.spotCodeSnapshot,
+                // spotId が無い BUS_LANE 予約でも区別できるよう slot を補完
+                spotCodeSnapshot: snapshot.spotCodeSnapshot ?? slot,
                 spotLabelSnapshot: snapshot.spotLabelSnapshot,
 
                 ownerNameSnapshot: snapshot.ownerNameSnapshot,

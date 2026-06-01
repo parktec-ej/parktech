@@ -66,16 +66,6 @@ async function resolvePartnerBusPlace() {
   return place;
 }
 
-function canReserve(
-  mode: string | null | undefined,
-  eventDayActive: boolean
-) {
-  if (mode === "RESERVATION_ONLY") return true;
-  if (mode === "RESERVATION_THEN_HOURLY") return true;
-  if (mode === "EVENT_ONLY") return eventDayActive;
-  return false;
-}
-
 export async function GET(req: NextRequest) {
   try {
     await requirePartner();
@@ -148,11 +138,6 @@ export async function GET(req: NextRequest) {
       place.operationMode ??
       "RESERVATION_ONLY";
 
-    const modeAllowsReservation = canReserve(
-      effectiveMode,
-      eventDayActive
-    );
-
     const existing = await prisma.reservation.findFirst({
       where: {
         placeId: place.id,
@@ -175,10 +160,9 @@ export async function GET(req: NextRequest) {
 
     const price = await getBusReservationFixedPrice(place.id, date);
 
-    const available =
-      reservationOpen.ok &&
-      modeAllowsReservation &&
-      !existing;
+    // EVENT_ONLY 制限は撤廃。任意日付で予約可（reservationOpen の受付窓のみ維持）。
+    // BUS_LANE は spotId=null で複数台を許容するため、existing による一律ブロックは行わない。
+    const available = reservationOpen.ok;
 
     return NextResponse.json({
       ok: true,

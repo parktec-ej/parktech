@@ -2,11 +2,6 @@ import { NextResponse } from "next/server";
 import { stripe } from "@/lib/stripe";
 import { prisma } from "@/lib/db";
 import { getPartnerSession } from "@/lib/partner-auth";
-import {
-  getBusReservationFixedPrice,
-  getEventDayConfig,
-  isReservationOpen,
-} from "@/lib/pricing-core";
 
 export const runtime = "nodejs";
 export const preferredRegion = "hnd1";
@@ -44,6 +39,12 @@ function cleanText(value: unknown, max = 200) {
   return String(value ?? "").trim().slice(0, max);
 }
 
+// 料金はサーバ側で再計算する（クライアントの値は信用しない）
+function computeBusPrice(vehicleType: "bus" | "car", hasExtraCar: boolean): number {
+  if (vehicleType === "car") return 4000;
+  return hasExtraCar ? 14000 : 10000; // bus
+}
+
 async function resolvePartnerBusPlace() {
   const slug = String(process.env.PARTNER_BUS_PLACE_SLUG ?? "").trim();
 
@@ -66,19 +67,9 @@ async function resolvePartnerBusPlace() {
   });
 }
 
-function canReserve(
-  mode: string | null | undefined,
-  eventDayActive: boolean
-) {
-  if (mode === "RESERVATION_ONLY") return true;
-  if (mode === "RESERVATION_THEN_HOURLY") return true;
-  if (mode === "EVENT_ONLY") return eventDayActive;
-  return false;
-}
-
 export async function POST(req: Request) {
-  const session = await getPartnerSession();
-  if (!session) {
+  const partnerSession = await getPartnerSession();
+  if (!partnerSession) {
     return NextResponse.json(
       { ok: false, error: "unauthorized" },
       { status: 401 }
@@ -93,9 +84,12 @@ export async function POST(req: Request) {
 
     const date = normalizeDate(body.date);
     const busPartnerId = cleanText(body.busPartnerId, 64);
-    const plate = cleanText(body.plate, 40);
     const arrivalTime = cleanText(body.arrivalTime, 20);
     const note = cleanText(body.note, 500);
+    const eventName = cleanText(body.eventName, 100);
+    const vehicleType: "bus" | "car" = body.vehicleType === "car" ? "car" : "bus";
+    // hasExtraCar は bus のときのみ有効
+    const hasExtraCar = Boolean(body.hasExtraCar) && vehicleType === "bus";
 
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
       return jsonError(
@@ -107,6 +101,14 @@ export async function POST(req: Request) {
 
     if (!busPartnerId) {
       return jsonError("業者を選択してください。", 400, "busPartnerId_required");
+    }
+
+    if (!eventName) {
+      return jsonError("イベント名を入力してください。", 400, "eventName_required");
+    }
+
+    if (vehicleType !== "bus" && vehicleType !== "car") {
+      return jsonError("車両タイプが不正です。", 400, "vehicleType_invalid");
     }
 
     const busPartner = await prisma.busPartner.findFirst({
@@ -137,10 +139,6 @@ export async function POST(req: Request) {
       );
     }
 
-    if (!plate) {
-      return jsonError("車両ナンバーは必須です。", 400, "plate_required");
-    }
-
     const place = await resolvePartnerBusPlace();
     if (!place) {
       return jsonError(
@@ -150,100 +148,58 @@ export async function POST(req: Request) {
       );
     }
 
-    const spot = await prisma.spot.findFirst({
-      where: {
-        placeId: place.id,
-        isActive: true,
-      },
-      orderBy: [{ code: "asc" }],
-      select: {
-        id: true,
-        code: true,
-        label: true,
-        placeId: true,
-        isActive: true,
-        operationModeOverride: true,
-      },
-    });
+    // ── スロット割当 ──────────────────────────────
+    // ・bus 単体 / car 単体        → 区画外のバス専用レーン（spotId なし, slot="BUS_LANE"）
+    // ・bus + 追加普通車(hasExtraCar) → バスは BUS_LANE、追加普通車が A-20 区画を占有
+    let spotId: string | null = null;
+    let slot = "BUS_LANE";
 
-    if (!spot) {
-      return jsonError(
-        "利用可能なバス用 spot が見つかりません。",
-        404,
-        "spot_not_found"
-      );
-    }
+    if (hasExtraCar) {
+      const a20 = await prisma.spot.findFirst({
+        where: { placeId: place.id, code: "A-20", isActive: true },
+        select: { id: true, code: true },
+      });
 
-    const reservationOpen = await isReservationOpen(place.id, date);
-    if (!reservationOpen.ok) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error: "reservation_not_open_yet",
-          message: `この日付の予約はまだ開始されていません（${reservationOpen.openDaysBefore}日前から受付）`,
-        },
-        { status: 409 }
-      );
-    }
+      if (!a20) {
+        return jsonError(
+          "追加普通車用の A-20 区画が見つかりません。",
+          500,
+          "a20_not_found"
+        );
+      }
 
-    const eventDay = await getEventDayConfig(place.id, date);
-    const eventDayActive = Boolean(eventDay);
-
-    const dayMode = await prisma.spotModeCalendar.findUnique({
-      where: {
-        spotId_date: {
-          spotId: spot.id,
+      // A-20 がその日すでに予約済み（CANCELED 以外）なら不可
+      const a20Taken = await prisma.reservation.findFirst({
+        where: {
+          placeId: place.id,
+          spotId: a20.id,
           date,
+          status: { not: "CANCELED" },
         },
-      },
-      select: {
-        operationMode: true,
-      },
-    });
+        select: { id: true },
+      });
 
-    const effectiveMode =
-      dayMode?.operationMode ??
-      spot.operationModeOverride ??
-      place.operationMode ??
-      "RESERVATION_ONLY";
+      if (a20Taken) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: "a20_already_reserved",
+            message: "この日は追加普通車用の A-20 区画が既に埋まっています。",
+          },
+          { status: 409 }
+        );
+      }
 
-    if (!canReserve(effectiveMode, eventDayActive)) {
-      return jsonError(
-        "この日は予約を受け付けていません。",
-        409,
-        "reservation_not_allowed"
-      );
+      spotId = a20.id;
+      slot = "A-20";
     }
 
-    const existing = await prisma.reservation.findFirst({
-      where: {
-        placeId: place.id,
-        spotId: spot.id,
-        date,
-      },
-      select: {
-        id: true,
-        paymentRef: true,
-        paid: true,
-      },
-    });
-
-    if (existing) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error: "already_reserved",
-          message: "この日はすでに予約済みです。",
-        },
-        { status: 409 }
-      );
-    }
-
-    const price = await getBusReservationFixedPrice(place.id, date);
+    // 料金はサーバ側で再計算
+    const price = computeBusPrice(vehicleType, hasExtraCar);
 
     if (!Number.isFinite(price) || price <= 0) {
       return jsonError(
-        "予約金額の取得に失敗しました。",
+        "予約金額の計算に失敗しました。",
         500,
         "invalid_price"
       );
@@ -255,6 +211,13 @@ export async function POST(req: Request) {
       "http://localhost:3000"
     ).trim();
 
+    const vehicleLabel =
+      vehicleType === "bus"
+        ? hasExtraCar
+          ? "バス＋普通車"
+          : "バス"
+        : "普通車";
+
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
       payment_method_types: ["card"],
@@ -264,7 +227,7 @@ export async function POST(req: Request) {
           price_data: {
             currency: "jpy",
             product_data: {
-              name: `${place.name} バス予約 ${date} ${spot.code}`,
+              name: `${place.name} バス予約 ${date} ${vehicleLabel}`,
             },
             unit_amount: price,
           },
@@ -276,11 +239,10 @@ export async function POST(req: Request) {
       metadata: {
         flow: "bus_reservation",
         placeId: place.id,
-        spotId: spot.id,
-        slot: spot.code,
+        spotId: spotId ?? "",
+        slot,
         date,
         name: contactName,
-        plate,
         email,
         price: String(price),
 
@@ -289,6 +251,11 @@ export async function POST(req: Request) {
         phone,
         arrivalTime,
         note,
+
+        eventName,
+        vehicleType,
+        hasExtraCar: hasExtraCar ? "true" : "false",
+        busPartnerId,
       },
     });
 
