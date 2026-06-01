@@ -19,6 +19,31 @@ function normalizeSlot(input: string): string {
   return v;
 }
 
+// 通常予約・バス予約 success が共用する返却フィールド。
+// price とバス予約用カラムを含む（追加のみ。通常予約ページは未使用分を無視）。
+const reservationSelect = {
+  id: true,
+  placeId: true,
+  spotId: true,
+  date: true,
+  slot: true,
+  name: true,
+  plate: true,
+  email: true,
+  pin: true,
+  paid: true,
+  checkedIn: true,
+  checkedInAt: true,
+  checkedOutAt: true,
+  paymentRef: true,
+  price: true,
+  reservationType: true,
+  vehicleType: true,
+  hasExtraCar: true,
+  eventName: true,
+  arrivalTime: true,
+} as const;
+
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const sessionId = searchParams.get("session_id");
@@ -52,6 +77,7 @@ export async function GET(req: Request) {
 
     let reservation = await prisma.reservation.findFirst({
       where: {
+        paid: true,
         OR: [
           { paymentRef: paymentIntentId ?? "" },
           { paymentRef: session.id },
@@ -60,22 +86,7 @@ export async function GET(req: Request) {
       orderBy: {
         createdAt: "desc",
       },
-      select: {
-        id: true,
-        placeId: true,
-        spotId: true,
-        date: true,
-        slot: true,
-        name: true,
-        plate: true,
-        email: true,
-        pin: true,
-        paid: true,
-        checkedIn: true,
-        checkedInAt: true,
-        checkedOutAt: true,
-        paymentRef: true,
-      },
+      select: reservationSelect,
     });
 
     if (!reservation && placeKey) {
@@ -92,6 +103,7 @@ export async function GET(req: Request) {
         if (spotId && date) {
           reservation = await prisma.reservation.findFirst({
             where: {
+              paid: true,
               placeId: place.id,
               spotId,
               date,
@@ -99,28 +111,14 @@ export async function GET(req: Request) {
             orderBy: {
               createdAt: "desc",
             },
-            select: {
-              id: true,
-              placeId: true,
-              spotId: true,
-              date: true,
-              slot: true,
-              name: true,
-              plate: true,
-              email: true,
-              pin: true,
-              paid: true,
-              checkedIn: true,
-              checkedInAt: true,
-              checkedOutAt: true,
-              paymentRef: true,
-            },
+            select: reservationSelect,
           });
         }
 
         if (!reservation && date && slot) {
           reservation = await prisma.reservation.findFirst({
             where: {
+              paid: true,
               placeId: place.id,
               date,
               slot,
@@ -128,22 +126,7 @@ export async function GET(req: Request) {
             orderBy: {
               createdAt: "desc",
             },
-            select: {
-              id: true,
-              placeId: true,
-              spotId: true,
-              date: true,
-              slot: true,
-              name: true,
-              plate: true,
-              email: true,
-              pin: true,
-              paid: true,
-              checkedIn: true,
-              checkedInAt: true,
-              checkedOutAt: true,
-              paymentRef: true,
-            },
+            select: reservationSelect,
           });
         }
       }

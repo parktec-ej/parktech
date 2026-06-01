@@ -7,7 +7,7 @@ import { useSearchParams } from "next/navigation";
 type ReservationData = {
   id: string;
   placeId: string;
-  spotId: string;
+  spotId: string | null;
   date: string;
   slot: string;
   name: string;
@@ -17,7 +17,24 @@ type ReservationData = {
   pin: string;
   paid: boolean;
   paidAt?: string | null;
+  reservationType?: string | null;
+  vehicleType?: "bus" | "car" | null;
+  hasExtraCar?: boolean | null;
+  eventName?: string | null;
+  arrivalTime?: string | null;
 };
+
+function vehicleTypeLabel(v?: string | null) {
+  if (v === "bus") return "バス";
+  if (v === "car") return "普通車";
+  return "-";
+}
+
+function parkingLocationLabel(slot: string) {
+  // A-20 が割り当たるのは「バス＋追加普通車」のときのみ
+  if (slot === "A-20") return "バス専用レーン ＋ A-20区画（追加普通車）";
+  return "バス専用レーン";
+}
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -110,24 +127,23 @@ function SuccessInner() {
         {!loading && reservation && (
           <div style={gridStyle}>
             <div style={pinCardStyle}>
-              <div style={subTitleStyle}>ご予約が確定しました</div>
-
-              <div style={pinStyle}>{reservation.pin}</div>
+              <div style={sectionTitleStyle}>ご予約が確定しました</div>
 
               <div style={detailListStyle}>
                 <div>利用日: {reservation.date}</div>
-                <div>区画: {reservation.slot || reservation.spotId}</div>
+                <div>イベント名: {reservation.eventName || "-"}</div>
                 <div>予約名: {reservation.name}</div>
-                <div>車両ナンバー: {reservation.plate}</div>
+                <div>車両タイプ: {vehicleTypeLabel(reservation.vehicleType)}</div>
+                {reservation.vehicleType === "bus" ? (
+                  <div>
+                    追加普通車:{" "}
+                    {reservation.hasExtraCar ? "あり（+4,000円）" : "なし"}
+                  </div>
+                ) : null}
+                <div>入庫予定時間: {reservation.arrivalTime || "-"}</div>
+                <div>駐車場所: {parkingLocationLabel(reservation.slot)}</div>
                 <div>料金: {formatYen(reservation.price)}</div>
               </div>
-            </div>
-
-            <div style={cardStyle}>
-              <div style={sectionTitleStyle}>ご利用方法</div>
-              <div style={lineTextStyle}>1. 現地のQRを読み取ってください</div>
-              <div style={lineTextStyle}>2. 「予約利用」を選択してください</div>
-              <div style={lineTextStyle}>3. 上記PINコードを入力してください</div>
             </div>
 
             <div style={cardStyle}>
@@ -136,7 +152,7 @@ function SuccessInner() {
                 決済完了後、予約情報が反映されるまで数秒かかる場合があります。
               </div>
               <div style={lineTextStyle}>
-                メールアドレスを入力している場合は、PIN案内メールも送信されます。
+                メールアドレスを入力している場合は、予約確認メールも送信されます。
               </div>
             </div>
 
@@ -210,24 +226,6 @@ const pinCardStyle: React.CSSProperties = {
   borderRadius: 16,
   padding: 18,
   background: "#f8fafc",
-};
-
-const subTitleStyle: React.CSSProperties = {
-  fontSize: 14,
-  color: "#666",
-  marginBottom: 8,
-};
-
-const pinStyle: React.CSSProperties = {
-  fontSize: 40,
-  fontWeight: 900,
-  letterSpacing: 6,
-  textAlign: "center",
-  padding: "18px 12px",
-  borderRadius: 16,
-  background: "#fff",
-  border: "2px solid #111",
-  marginBottom: 14,
 };
 
 const detailListStyle: React.CSSProperties = {
