@@ -202,7 +202,6 @@ export async function POST(req: Request) {
           platformAmount: p.platformAmount,
 
           createdAt: now,
-          updatedAt: now,
         })),
       });
 
