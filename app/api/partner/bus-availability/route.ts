@@ -160,9 +160,12 @@ export async function GET(req: NextRequest) {
 
     const price = await getBusReservationFixedPrice(place.id, date);
 
-    // EVENT_ONLY 制限は撤廃。任意日付で予約可（reservationOpen の受付窓のみ維持）。
+    // バスは受付窓（rifu-main-bus の EventDay の reservationOpenDaysBefore）に
+    // 依存させず「常に開放」。過去日（JST）のみ不可。これにより rifu-main-bus の
+    // EventDay 設定に関わらず、一般の30日窓より前でもバスは予約可能。
+    // date / todayJst はともに "YYYY-MM-DD"(Asia/Tokyo) なので文字列比較で日付比較が成立。
     // BUS_LANE は spotId=null で複数台を許容するため、existing による一律ブロックは行わない。
-    const available = reservationOpen.ok;
+    const available = date >= ymdTodayJst();
 
     return NextResponse.json({
       ok: true,

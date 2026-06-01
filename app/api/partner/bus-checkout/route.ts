@@ -39,6 +39,12 @@ function cleanText(value: unknown, max = 200) {
   return String(value ?? "").trim().slice(0, max);
 }
 
+function ymdTodayJst() {
+  return new Date().toLocaleDateString("sv-SE", {
+    timeZone: "Asia/Tokyo",
+  });
+}
+
 // 料金はサーバ側で再計算する（クライアントの値は信用しない）
 function computeBusPrice(vehicleType: "bus" | "car", hasExtraCar: boolean): number {
   if (vehicleType === "car") return 4000;
@@ -97,6 +103,12 @@ export async function POST(req: Request) {
         400,
         "invalid_date"
       );
+    }
+
+    // バスは受付窓に依存せず常時開放だが、過去日のみ拒否（JST基準。
+    // date / todayJst はともに "YYYY-MM-DD"(Asia/Tokyo) で文字列比較が成立）。
+    if (date < ymdTodayJst()) {
+      return jsonError("過去の日付は予約できません", 400, "past_date");
     }
 
     if (!busPartnerId) {
