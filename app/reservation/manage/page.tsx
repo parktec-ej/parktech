@@ -83,6 +83,7 @@ function ReservationManagePageInner() {
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [newDate, setNewDate] = useState("");
   const [changingDate, setChangingDate] = useState(false);
+  const [receiptLoading, setReceiptLoading] = useState(false);
 
   async function loadReservation() {
     if (!token) {
@@ -203,6 +204,40 @@ function ReservationManagePageInner() {
       window.alert(error instanceof Error ? error.message : String(error));
     } finally {
       setChangingDate(false);
+    }
+  }
+
+  async function openReceipt() {
+    if (!reservation) return;
+
+    setReceiptLoading(true);
+
+    try {
+      const res = await fetch(
+        `/api/receipt/by-reservation?reservationId=${encodeURIComponent(
+          reservation.id
+        )}`,
+        { cache: "no-store" }
+      );
+
+      const json = await res.json().catch(() => null);
+
+      if (!res.ok || !json?.ok || !json.paymentRef) {
+        window.alert(
+          "領収書がまだ発行できません（決済の反映待ちの可能性があります）"
+        );
+        return;
+      }
+
+      window.open(
+        `/api/receipt/${encodeURIComponent(json.paymentRef)}/pdf`,
+        "_blank",
+        "noopener"
+      );
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : String(error));
+    } finally {
+      setReceiptLoading(false);
     }
   }
 
@@ -430,6 +465,38 @@ function ReservationManagePageInner() {
                 <StatusBadge status={reservation.status} />
               </div>
             </div>
+          </section>
+
+          <section
+            style={{
+              border: "1px solid #e5e7eb",
+              borderRadius: 16,
+              padding: 20,
+              background: "#fff",
+            }}
+          >
+            <div style={{ fontWeight: 800, marginBottom: 12, fontSize: 16 }}>
+              領収書
+            </div>
+            <button
+              type="button"
+              onClick={openReceipt}
+              disabled={receiptLoading}
+              style={{
+                width: "100%",
+                padding: "14px 0",
+                borderRadius: 12,
+                border: "1px solid #111",
+                background: "#fff",
+                color: "#111",
+                fontWeight: 700,
+                fontSize: 15,
+                cursor: receiptLoading ? "default" : "pointer",
+                opacity: receiptLoading ? 0.6 : 1,
+              }}
+            >
+              {receiptLoading ? "発行中..." : "領収書を発行する"}
+            </button>
           </section>
 
           {!isCanceled && (
