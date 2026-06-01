@@ -88,6 +88,119 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // ── バス予約の分岐（24h/1回制限・EVENT_ONLYゲートを適用しない）──
+    if (reservation.reservationType === "bus") {
+      // 受付窓: 過去日付への変更は不可（JST基準）
+      const todayJst = new Date().toLocaleDateString("sv-SE", {
+        timeZone: "Asia/Tokyo",
+      });
+      if (newDate < todayJst) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: "invalid_date",
+            message: "過去の日付には変更できません",
+          },
+          { status: 400 }
+        );
+      }
+
+      let nextSpotId: string | null = reservation.spotId; // A-20使用時のみ値
+      let nextSlot = reservation.slot; // "A-20" or "BUS_LANE"
+
+      // 元予約が A-20 を使っている（hasExtraCar）場合のみ再割当が必要
+      if (reservation.spotId) {
+        // 1) 変更先日付で A-20 が空いているか
+        const a20Taken = await prisma.reservation.findFirst({
+          where: {
+            spotId: reservation.spotId,
+            date: newDate,
+            status: { not: "CANCELED" },
+            id: { not: reservation.id },
+          },
+          select: { id: true },
+        });
+
+        if (a20Taken) {
+          // 2) A-01〜A-19 の空き一般スロットを1つ探す
+          const generalCodes = Array.from(
+            { length: 19 },
+            (_, i) => `A-${String(i + 1).padStart(2, "0")}`
+          );
+
+          const candidates = await prisma.spot.findMany({
+            where: {
+              placeId: reservation.placeId!,
+              isActive: true,
+              code: { in: generalCodes },
+            },
+            orderBy: { code: "asc" },
+            select: { id: true, code: true },
+          });
+
+          const used = await prisma.reservation.findMany({
+            where: {
+              placeId: reservation.placeId!,
+              date: newDate,
+              status: { not: "CANCELED" },
+              id: { not: reservation.id },
+            },
+            select: { spotId: true },
+          });
+
+          const usedSet = new Set(
+            used.map((u) => u.spotId).filter(Boolean) as string[]
+          );
+
+          const free = candidates.find((c) => !usedSet.has(c.id));
+
+          if (!free) {
+            // 3) A-20も一般空きも無い
+            return NextResponse.json(
+              {
+                ok: false,
+                error: "no_availability",
+                message: "変更先の日付は満車のため日付変更できません。",
+              },
+              { status: 409 }
+            );
+          }
+
+          nextSpotId = free.id;
+          nextSlot = free.code; // 例: "A-05"
+        }
+        // A-20が空いていれば維持（nextSpotId/nextSlot はそのまま）
+      }
+      // 元が BUS_LANE（spotId=null）→ nextSpotId=null のまま date だけ更新
+
+      await prisma.$transaction([
+        prisma.reservation.update({
+          where: { id: reservation.id },
+          data: { date: newDate, spotId: nextSpotId, slot: nextSlot },
+        }),
+        prisma.reservationChangeLog.create({
+          data: {
+            id: crypto.randomUUID(),
+            reservationId: reservation.id,
+            oldDate: reservation.date,
+            newDate,
+            changedBy: "customer",
+          },
+        }),
+      ]);
+
+      const busLabel = nextSlot === "BUS_LANE" ? "バス専用レーン" : nextSlot;
+
+      await notifyDateChange(reservation, newDate, busLabel);
+
+      return NextResponse.json({
+        ok: true,
+        message: "日付を変更しました",
+        newDate,
+        newSpotLabel: busLabel,
+      });
+    }
+
     const dateChangeCount = reservation.changeLogs.length;
     const policy = calcDateChangePolicy(reservation.paidAt, dateChangeCount);
 

@@ -80,7 +80,9 @@ export async function GET(
     // 種別判定
     // -----------------------
     const memo = String(payment?.memo ?? "");
-    const isBus = memo.includes("BUS_RESERVATION");
+    // 構造化カラム優先。旧予約（カラム未設定）は memo 文字列でフォールバック判定
+    const isBus =
+      reservation?.reservationType === "bus" || memo.includes("BUS_RESERVATION");
     const isHourly = !!parkingSession || payment?.kind === "HOURLY";
 
     const total =
@@ -134,12 +136,23 @@ export async function GET(
     // バス予約追加表示
     // -----------------------
     if (isBus) {
+      // 構造化カラム優先、無ければ memo パースにフォールバック
+      const eventName = reservation?.eventName || "";
+      const vehicleTypeLabel =
+        reservation?.vehicleType === "bus"
+          ? "バス"
+          : reservation?.vehicleType === "car"
+          ? "普通車"
+          : "";
+
       const company = parseMemoLine(memo, "companyName");
       const contact = parseMemoLine(memo, "contactName");
       const phone = parseMemoLine(memo, "phone");
-      const arrival = parseMemoLine(memo, "arrivalTime");
+      const arrival = reservation?.arrivalTime || parseMemoLine(memo, "arrivalTime");
 
       extra = `
+        ${eventName ? `<div>イベント名: ${eventName}</div>` : ""}
+        ${vehicleTypeLabel ? `<div>車両タイプ: ${vehicleTypeLabel}</div>` : ""}
         ${company ? `<div>会社名: ${company}</div>` : ""}
         ${contact ? `<div>担当者名: ${contact}</div>` : ""}
         ${phone ? `<div>電話番号: ${phone}</div>` : ""}

@@ -68,14 +68,26 @@ export async function GET(req: NextRequest) {
       reservation.checkedIn === false &&
       reservation.canceledAt == null;
 
+    const isBus = reservation.reservationType === "bus";
+
     const dateChangeCount = reservation.changeLogs.length;
-    const dateChangePolicy =
-      reservation.paidAt &&
+
+    const canManageDateChange =
       reservation.status === "CONFIRMED" &&
       reservation.checkedIn === false &&
-      reservation.canceledAt == null
-        ? calcDateChangePolicy(reservation.paidAt, dateChangeCount)
-        : { rule: "too_late" as const, canChange: false, deadline: new Date() };
+      reservation.canceledAt == null;
+
+    // バス予約は 24h/1回 の制限を適用せず、無料・無制限で日付変更可
+    const dateChangePolicy = isBus
+      ? {
+          rule: "bus_unlimited" as const,
+          canChange: canManageDateChange,
+          free: true,
+          unlimited: true,
+        }
+      : reservation.paidAt && canManageDateChange
+      ? calcDateChangePolicy(reservation.paidAt, dateChangeCount)
+      : { rule: "too_late" as const, canChange: false, deadline: new Date() };
 
     return NextResponse.json({
       ok: true,
@@ -100,6 +112,13 @@ export async function GET(req: NextRequest) {
           reservation.spot?.label ??
           reservation.spot?.code ??
           reservation.slot,
+        // バス予約用（一般予約では null。非破壊の追加フィールド）
+        reservationType: reservation.reservationType,
+        vehicleType: reservation.vehicleType,
+        hasExtraCar: reservation.hasExtraCar,
+        eventName: reservation.eventName,
+        arrivalTime: reservation.arrivalTime,
+        busPartnerId: reservation.busPartnerId,
       },
       canCancel,
       policy: {
@@ -112,6 +131,8 @@ export async function GET(req: NextRequest) {
         canChange: dateChangePolicy.canChange,
         rule: dateChangePolicy.rule,
         dateChangeCount,
+        free: isBus,
+        unlimited: isBus,
       },
       message: canCancel
         ? "キャンセル可能です"

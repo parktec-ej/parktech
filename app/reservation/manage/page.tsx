@@ -21,6 +21,11 @@ type ReservationView = {
   refundAmount?: number | null;
   placeName?: string | null;
   spotLabel?: string | null;
+  reservationType?: string | null;
+  vehicleType?: "bus" | "car" | null;
+  hasExtraCar?: boolean | null;
+  eventName?: string | null;
+  arrivalTime?: string | null;
 };
 
 type PolicyView = {
@@ -202,6 +207,19 @@ function ReservationManagePageInner() {
   }
 
   const isCanceled = reservation?.status === "CANCELED";
+  const isBus = reservation?.reservationType === "bus";
+
+  const vehicleTypeLabel =
+    reservation?.vehicleType === "bus"
+      ? "バス"
+      : reservation?.vehicleType === "car"
+      ? "普通車"
+      : "-";
+
+  const parkingLocationLabel =
+    reservation?.slot === "A-20"
+      ? "バス専用レーン ＋ A-20区画"
+      : "バス専用レーン";
 
   const minDate = (() => {
     const d = new Date();
@@ -244,7 +262,7 @@ function ReservationManagePageInner() {
         </div>
       ) : reservation ? (
         <div style={{ display: "grid", gap: 16 }}>
-          {reservation.pin && !isCanceled && (
+          {reservation.pin && !isCanceled && !isBus && (
             <section
               style={{
                 border: "2px solid #111",
@@ -306,32 +324,95 @@ function ReservationManagePageInner() {
                   {reservation.placeName || "-"}
                 </span>
               </div>
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span>区画</span>
-                <span style={{ fontWeight: 600 }}>
-                  {reservation.spotLabel || reservation.slot}
-                </span>
-              </div>
+              {isBus ? (
+                <div
+                  style={{ display: "flex", justifyContent: "space-between" }}
+                >
+                  <span>駐車場所</span>
+                  <span style={{ fontWeight: 600 }}>{parkingLocationLabel}</span>
+                </div>
+              ) : (
+                <div
+                  style={{ display: "flex", justifyContent: "space-between" }}
+                >
+                  <span>区画</span>
+                  <span style={{ fontWeight: 600 }}>
+                    {reservation.spotLabel || reservation.slot}
+                  </span>
+                </div>
+              )}
               <div style={{ display: "flex", justifyContent: "space-between" }}>
                 <span>利用日</span>
                 <span style={{ fontWeight: 600 }}>{reservation.date}</span>
               </div>
               <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span>氏名</span>
+                <span>{isBus ? "予約名" : "氏名"}</span>
                 <span style={{ fontWeight: 600 }}>{reservation.name}</span>
               </div>
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span>車両ナンバー</span>
-                <span
-                  style={{
-                    fontWeight: 600,
-                    letterSpacing: "0.08em",
-                    fontVariantNumeric: "tabular-nums",
-                  }}
+              {isBus && (
+                <>
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                    }}
+                  >
+                    <span>イベント名</span>
+                    <span style={{ fontWeight: 600 }}>
+                      {reservation.eventName || "-"}
+                    </span>
+                  </div>
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                    }}
+                  >
+                    <span>車両タイプ</span>
+                    <span style={{ fontWeight: 600 }}>{vehicleTypeLabel}</span>
+                  </div>
+                  {reservation.vehicleType === "bus" && (
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                      }}
+                    >
+                      <span>追加普通車</span>
+                      <span style={{ fontWeight: 600 }}>
+                        {reservation.hasExtraCar ? "あり" : "なし"}
+                      </span>
+                    </div>
+                  )}
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                    }}
+                  >
+                    <span>入庫予定時間</span>
+                    <span style={{ fontWeight: 600 }}>
+                      {reservation.arrivalTime || "-"}
+                    </span>
+                  </div>
+                </>
+              )}
+              {!isBus && (
+                <div
+                  style={{ display: "flex", justifyContent: "space-between" }}
                 >
-                  {reservation.plate}
-                </span>
-              </div>
+                  <span>車両ナンバー</span>
+                  <span
+                    style={{
+                      fontWeight: 600,
+                      letterSpacing: "0.08em",
+                      fontVariantNumeric: "tabular-nums",
+                    }}
+                  >
+                    {reservation.plate}
+                  </span>
+                </div>
+              )}
               <div style={{ display: "flex", justifyContent: "space-between" }}>
                 <span>金額</span>
                 <span style={{ fontWeight: 600 }}>
@@ -375,7 +456,9 @@ function ReservationManagePageInner() {
                           marginBottom: 12,
                         }}
                       >
-                        日付変更が可能です（無料・1回限り）
+                        {isBus
+                          ? "日付変更は無料・何度でも可能です"
+                          : "日付変更が可能です（無料・1回限り）"}
                       </div>
                       <button
                         type="button"
@@ -475,7 +558,9 @@ function ReservationManagePageInner() {
                       lineHeight: 1.7,
                     }}
                   >
-                    ※ 予約受付から24時間以内、1回のみ変更可能です。
+                    {isBus
+                      ? "※ 利用日より前であれば、無料で何度でも変更できます。"
+                      : "※ 予約受付から24時間以内、1回のみ変更可能です。"}
                   </div>
                 </>
               ) : (
