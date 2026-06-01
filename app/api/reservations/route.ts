@@ -265,18 +265,24 @@ export async function GET(req: NextRequest) {
     const reservationOpen = computeReservationOpen(eventDay, date);
     const eventDayActive = Boolean(eventDay);
 
-    // A-20 は rifu-main（一般lot）の区画だが、バス追加普通車専用に予約されるため
-    // 一般予約のグリッドには出さない。A-20 が実在するのは rifu-main のみなので
-    // slug をハードコード。他の駐車場には影響させない。
-    const spots = (spotsRaw as SpotRow[]).filter(
-      (s) => !(place.slug === "rifu-main" && s.code === "A-20")
-    );
     const reservations = reservationsRaw as ReservationRow[];
     const dayModes = dayModesRaw as DayModeRow[];
 
     const dayModeMap = new Map<string, OperationMode>(
       dayModes.map((x: DayModeRow) => [x.spotId, x.operationMode])
     );
+
+    // A-20 は rifu-main（一般lot）の区画だが、バス追加普通車専用に予約されるため
+    // 一般予約のグリッドには原則出さない。ただし cron が「その日のバス利用なし」と
+    // 判定して SpotModeCalendar に RESERVATION_ONLY の開放マーカーを書いた日付だけは
+    // 例外的に表示・予約可とする。A-20 が実在するのは rifu-main のみなので slug を
+    // ハードコード。他の駐車場・他spotには一切影響させない。
+    const spots = (spotsRaw as SpotRow[]).filter((s) => {
+      if (place.slug === "rifu-main" && s.code === "A-20") {
+        return dayModeMap.get(s.id) === "RESERVATION_ONLY";
+      }
+      return true;
+    });
 
     const reservedSpotIds = new Set<string>(
       reservations
@@ -438,10 +444,16 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // A-20 は rifu-main のバス追加普通車専用枠。一般予約での直接指定を拒否
-    // （他の駐車場には影響させない）。
+    // A-20 は rifu-main のバス追加普通車専用枠。一般予約での直接指定は原則拒否。
+    // ただし cron が開放マーカー(RESERVATION_ONLY)を書いた日付だけは許可する。
     if (place.slug === "rifu-main" && spot.code === "A-20") {
-      return jsonError("この区画は予約できません", 409, "spot_not_reservable");
+      const a20Mode = await prisma.spotModeCalendar.findUnique({
+        where: { spotId_date: { spotId: spot.id, date } },
+        select: { operationMode: true },
+      });
+      if (a20Mode?.operationMode !== "RESERVATION_ONLY") {
+        return jsonError("この区画は予約できません", 409, "spot_not_reservable");
+      }
     }
 
     const dayMode =

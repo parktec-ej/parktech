@@ -81,6 +81,21 @@ export async function GET(req: Request) {
       });
     }
 
+    // 既に開放済み（RESERVATION_ONLY マーカーあり）なら何もしない＝冪等。
+    // upsert も通知もスキップ（開放済みの日に毎日通知が出るのを防ぐ）。
+    const existingMode = await prisma.spotModeCalendar.findUnique({
+      where: { spotId_date: { spotId: a20.id, date: targetYmd } },
+      select: { operationMode: true },
+    });
+
+    if (existingMode?.operationMode === "RESERVATION_ONLY") {
+      return NextResponse.json({
+        ok: true,
+        targetDate: targetYmd,
+        skipped: "already_released",
+      });
+    }
+
     // 当日に A-20 を使う「バス＋追加普通車」予約があるか。
     // 予約自身の placeId は rifu-main-bus（クロスplace）なので placeId は条件に
     // 入れず、spotId 単独で判定する。
@@ -104,14 +119,29 @@ export async function GET(req: Request) {
       });
     }
 
-    // 追加普通車のバス予約が無い → A-20 を一般開放できる旨を通知（自動開放はしない）
+    // 追加普通車のバス予約が無い → A-20 を一般予約へ自動開放（SpotModeCalendar に
+    // RESERVATION_ONLY を upsert）。マーカーが付くと、availability/checkout が
+    // この日だけ A-20 を表示・予約可とし、bus-checkout はこの日の A-20 を拒否する。
+    await prisma.spotModeCalendar.upsert({
+      where: { spotId_date: { spotId: a20.id, date: targetYmd } },
+      update: { operationMode: "RESERVATION_ONLY" },
+      create: {
+        placeId: generalPlace.id,
+        spotId: a20.id,
+        date: targetYmd,
+        operationMode: "RESERVATION_ONLY",
+      },
+    });
+
+    // 初回開放時のみ通知（既存マーカーは上で弾いているのでここは初回のみ）
     await sendSlackNotification(
-      `【A-20解放のお知らせ】${targetYmd} のイベントで追加普通車のバス予約がありません。A-20を一般予約に開放できます。`
+      `【A-20自動開放】${targetYmd} のイベントで追加普通車のバス予約がないため、A-20を一般予約に開放しました。`
     );
 
     return NextResponse.json({
       ok: true,
       targetDate: targetYmd,
+      released: true,
       notified: true,
     });
   } catch (error) {

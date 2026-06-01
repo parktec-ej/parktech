@@ -195,6 +195,25 @@ export async function POST(req: Request) {
         );
       }
 
+      // その日の A-20 が既に一般予約へ開放済み（cron が RESERVATION_ONLY マーカーを
+      // 書いた）なら、バスの追加普通車枠としては使えない（相互排他）。
+      const a20Released = await prisma.spotModeCalendar.findUnique({
+        where: { spotId_date: { spotId: a20.id, date } },
+        select: { operationMode: true },
+      });
+
+      if (a20Released?.operationMode === "RESERVATION_ONLY") {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: "a20_released_to_general",
+            message:
+              "この日付は追加普通車枠（A-20）が一般予約に開放済みのため利用できません。バス単体での予約は可能です。",
+          },
+          { status: 409 }
+        );
+      }
+
       // A-20 がその日すでに予約済み（CANCELED 以外）なら不可。
       // 占有判定は spotId 単独（一般予約=placeId rifu-main / バス追加車=placeId
       // rifu-main-bus の両方を取りこぼさないため、placeId は条件に入れない）。
