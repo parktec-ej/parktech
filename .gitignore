@@ -52,3 +52,7 @@ next-env.d.ts
 import.log
 .env.singapore-backup
 .env.*backup
+
+# VS Code SFTP credentials (contains plaintext password)
+.vscode/sftp.json
+.env*.local
