@@ -157,11 +157,8 @@ function SuccessInner() {
             </div>
 
             <div style={footerButtonRowStyle}>
-              <Link href="/partner/bus-reserve" style={secondaryLinkStyle}>
+              <Link href="/partner/bus-reserve" style={primaryLinkStyle}>
                 別日程を予約する
-              </Link>
-              <Link href="/" style={primaryLinkStyle}>
-                トップへ戻る
               </Link>
             </div>
           </div>
@@ -276,15 +273,4 @@ const primaryLinkStyle: React.CSSProperties = {
   color: "#fff",
   textDecoration: "none",
   fontWeight: 800,
-};
-
-const secondaryLinkStyle: React.CSSProperties = {
-  display: "inline-block",
-  padding: "12px 16px",
-  borderRadius: 12,
-  background: "#fff",
-  color: "#111",
-  textDecoration: "none",
-  fontWeight: 700,
-  border: "1px solid #d1d5db",
 };

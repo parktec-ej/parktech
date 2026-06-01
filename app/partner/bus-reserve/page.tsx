@@ -1,7 +1,6 @@
 "use client";
 
 import { Suspense, useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 
 type AvailabilityResponse = {
@@ -577,12 +576,6 @@ function PartnerBusReservePageInner() {
             </form>
           </section>
         </div>
-
-        <div style={footerStyle}>
-          <Link href="/" style={linkStyle}>
-            ← トップへ戻る
-          </Link>
-        </div>
       </div>
     </main>
   );
@@ -769,16 +762,6 @@ const helpTextStyle: React.CSSProperties = {
   color: "#6b7280",
   fontSize: 13,
   lineHeight: 1.6,
-};
-
-const footerStyle: React.CSSProperties = {
-  marginTop: 18,
-};
-
-const linkStyle: React.CSSProperties = {
-  color: "#2563eb",
-  textDecoration: "none",
-  fontWeight: 700,
 };
 
 const vehicleToggleRowStyle: React.CSSProperties = {
