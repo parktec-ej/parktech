@@ -100,11 +100,19 @@ model Reservation {
   refundAmount      Int?
   refundStatus      RefundStatus      @default(NONE)
   status            ReservationStatus @default(CONFIRMED)
+  reservationType   ReservationType   @default(general)
+  busPartnerId      String?
+  vehicleType       VehicleType?
+  hasExtraCar       Boolean           @default(false)
+  eventName         String?
+  arrivalTime       String?
+  note              String?
   sessions          ParkingSession[]
   Payment           Payment[]
   receipts          Receipt[]
   place             Place?            @relation(fields: [placeId], references: [id])
   spot              Spot?             @relation(fields: [spotId], references: [id])
+  busPartner        BusPartner?       @relation(fields: [busPartnerId], references: [id])
   changeLogs        ReservationChangeLog[]
 
   @@index([placeId])
@@ -115,6 +123,9 @@ model Reservation {
   @@index([placeId, date, status])
   @@index([spotId, date, status])
   @@index([status])
+  @@index([reservationType])
+  @@index([busPartnerId])
+  @@index([reservationType, date])
 }
 
 model ParkingSession {
@@ -579,6 +590,7 @@ model BusPartner {
   updatedAt    DateTime @updatedAt
   address      String?
   companyPhone String?
+  reservations Reservation[]
 
   @@index([isActive])
 }
@@ -701,6 +713,16 @@ enum RefundStatus {
 enum ReservationStatus {
   CONFIRMED
   CANCELED
+}
+
+enum ReservationType {
+  general
+  bus
+}
+
+enum VehicleType {
+  bus
+  car
 }
 
 enum SettlementItemType {
