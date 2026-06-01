@@ -265,13 +265,11 @@ export async function GET(req: NextRequest) {
     const reservationOpen = computeReservationOpen(eventDay, date);
     const eventDayActive = Boolean(eventDay);
 
-    // A-20 はバス予約の追加普通車専用枠。rifu-main（PARTNER_BUS_PLACE_SLUG）の
-    // 一般予約には出さない。他の駐車場には影響させない。
-    const busPlaceSlug = String(process.env.PARTNER_BUS_PLACE_SLUG ?? "").trim();
-    const isBusPlace = Boolean(busPlaceSlug) && place.slug === busPlaceSlug;
-
+    // A-20 は rifu-main（一般lot）の区画だが、バス追加普通車専用に予約されるため
+    // 一般予約のグリッドには出さない。A-20 が実在するのは rifu-main のみなので
+    // slug をハードコード。他の駐車場には影響させない。
     const spots = (spotsRaw as SpotRow[]).filter(
-      (s) => !(isBusPlace && s.code === "A-20")
+      (s) => !(place.slug === "rifu-main" && s.code === "A-20")
     );
     const reservations = reservationsRaw as ReservationRow[];
     const dayModes = dayModesRaw as DayModeRow[];
@@ -442,8 +440,7 @@ export async function POST(req: NextRequest) {
 
     // A-20 は rifu-main のバス追加普通車専用枠。一般予約での直接指定を拒否
     // （他の駐車場には影響させない）。
-    const busPlaceSlug = String(process.env.PARTNER_BUS_PLACE_SLUG ?? "").trim();
-    if (busPlaceSlug && place.slug === busPlaceSlug && spot.code === "A-20") {
+    if (place.slug === "rifu-main" && spot.code === "A-20") {
       return jsonError("この区画は予約できません", 409, "spot_not_reservable");
     }
 

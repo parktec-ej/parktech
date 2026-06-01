@@ -122,7 +122,25 @@ export async function POST(req: NextRequest) {
         });
 
         if (a20Taken) {
-          // 2) A-01〜A-19 の空き一般スロットを1つ探す
+          // 2) A-01〜A-19 の空き一般スロットを1つ探す。
+          //    A-20 と同じ一般lot「rifu-main」を見る（バス予約自身の placeId は
+          //    rifu-main-bus なのでそちらには A 系区画が無い）。
+          const generalPlace = await prisma.place.findFirst({
+            where: { slug: "rifu-main", isActive: true },
+            select: { id: true },
+          });
+
+          if (!generalPlace) {
+            return NextResponse.json(
+              {
+                ok: false,
+                error: "general_place_not_found",
+                message: "一般駐車場（rifu-main）が見つかりません。",
+              },
+              { status: 500 }
+            );
+          }
+
           const generalCodes = Array.from(
             { length: 19 },
             (_, i) => `A-${String(i + 1).padStart(2, "0")}`
@@ -130,7 +148,7 @@ export async function POST(req: NextRequest) {
 
           const candidates = await prisma.spot.findMany({
             where: {
-              placeId: reservation.placeId!,
+              placeId: generalPlace.id,
               isActive: true,
               code: { in: generalCodes },
             },
@@ -138,9 +156,10 @@ export async function POST(req: NextRequest) {
             select: { id: true, code: true },
           });
 
+          // 占有は spotId 単独で判定（place を問わずその spot を取っている予約）
           const used = await prisma.reservation.findMany({
             where: {
-              placeId: reservation.placeId!,
+              spotId: { in: candidates.map((c) => c.id) },
               date: newDate,
               status: { not: "CANCELED" },
               id: { not: reservation.id },

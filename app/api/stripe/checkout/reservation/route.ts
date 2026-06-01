@@ -142,6 +142,11 @@ export async function POST(req: NextRequest) {
       return jsonError("spot が見つかりません", 404, "spot_not_found");
     }
 
+    // A-20 は rifu-main のバス追加普通車専用枠。一般予約での直接指定を拒否。
+    if (place.slug === "rifu-main" && spot.code === "A-20") {
+      return jsonError("この区画は予約できません", 409, "spot_not_reservable");
+    }
+
     const dayMode = await prisma.spotModeCalendar.findUnique({
       where: {
         spotId_date: {

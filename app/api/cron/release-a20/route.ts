@@ -32,22 +32,16 @@ export async function GET(req: Request) {
   }
 
   try {
-    const slug = String(process.env.PARTNER_BUS_PLACE_SLUG ?? "").trim();
-    if (!slug) {
-      return NextResponse.json(
-        { ok: false, error: "PARTNER_BUS_PLACE_SLUG_not_set" },
-        { status: 500 }
-      );
-    }
-
-    const busPlace = await prisma.place.findFirst({
-      where: { slug, isActive: true },
+    // A-20 は一般lot「rifu-main」の区画。開放対象も rifu-main なので、
+    // イベント日判定・A-20 spot ともに rifu-main を基準にする。
+    const generalPlace = await prisma.place.findFirst({
+      where: { slug: "rifu-main", isActive: true },
       select: { id: true, name: true },
     });
 
-    if (!busPlace) {
+    if (!generalPlace) {
       return NextResponse.json(
-        { ok: false, error: "bus_place_not_found" },
+        { ok: false, error: "general_place_not_found" },
         { status: 404 }
       );
     }
@@ -55,10 +49,10 @@ export async function GET(req: Request) {
     // 「ちょうど2週間後」の単日判定（JST 基準の YYYY-MM-DD）
     const targetYmd = ymdPlusDaysJst(14);
 
-    // その日がイベント日でなければ何もしない
+    // その日が rifu-main のイベント日でなければ何もしない
     const eventDay = await prisma.eventDay.findFirst({
       where: {
-        placeId: busPlace.id,
+        placeId: generalPlace.id,
         date: ymdToUtcDate(targetYmd),
         isActive: true,
       },
@@ -73,9 +67,9 @@ export async function GET(req: Request) {
       });
     }
 
-    // A-20 区画
+    // A-20 区画（rifu-main）
     const a20 = await prisma.spot.findFirst({
-      where: { placeId: busPlace.id, code: "A-20", isActive: true },
+      where: { placeId: generalPlace.id, code: "A-20", isActive: true },
       select: { id: true },
     });
 
@@ -87,12 +81,13 @@ export async function GET(req: Request) {
       });
     }
 
-    // 当日に A-20 を使う「バス＋追加普通車」予約があるか
+    // 当日に A-20 を使う「バス＋追加普通車」予約があるか。
+    // 予約自身の placeId は rifu-main-bus（クロスplace）なので placeId は条件に
+    // 入れず、spotId 単独で判定する。
     const a20BusUse = await prisma.reservation.findFirst({
       where: {
-        placeId: busPlace.id,
-        date: targetYmd,
         spotId: a20.id,
+        date: targetYmd,
         reservationType: "bus",
         hasExtraCar: true,
         status: { not: "CANCELED" },

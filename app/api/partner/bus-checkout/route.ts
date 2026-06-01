@@ -155,8 +155,23 @@ export async function POST(req: Request) {
     let slot = "BUS_LANE";
 
     if (hasExtraCar) {
+      // A-20 はバスplace ではなく一般lot「rifu-main」の区画（クロスplace参照）。
+      // 予約レコードの placeId はバスplaceのまま、spotId だけ rifu-main の A-20。
+      const generalPlace = await prisma.place.findFirst({
+        where: { slug: "rifu-main", isActive: true },
+        select: { id: true },
+      });
+
+      if (!generalPlace) {
+        return jsonError(
+          "一般駐車場（rifu-main）が見つかりません。",
+          500,
+          "general_place_not_found"
+        );
+      }
+
       const a20 = await prisma.spot.findFirst({
-        where: { placeId: place.id, code: "A-20", isActive: true },
+        where: { placeId: generalPlace.id, code: "A-20", isActive: true },
         select: { id: true, code: true },
       });
 
@@ -168,10 +183,11 @@ export async function POST(req: Request) {
         );
       }
 
-      // A-20 がその日すでに予約済み（CANCELED 以外）なら不可
+      // A-20 がその日すでに予約済み（CANCELED 以外）なら不可。
+      // 占有判定は spotId 単独（一般予約=placeId rifu-main / バス追加車=placeId
+      // rifu-main-bus の両方を取りこぼさないため、placeId は条件に入れない）。
       const a20Taken = await prisma.reservation.findFirst({
         where: {
-          placeId: place.id,
           spotId: a20.id,
           date,
           status: { not: "CANCELED" },
@@ -190,7 +206,7 @@ export async function POST(req: Request) {
         );
       }
 
-      spotId = a20.id;
+      spotId = a20.id; // rifu-main の A-20 spot id
       slot = "A-20";
     }
 
