@@ -56,3 +56,6 @@ import.log
 # VS Code SFTP credentials (contains plaintext password)
 .vscode/sftp.json
 .env*.local
+
+# Local one-off debug/diagnostic scripts (kept locally, not versioned)
+scripts/
