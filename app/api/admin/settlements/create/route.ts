@@ -5,6 +5,7 @@ import { NextResponse } from "next/server";
 import crypto from "crypto";
 import { prisma } from "@/lib/db";
 import { requireAdmin } from "@/lib/admin-auth";
+import { computeSettlementAmounts } from "@/lib/settlement-compute";
 
 async function readPostBody(req: Request) {
   const contentType = req.headers.get("content-type") ?? "";
@@ -110,38 +111,9 @@ export async function POST(req: Request) {
 
     const now = new Date();
 
-    // Payment スナップショット（ownerRateBps/agentRateBps/platformRateBps から
-    // 確定した owner/agent/platformAmount）を唯一の正とし、Settlement は Payment
-    // 集計から算出する。固定20%モデル（calcSettlementTotals）は使用しない。
-    const grossTotal = payments.reduce((sum, p) => sum + p.grossAmount, 0);
-
-    const totalOwnerAmount = payments.reduce(
-      (sum, p) => sum + p.ownerAmount,
-      0
-    );
-
-    const totalAgentAmount = payments.reduce(
-      (sum, p) => sum + (p.agentAmount ?? 0),
-      0
-    );
-
-    const totalPlatformAmount = payments.reduce(
-      (sum, p) => sum + p.platformAmount,
-      0
-    );
-
-    // 税抜/消費税の内訳（売上総額ベース。料率非依存の表示用）
-    const totalNet = Math.floor(grossTotal / 1.1);
-    const totalTax = grossTotal - totalNet;
-
-    // プラットフォーム手数料 = Payment 集計の platform 実額（料率準拠）
-    const platformGross = totalPlatformAmount;
-    const platformNet = Math.floor(platformGross / 1.1);
-    const platformTax = platformGross - platformNet;
-
-    // オーナー純額 = Payment 集計の owner 実額（料率準拠）。100%プラットフォーム
-    // なら 0、owner80/agent10/platform10 なら gross×80% 等、スナップショットに一致。
-    const ownerPayout = totalOwnerAmount;
+    // 金額計算は共通関数に一元化（Payment スナップショットを唯一の正とする集計）。
+    // 締め直しスクリプトも同じ関数を呼ぶため、計算がズレない。
+    const amounts = computeSettlementAmounts(payments);
 
     const settlement = await prisma.$transaction(async (tx) => {
       const createdSettlement = await tx.settlement.create({
@@ -156,25 +128,9 @@ export async function POST(req: Request) {
           status: "LOCKED",
           lockedAt: now,
 
-          paymentCount: payments.length,
           adjustmentCount: 0,
 
-          totalGrossAmount: grossTotal,
-          totalNetAmount: totalNet,
-          totalTaxAmount: totalTax,
-
-          platformFeeNet: platformNet,
-          platformFeeTax: platformTax,
-          platformFeeGross: platformGross,
-
-          ownerPayoutAmount: ownerPayout,
-
-          totalOwnerAmount,
-          totalAgentAmount,
-          totalPlatformAmount,
-
-          finalOwnerPayoutAmount: ownerPayout,
-          finalAgentPayoutAmount: totalAgentAmount,
+          ...amounts,
 
           createdAt: now,
           updatedAt: now,
