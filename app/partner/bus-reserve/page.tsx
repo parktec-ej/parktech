@@ -324,11 +324,16 @@ function PartnerBusReservePageInner() {
             </p>
           </div>
 
-          <form method="post" action="/api/partner/logout">
-            <button type="submit" style={logoutButtonStyle}>
-              ログアウト
-            </button>
-          </form>
+          <div style={headerActionsStyle}>
+            <a href="/partner/bus-reserve/list" style={listLinkStyle}>
+              予約一覧
+            </a>
+            <form method="post" action="/api/partner/logout">
+              <button type="submit" style={logoutButtonStyle}>
+                ログアウト
+              </button>
+            </form>
+          </div>
         </div>
 
         <div style={gridStyle}>
@@ -630,6 +635,24 @@ const logoutButtonStyle: React.CSSProperties = {
   color: "#111827",
   padding: "10px 14px",
   fontWeight: 700,
+};
+
+const headerActionsStyle: React.CSSProperties = {
+  display: "flex",
+  gap: 10,
+  alignItems: "center",
+  flexWrap: "wrap",
+};
+
+const listLinkStyle: React.CSSProperties = {
+  display: "inline-block",
+  border: "1px solid #111827",
+  borderRadius: 12,
+  background: "#111827",
+  color: "#fff",
+  padding: "10px 14px",
+  fontWeight: 800,
+  textDecoration: "none",
 };
 
 const gridStyle: React.CSSProperties = {
