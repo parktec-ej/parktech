@@ -5,6 +5,7 @@ import { stripe } from "@/lib/stripe";
 import { sendReservationCanceledMail } from "@/lib/mail";
 import { sendSlackNotification } from "@/lib/slack";
 import { calcCancellationPolicy } from "@/lib/settlement-math";
+import { isPaymentLocked } from "@/lib/settlement-lock";
 
 export const runtime = "nodejs";
 export const preferredRegion = "hnd1";
@@ -157,22 +158,29 @@ export async function POST(req: NextRequest) {
     });
 
     if (payment?.id && refundStatus === "SUCCEEDED") {
-      await prisma.payment.update({
-        where: {
-          id: payment.id,
-        },
-        data: {
-          refunded: true,
-          memo: [
-            "AUTO_REFUND",
-            `refundAmount=${policy.refundAmount}`,
-            stripeRefundId ? `stripeRefundId=${stripeRefundId}` : null,
-          ]
-            .filter(Boolean)
-            .join("\n"),
-          updatedAt: canceledAt,
-        },
-      });
+      // 締め済み（settlementLock=LOCKED / status=SETTLED）の Payment 行は税務上
+      // 不変とし、refunded/memo を書き換えない。返金事実は下の Adjustment（当月
+      // 反転計上）と Reservation.refundStatus に残す。締め前は従来どおり更新。
+      const locked = isPaymentLocked(payment);
+
+      if (!locked) {
+        await prisma.payment.update({
+          where: {
+            id: payment.id,
+          },
+          data: {
+            refunded: true,
+            memo: [
+              "AUTO_REFUND",
+              `refundAmount=${policy.refundAmount}`,
+              stripeRefundId ? `stripeRefundId=${stripeRefundId}` : null,
+            ]
+              .filter(Boolean)
+              .join("\n"),
+            updatedAt: canceledAt,
+          },
+        });
+      }
 
       const { ownerDeltaAmount, agentDeltaAmount, platformDeltaAmount } =
         calcDeltaAmounts(

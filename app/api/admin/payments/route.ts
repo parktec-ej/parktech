@@ -2,7 +2,7 @@ export const runtime = "nodejs";
 export const preferredRegion = "hnd1";
 
 import { NextResponse } from "next/server";
-import type { Prisma } from "@prisma/client";
+import type { Prisma, AdjustmentKind } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { getAdminSession } from "@/lib/admin-auth";
 
@@ -73,11 +73,23 @@ export async function GET(req: Request) {
         where.grossAmount = { ...(where.grossAmount as object), lte: n };
     }
 
+    // 返金の正準は REFUND系 Adjustment（締め後は Payment.refunded を立てないため、
+    // refunded フラグだけでなく Adjustment 存在も見て判定する）。
+    const REFUND_KINDS: AdjustmentKind[] = ["REFUND_FULL", "REFUND_PARTIAL"];
+
     if (status === "completed") {
-      where.refunded = false;
       where.status = { in: ["CONFIRMED", "SETTLED"] };
+      andConditions.push({
+        refunded: false,
+        Adjustment: { none: { kind: { in: REFUND_KINDS } } },
+      });
     } else if (status === "refunded") {
-      where.refunded = true;
+      andConditions.push({
+        OR: [
+          { refunded: true },
+          { Adjustment: { some: { kind: { in: REFUND_KINDS } } } },
+        ],
+      });
     } else if (status === "canceled") {
       andConditions.push({
         Reservation: { is: { status: "CANCELED" } },
@@ -147,6 +159,10 @@ export async function GET(req: Request) {
               checkOutAt: true,
             },
           },
+          Adjustment: {
+            where: { kind: { in: REFUND_KINDS } },
+            select: { id: true },
+          },
         },
       }),
     ]);
@@ -174,7 +190,10 @@ export async function GET(req: Request) {
               .toLocaleDateString("sv-SE", { timeZone: "Asia/Tokyo" })
           : null);
 
-      const displayStatus = p.refunded
+      // 締め前は Payment.refunded、締め後は REFUND系 Adjustment の存在で返金判定
+      const isRefunded = p.refunded || (p.Adjustment?.length ?? 0) > 0;
+
+      const displayStatus = isRefunded
         ? "返金"
         : p.Reservation?.status === "CANCELED"
         ? "キャンセル"
@@ -186,7 +205,7 @@ export async function GET(req: Request) {
         recognizedDate: p.recognizedDate,
         kind: p.kind,
         status: p.status,
-        refunded: p.refunded,
+        refunded: isRefunded,
         displayStatus,
         placeName: p.placeNameSnapshot,
         spotLabel: p.spotLabelSnapshot ?? p.spotCodeSnapshot ?? null,
