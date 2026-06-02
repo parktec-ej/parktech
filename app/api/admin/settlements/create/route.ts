@@ -5,7 +5,6 @@ import { NextResponse } from "next/server";
 import crypto from "crypto";
 import { prisma } from "@/lib/db";
 import { requireAdmin } from "@/lib/admin-auth";
-import { calcSettlementTotals } from "@/lib/settlement-math";
 
 async function readPostBody(req: Request) {
   const contentType = req.headers.get("content-type") ?? "";
@@ -111,15 +110,10 @@ export async function POST(req: Request) {
 
     const now = new Date();
 
+    // Payment スナップショット（ownerRateBps/agentRateBps/platformRateBps から
+    // 確定した owner/agent/platformAmount）を唯一の正とし、Settlement は Payment
+    // 集計から算出する。固定20%モデル（calcSettlementTotals）は使用しない。
     const grossTotal = payments.reduce((sum, p) => sum + p.grossAmount, 0);
-    const {
-      totalNet,
-      totalTax,
-      platformNet,
-      platformTax,
-      platformGross,
-      ownerPayout,
-    } = calcSettlementTotals(grossTotal);
 
     const totalOwnerAmount = payments.reduce(
       (sum, p) => sum + p.ownerAmount,
@@ -135,6 +129,19 @@ export async function POST(req: Request) {
       (sum, p) => sum + p.platformAmount,
       0
     );
+
+    // 税抜/消費税の内訳（売上総額ベース。料率非依存の表示用）
+    const totalNet = Math.floor(grossTotal / 1.1);
+    const totalTax = grossTotal - totalNet;
+
+    // プラットフォーム手数料 = Payment 集計の platform 実額（料率準拠）
+    const platformGross = totalPlatformAmount;
+    const platformNet = Math.floor(platformGross / 1.1);
+    const platformTax = platformGross - platformNet;
+
+    // オーナー純額 = Payment 集計の owner 実額（料率準拠）。100%プラットフォーム
+    // なら 0、owner80/agent10/platform10 なら gross×80% 等、スナップショットに一致。
+    const ownerPayout = totalOwnerAmount;
 
     const settlement = await prisma.$transaction(async (tx) => {
       const createdSettlement = await tx.settlement.create({
