@@ -328,6 +328,14 @@ function PartnerBusReservePageInner() {
             <a href="/partner/bus-reserve/list" style={listLinkStyle}>
               予約一覧
             </a>
+            <a
+              href="/bus-manual.pdf"
+              target="_blank"
+              rel="noopener"
+              style={manualLinkStyle}
+            >
+              📄 操作マニュアル
+            </a>
             <form method="post" action="/api/partner/logout">
               <button type="submit" style={logoutButtonStyle}>
                 ログアウト
@@ -652,6 +660,17 @@ const listLinkStyle: React.CSSProperties = {
   color: "#fff",
   padding: "10px 14px",
   fontWeight: 800,
+  textDecoration: "none",
+};
+
+const manualLinkStyle: React.CSSProperties = {
+  display: "inline-block",
+  border: "1px solid #d1d5db",
+  borderRadius: 12,
+  background: "#fff",
+  color: "#111827",
+  padding: "10px 14px",
+  fontWeight: 700,
   textDecoration: "none",
 };
 
