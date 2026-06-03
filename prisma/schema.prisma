@@ -814,6 +814,24 @@ model SnsPost {
   @@index([scheduledAt])
 }
 
+model SnsBroadcast {
+  id        String    @id @default(cuid())
+  caption   String
+  imageUrl  String?
+  toIg      Boolean   @default(true)
+  toFb      Boolean   @default(true)
+  fbPostId  String?
+  igPostId  String?
+  status    String    @default("draft") // draft / posted / partial / failed
+  error     String?
+  postedAt  DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([status])
+  @@index([createdAt])
+}
+
 model ScrapedPdf {
   id         String   @id @default(cuid())
   uafId      String   @unique
