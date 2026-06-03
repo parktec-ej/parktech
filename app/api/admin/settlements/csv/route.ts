@@ -28,7 +28,7 @@ function monthEndDate(month: string): Date {
   // month = "2026-05"
   const [y, m] = month.split("-").map(Number);
   // last day of that month in JST
-  return new Date(Date.UTC(y, m, 0, 15, 0, 0)); // UTC 15:00 = JST 00:00 next day - 1ms approx
+  return new Date(Date.UTC(y, m, 0, 0, 0, 0)); // 月末日 JST(00:00 UTC = 当日09:00 JST)
 }
 
 function monthLabel(month: string): string {
@@ -145,7 +145,7 @@ async function journalCsv(month: string): Promise<Response> {
       debitAmount: p.grossAmount,
       credit: "売上高",
       creditSub: "",
-      creditTax: "課税売上10%",
+      creditTax: "",
       creditAmount: p.grossAmount,
       memo: memoBase,
     });
@@ -156,7 +156,7 @@ async function journalCsv(month: string): Promise<Response> {
         date: p.recognizedDate,
         debit: "業務委託費",
         debitSub: "",
-        debitTax: "課対仕入10%",
+        debitTax: "",
         debitAmount: p.ownerAmount,
         credit: "未払金",
         creditSub: "",
@@ -172,7 +172,7 @@ async function journalCsv(month: string): Promise<Response> {
         date: p.recognizedDate,
         debit: "業務委託費",
         debitSub: "",
-        debitTax: "課対仕入10%",
+        debitTax: "",
         debitAmount: p.agentAmount,
         credit: "未払金",
         creditSub: "",
@@ -189,7 +189,7 @@ async function journalCsv(month: string): Promise<Response> {
       date: monthEnd,
       debit: "支払手数料",
       debitSub: "",
-      debitTax: "課対仕入10%",
+      debitTax: "",
       debitAmount: stripeFeeTotal,
       credit: "売掛金",
       creditSub: "",
