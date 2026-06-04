@@ -130,13 +130,18 @@ function ReservePageInner() {
     [searchParams]
   );
 
+  const queryDate = useMemo(() => {
+    const d = String(searchParams.get("date") ?? "").trim();
+    return /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : "";
+  }, [searchParams]);
+
   const hasPlaceQuery = Boolean(queryPlaceId || queryPlaceSlug);
 
   const [places, setPlaces] = useState<Place[]>([]);
   const [placesLoading, setPlacesLoading] = useState(true);
   const [placesErr, setPlacesErr] = useState("");
 
-  const [date, setDate] = useState(ymdTodayJst());
+  const [date, setDate] = useState(queryDate || ymdTodayJst());
   const [place, setPlace] = useState<Place | null>(null);
   const [spots, setSpots] = useState<Spot[]>([]);
   const [selectedSpotId, setSelectedSpotId] = useState("");

@@ -24,10 +24,13 @@ export async function generateMetadata({
 
 export default async function PlacePage({
   params,
+  searchParams,
 }: {
   params: Promise<{ slug: string }>;
+  searchParams: Promise<{ date?: string }>;
 }) {
   const { slug } = await params;
+  const sp = await searchParams;
 
   const place = await prisma.place.findUnique({
     where: { slug },
@@ -38,5 +41,14 @@ export default async function PlacePage({
     notFound();
   }
 
-  redirect(`/reserve?placeSlug=${encodeURIComponent(slug)}`);
+  const dateParam =
+    typeof sp.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(sp.date)
+      ? sp.date
+      : null;
+
+  const target = dateParam
+    ? `/reserve?placeSlug=${encodeURIComponent(slug)}&date=${dateParam}`
+    : `/reserve?placeSlug=${encodeURIComponent(slug)}`;
+
+  redirect(target);
 }
