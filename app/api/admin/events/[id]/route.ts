@@ -5,6 +5,10 @@ import { NextResponse } from "next/server";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { getAdminSession } from "@/lib/admin-auth";
+import {
+  syncEventDayFromEvent,
+  deactivateStaleEventDay,
+} from "@/lib/event-day-sync";
 
 const ALLOWED_VENUE = ["sekisui_arena", "qanda_stadium"] as const;
 type Venue = (typeof ALLOWED_VENUE)[number];
@@ -185,6 +189,14 @@ export async function PATCH(
     }
 
     const updated = await prisma.event.update({ where: { id }, data });
+
+    // 日付が変わった場合は旧日付の予約日を閉じる
+    if (nextStartAt && existing.placeId) {
+      await deactivateStaleEventDay(existing.placeId, existing.startAt, nextStartAt);
+    }
+    // 料金・予約開始タイミング・公開状態を EventDay に反映
+    await syncEventDayFromEvent(id);
+
     return NextResponse.json({ ok: true, event: updated });
   } catch (error) {
     console.error("[admin/events/[id]][PATCH] error:", error);

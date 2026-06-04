@@ -5,6 +5,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getAdminSession } from "@/lib/admin-auth";
 import { sendSlackNotification } from "@/lib/slack";
+import { syncEventDayFromEvent } from "@/lib/event-day-sync";
 
 const ALLOWED_TARGETS = ["published", "approved"] as const;
 type Target = (typeof ALLOWED_TARGETS)[number];
@@ -59,6 +60,9 @@ export async function POST(
       where: { id },
       data: { status: targetIn },
     });
+
+    // 公開/非公開に合わせて予約日(EventDay)を自動同期
+    await syncEventDayFromEvent(id);
 
     await sendSlackNotification(
       [

@@ -647,6 +647,9 @@ export default function EventDetailPage() {
               ))}
             </select>
           </Field>
+          <div style={{ fontSize: 12, color: "#6b7280", marginTop: 6 }}>
+            公開すると、この日付が予約日として自動で解放されます（料金・予約開始タイミングも反映）。
+          </div>
 
           {isCustomBooking ? (
             <Field label="予約開始日時（カスタム）">
