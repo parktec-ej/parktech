@@ -78,6 +78,13 @@ function slotStatusLabel(spot: Spot): string {
   }
 }
 
+function slotDisabledStyle(spot: Spot) {
+  if (spot.status === "PENDING_EVENT") return styles.slotButtonPending;
+  if (spot.status === "NOT_OPEN") return styles.slotButtonNotOpen;
+  // RESERVED / CLOSED / その他 は従来のグレー
+  return styles.slotButtonDisabled;
+}
+
 async function fetchJson(input: RequestInfo | URL, init?: RequestInit) {
   const res = await fetch(input, init);
   const json = await res.json().catch(() => null);
@@ -427,7 +434,7 @@ function ReservePageInner() {
           <div style={styles.labelRow}>
             <label style={styles.label}>区画</label>
             <span style={styles.legend}>
-              黒: 選択中 / 白: 空き / グレー: 予約不可
+              白: 空き / 黄: 開催待ち / 青: 予約解放待ち / グレー: 予約済み / 黒: 選択中
             </span>
           </div>
 
@@ -444,8 +451,8 @@ function ReservePageInner() {
                   onClick={() => setSelectedSpotId(spot.id)}
                   style={{
                     ...styles.slotButton,
+                    ...(disabled ? slotDisabledStyle(spot) : {}),
                     ...(selected ? styles.slotButtonSelected : {}),
-                    ...(disabled ? styles.slotButtonDisabled : {}),
                   }}
                 >
                   <div style={styles.slotCode}>{spot.label || spot.code}</div>
@@ -648,6 +655,20 @@ const styles: Record<string, React.CSSProperties> = {
     background: "#d1d5db",
     color: "#4b5563",
     borderColor: "#d1d5db",
+    cursor: "not-allowed",
+  },
+
+  slotButtonPending: {
+    background: "#fef3c7",
+    color: "#92400e",
+    borderColor: "#fde68a",
+    cursor: "not-allowed",
+  },
+
+  slotButtonNotOpen: {
+    background: "#dbeafe",
+    color: "#1e40af",
+    borderColor: "#bfdbfe",
     cursor: "not-allowed",
   },
 
