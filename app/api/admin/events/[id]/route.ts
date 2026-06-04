@@ -168,14 +168,21 @@ export async function PATCH(
       data.bookingStartTime = nextBookingStartTime;
     }
 
-    // Recompute bookingStartAt when relevant inputs changed
-    if ("bookingStartAt" in body) {
-      data.bookingStartAt = parseDateOrNull(body.bookingStartAt);
-    } else if (
-      nextBookingStartDays !== undefined ||
-      nextStartAt !== null ||
-      nextBookingStartTime !== undefined
-    ) {
+    // bookingStartAt の決定（予約系フィールドが来たときだけ更新）:
+    //  1) カスタム日時(body.bookingStartAt が非null) → それを採用
+    //  2) プリセット(bookingStartDays = N日前) → startAt から再計算
+    //  3) どちらも無ければ null
+    // ※ 編集画面はプリセット選択時に bookingStartAt:null を送るため、
+    //   「"bookingStartAt" in body なら無条件 null」だと再計算されない（バグ）。
+    const touchesBooking =
+      "bookingStartAt" in body ||
+      "bookingStartDays" in body ||
+      "bookingStartTime" in body ||
+      nextStartAt !== null;
+
+    if (touchesBooking) {
+      const explicitBookingStartAt =
+        "bookingStartAt" in body ? parseDateOrNull(body.bookingStartAt) : null;
       const sAt = nextStartAt ?? existing.startAt;
       const days =
         nextBookingStartDays !== undefined
@@ -185,7 +192,14 @@ export async function PATCH(
         nextBookingStartTime !== undefined
           ? nextBookingStartTime
           : existing.bookingStartTime;
-      data.bookingStartAt = computeBookingStartAt(sAt, days, time);
+
+      if (explicitBookingStartAt) {
+        data.bookingStartAt = explicitBookingStartAt; // カスタム日時を優先
+      } else if (days != null) {
+        data.bookingStartAt = computeBookingStartAt(sAt, days, time); // プリセット再計算
+      } else {
+        data.bookingStartAt = null; // 未設定 / カスタム空
+      }
     }
 
     const updated = await prisma.event.update({ where: { id }, data });
