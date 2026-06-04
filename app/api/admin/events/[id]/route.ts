@@ -190,9 +190,14 @@ export async function PATCH(
 
     const updated = await prisma.event.update({ where: { id }, data });
 
-    // 日付が変わった場合は旧日付の予約日を閉じる
-    if (nextStartAt && existing.placeId) {
-      await deactivateStaleEventDay(existing.placeId, existing.startAt, nextStartAt);
+    // 日付が変わった場合は旧日付の予約日を閉じる（place直結・VenueGroup両対応）
+    if (nextStartAt) {
+      await deactivateStaleEventDay(
+        existing.placeId,
+        existing.venueGroupId,
+        existing.startAt,
+        nextStartAt
+      );
     }
     // 料金・予約開始タイミング・公開状態を EventDay に反映
     await syncEventDayFromEvent(id);
