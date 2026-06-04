@@ -310,16 +310,37 @@ export async function GET(req: NextRequest) {
         eventDayActive
       );
 
+      const isReserved =
+        reservedSpotIds.has(spot.id) || reservedSlots.has(normalizedCode);
+
+      const isAvailable =
+        reservationOpen.ok && modeAllowsReservation && !isReserved;
+
+      // 予約不可の「理由」を表す状態
+      let status:
+        | "AVAILABLE"
+        | "RESERVED"
+        | "NOT_OPEN"
+        | "PENDING_EVENT"
+        | "CLOSED";
+      if (isReserved) {
+        status = "RESERVED"; // 実際に予約済み
+      } else if (!reservationOpen.ok) {
+        status = "NOT_OPEN"; // 予約開始時刻より前（解放日待ち）
+      } else if (!modeAllowsReservation) {
+        status =
+          effectiveMode === "EVENT_ONLY" ? "PENDING_EVENT" : "CLOSED";
+      } else {
+        status = "AVAILABLE";
+      }
+
       return {
         id: spot.id,
         code: spot.code,
         label: spot.label,
         mode: effectiveMode,
-        isAvailable:
-          reservationOpen.ok &&
-          modeAllowsReservation &&
-          !reservedSpotIds.has(spot.id) &&
-          !reservedSlots.has(normalizedCode),
+        isAvailable,
+        status,
       };
     });
 

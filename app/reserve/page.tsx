@@ -10,6 +10,13 @@ type Spot = {
   label: string | null;
   mode: string | null;
   isAvailable: boolean;
+  status?:
+    | "AVAILABLE"
+    | "RESERVED"
+    | "NOT_OPEN"
+    | "PENDING_EVENT"
+    | "CLOSED"
+    | string;
 };
 
 type Place = {
@@ -52,6 +59,23 @@ function ymdTodayJst() {
   return new Date().toLocaleDateString("sv-SE", {
     timeZone: "Asia/Tokyo",
   });
+}
+
+function slotStatusLabel(spot: Spot): string {
+  switch (spot.status) {
+    case "RESERVED":
+      return "予約済み";
+    case "NOT_OPEN":
+      return "予約解放待ち";
+    case "PENDING_EVENT":
+      return "開催待ち";
+    case "CLOSED":
+      return "予約不可";
+    case "AVAILABLE":
+      return "予約可能";
+    default:
+      return spot.isAvailable ? "予約可能" : "予約不可";
+  }
 }
 
 async function fetchJson(input: RequestInfo | URL, init?: RequestInit) {
@@ -403,7 +427,7 @@ function ReservePageInner() {
           <div style={styles.labelRow}>
             <label style={styles.label}>区画</label>
             <span style={styles.legend}>
-              黒: 選択中 / 白: 空き / グレー: 予約済み
+              黒: 選択中 / 白: 空き / グレー: 予約不可
             </span>
           </div>
 
@@ -426,7 +450,7 @@ function ReservePageInner() {
                 >
                   <div style={styles.slotCode}>{spot.label || spot.code}</div>
                   <div style={styles.slotSub}>
-                    {disabled ? "予約済み" : selected ? "選択中" : "予約可能"}
+                    {selected ? "選択中" : slotStatusLabel(spot)}
                   </div>
                 </button>
               );
