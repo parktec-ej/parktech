@@ -9,10 +9,6 @@
       "schedule": "0 0 * * *"
     },
     {
-      "path": "/api/cron/competitor-price",
-      "schedule": "0 0 * * 1"
-    },
-    {
       "path": "/api/cron/sns-scheduler",
       "schedule": "0 * * * *"
     },
