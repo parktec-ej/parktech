@@ -858,3 +858,13 @@ model VenueGroupParking {
   @@index([venueGroupId])
   @@index([parkingSlug])
 }
+
+// 業務記録システム: 音声テキスト→構造化→Notion保存 の生ログ
+model MemoLog {
+  id        String   @id @default(cuid())
+  category  String
+  rawText   String
+  parsed    Json?
+  notionIds String[]
+  createdAt DateTime @default(now())
+}
