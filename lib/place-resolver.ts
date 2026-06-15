@@ -24,11 +24,18 @@ export async function resolveActivePlace(input?: {
   } as const;
 
   if (placeId) {
-    const place = await prisma.place.findFirst({
+    const byId = await prisma.place.findFirst({
       where: { id: placeId, isActive: true },
       select,
     });
-    if (place) return place;
+    if (byId) return byId;
+
+    // placeId にスラッグが渡ってくるケース（gate → hourly-start / hourly-checkout 等）に対応
+    const byIdAsSlug = await prisma.place.findFirst({
+      where: { slug: placeId, isActive: true },
+      select,
+    });
+    if (byIdAsSlug) return byIdAsSlug;
   }
 
   if (placeSlug) {
