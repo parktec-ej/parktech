@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 function normalizeDate(input: string) {
@@ -44,6 +44,9 @@ function HourlyStartPageInner() {
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
   const [message, setMessage] = useState("");
+  const [placeName, setPlaceName] = useState("");
+  const [hourlyYen, setHourlyYen] = useState<number | null>(null);
+  const [dailyYen, setDailyYen] = useState<number | null>(null);
 
   const canSubmit = useMemo(() => {
     return (
@@ -54,6 +57,19 @@ function HourlyStartPageInner() {
       normalizePhone(phone).length >= 10
     );
   }, [placeId, slot, date, plate, phone]);
+
+  useEffect(() => {
+    if (!placeId || !slot) return;
+    const qs = new URLSearchParams({ placeId, slot, date });
+    fetch(`/api/gate-status?${qs.toString()}`, { cache: "no-store" })
+      .then((r) => r.json())
+      .then((j) => {
+        if (j?.placeName) setPlaceName(j.placeName);
+        if (typeof j?.hourlyYen === "number") setHourlyYen(j.hourlyYen);
+        if (typeof j?.dailyYen === "number") setDailyYen(j.dailyYen);
+      })
+      .catch(() => {});
+  }, [placeId, slot, date]);
 
   async function handleStart() {
     if (!canSubmit || loading) return;
@@ -98,9 +114,17 @@ function HourlyStartPageInner() {
       <div style={titleStyle}>時間貸し入庫</div>
 
       <div style={cardStyle}>
-        <div style={infoRowStyle}>場所: {placeId || "-"}</div>
+        <div style={infoRowStyle}>場所: {placeName || placeId || "-"}</div>
         <div style={infoRowStyle}>区画: {slot || "-"}</div>
         <div style={infoRowStyle}>日付: {date || "-"}</div>
+        {hourlyYen != null ? (
+          <div style={infoRowStyle}>
+            料金: 1時間 {hourlyYen.toLocaleString()}円
+            {dailyYen != null
+              ? ` / 1日最大 ${dailyYen.toLocaleString()}円`
+              : ""}
+          </div>
+        ) : null}
       </div>
 
       {done ? (
@@ -108,7 +132,7 @@ function HourlyStartPageInner() {
           <div style={{ fontSize: 22, fontWeight: 800, marginBottom: 12 }}>
             入庫を受け付けました。
           </div>
-          <div style={infoRowStyle}>場所: {placeId}</div>
+          <div style={infoRowStyle}>場所: {placeName || placeId}</div>
           <div style={infoRowStyle}>区画: {slot}</div>
           <div style={infoRowStyle}>日付: {date}</div>
           <div style={infoRowStyle}>車番: {plate}</div>

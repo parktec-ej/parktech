@@ -4,7 +4,7 @@ export const preferredRegion = "hnd1";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { resolveActivePlace } from "@/lib/place-resolver";
-import { ymdToUtcDate } from "@/lib/pricing-core";
+import { ymdToUtcDate, getHourlyRate, getDailyRate } from "@/lib/pricing-core";
 
 type OperationMode =
   | "RESERVATION_ONLY"
@@ -139,6 +139,9 @@ export async function GET(req: NextRequest) {
       return jsonError("place が見つかりません", 404, "place_not_found");
     }
 
+    const hourlyYen = await getHourlyRate(place.id, date);
+    const dailyYen = await getDailyRate(place.id, date);
+
     const spotsRaw = await prisma.spot.findMany({
       where: {
         placeId: place.id,
@@ -194,6 +197,8 @@ export async function GET(req: NextRequest) {
         placeId: place.id,
         placeSlug: place.slug,
         placeName: place.name,
+        hourlyYen,
+        dailyYen,
         spotId: spot.id,
         spotLabel: spot.label ?? spot.code,
         slot: spot.code,
@@ -234,6 +239,8 @@ export async function GET(req: NextRequest) {
           placeId: place.id,
           placeSlug: place.slug,
           placeName: place.name,
+        hourlyYen,
+        dailyYen,
           spotId: spot.id,
           spotLabel: spot.label ?? spot.code,
           slot: spot.code,
@@ -256,6 +263,8 @@ export async function GET(req: NextRequest) {
           placeId: place.id,
           placeSlug: place.slug,
           placeName: place.name,
+        hourlyYen,
+        dailyYen,
           spotId: spot.id,
           spotLabel: spot.label ?? spot.code,
           slot: spot.code,
@@ -278,6 +287,8 @@ export async function GET(req: NextRequest) {
           placeId: place.id,
           placeSlug: place.slug,
           placeName: place.name,
+        hourlyYen,
+        dailyYen,
           spotId: spot.id,
           spotLabel: spot.label ?? spot.code,
           slot: spot.code,
@@ -299,6 +310,8 @@ export async function GET(req: NextRequest) {
         placeId: place.id,
         placeSlug: place.slug,
         placeName: place.name,
+        hourlyYen,
+        dailyYen,
         spotId: spot.id,
         spotLabel: spot.label ?? spot.code,
         slot: spot.code,
@@ -338,6 +351,8 @@ export async function GET(req: NextRequest) {
         placeId: place.id,
         placeSlug: place.slug,
         placeName: place.name,
+        hourlyYen,
+        dailyYen,
         spotId: spot.id,
         spotLabel: spot.label ?? spot.code,
         slot: spot.code,
@@ -359,6 +374,8 @@ export async function GET(req: NextRequest) {
         placeId: place.id,
         placeSlug: place.slug,
         placeName: place.name,
+        hourlyYen,
+        dailyYen,
         spotId: spot.id,
         spotLabel: spot.label ?? spot.code,
         slot: spot.code,
@@ -377,6 +394,8 @@ export async function GET(req: NextRequest) {
       placeId: place.id,
       placeSlug: place.slug,
       placeName: place.name,
+      hourlyYen,
+      dailyYen,
       spotId: spot.id,
       spotLabel: spot.label ?? spot.code,
       slot: spot.code,

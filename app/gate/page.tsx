@@ -29,6 +29,8 @@ type GateResponse = {
   placeId?: string;
   placeSlug?: string;
   placeName?: string;
+  hourlyYen?: number;
+  dailyYen?: number;
   spotId?: string;
   spotLabel?: string;
   slot?: string;
@@ -140,6 +142,8 @@ function GateInner() {
   const placeName = data?.placeName ?? resolvedPlaceId;
   const spotLabel = data?.spotLabel ?? resolvedSlot;
   const mode = data?.mode ?? "unknown";
+  const hourlyYen = data?.hourlyYen ?? null;
+  const dailyYen = data?.dailyYen ?? null;
 
   const checkinUrl = `/checkin?placeId=${encodeURIComponent(
     resolvedPlaceId
@@ -343,6 +347,14 @@ function GateInner() {
           <div style={actionButtonSubStyle}>
             {canUseHourly ? "今から利用を開始" : "現在は利用できません"}
           </div>
+          {hourlyYen != null ? (
+            <div style={actionButtonPriceStyle}>
+              1時間 {hourlyYen.toLocaleString()}円
+              {dailyYen != null
+                ? ` ・ 1日最大 ${dailyYen.toLocaleString()}円`
+                : ""}
+            </div>
+          ) : null}
         </button>
 
         <button
@@ -561,4 +573,10 @@ const secondaryButtonStyle: React.CSSProperties = {
   color: "#111",
   fontWeight: 700,
   cursor: "pointer",
+};
+
+const actionButtonPriceStyle: React.CSSProperties = {
+  marginTop: 8,
+  fontSize: 16,
+  fontWeight: 800,
 };
