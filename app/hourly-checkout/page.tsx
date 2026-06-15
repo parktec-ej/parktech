@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 function ymdTodayJst() {
@@ -70,13 +70,27 @@ function HourlyCheckoutPageInner() {
   const [payLoading, setPayLoading] = useState(false);
   const [error, setError] = useState("");
   const [result, setResult] = useState<HourlyCheckoutCalcResponse | null>(null);
+  const [placeName, setPlaceName] = useState("");
+  const [confirmed, setConfirmed] = useState(false);
 
   const missingParams = useMemo(() => {
     return !placeId || !slot;
   }, [placeId, slot]);
 
+  useEffect(() => {
+    if (!placeId || !slot) return;
+    const qs = new URLSearchParams({ placeId, slot, date });
+    fetch(`/api/gate-status?${qs.toString()}`, { cache: "no-store" })
+      .then((r) => r.json())
+      .then((j) => {
+        if (j?.placeName) setPlaceName(j.placeName);
+      })
+      .catch(() => {});
+  }, [placeId, slot, date]);
+
   async function handlePreview() {
     setError("");
+    setConfirmed(false);
     setCalcLoading(true);
 
     try {
@@ -157,7 +171,7 @@ function HourlyCheckoutPageInner() {
       ) : (
         <>
           <div style={cardStyle}>
-            <p style={rowStyle}>場所: {placeId}</p>
+            <p style={rowStyle}>場所: {placeName || placeId}</p>
             <p style={rowStyle}>区画: {slot}</p>
             <p style={rowStyle}>日付: {date}</p>
           </div>
@@ -206,6 +220,21 @@ function HourlyCheckoutPageInner() {
                 </p>
               </div>
 
+              {!result.alreadyPaid ? (
+                <div style={cardStyle}>
+                  <p style={{ ...rowStyle, fontWeight: 800, marginBottom: 8 }}>
+                    登録内容の確認
+                  </p>
+                  <p style={rowStyle}>車番: {result.session?.plate ?? "-"}</p>
+                  <p style={rowStyle}>
+                    電話番号: {result.session?.phone ?? "-"}
+                  </p>
+                  {result.session?.customerName ? (
+                    <p style={rowStyle}>氏名: {result.session.customerName}</p>
+                  ) : null}
+                </div>
+              ) : null}
+
               <div style={{ display: "grid", gap: 12 }}>
                 {!result.alreadyPaid ? (
                   <div style={noticeStyle}>
@@ -214,13 +243,26 @@ function HourlyCheckoutPageInner() {
                 ) : null}
 
                 {!result.alreadyPaid ? (
+                  <label style={confirmRowStyle}>
+                    <input
+                      type="checkbox"
+                      checked={confirmed}
+                      onChange={(e) => setConfirmed(e.target.checked)}
+                      style={{ width: 20, height: 20, flexShrink: 0 }}
+                    />
+                    <span>上記の内容で精算します</span>
+                  </label>
+                ) : null}
+
+                {!result.alreadyPaid ? (
                   <button
                     onClick={handleStripeCheckout}
-                    disabled={payLoading}
+                    disabled={payLoading || !confirmed}
                     style={{
                       ...primaryButtonStyle,
-                      opacity: payLoading ? 0.7 : 1,
-                      cursor: payLoading ? "not-allowed" : "pointer",
+                      opacity: payLoading || !confirmed ? 0.5 : 1,
+                      cursor:
+                        payLoading || !confirmed ? "not-allowed" : "pointer",
                     }}
                   >
                     {payLoading ? "Stripeへ接続中..." : "Stripeで精算する"}
@@ -228,7 +270,10 @@ function HourlyCheckoutPageInner() {
                 ) : null}
 
                 <button
-                  onClick={() => setResult(null)}
+                  onClick={() => {
+                    setResult(null);
+                    setConfirmed(false);
+                  }}
                   disabled={payLoading}
                   style={secondaryButtonStyle}
                 >
@@ -337,4 +382,13 @@ const secondaryButtonStyle: React.CSSProperties = {
   color: "#111",
   fontWeight: 700,
   cursor: "pointer",
+};
+
+const confirmRowStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 10,
+  fontSize: 15,
+  fontWeight: 700,
+  padding: "4px 2px",
 };
