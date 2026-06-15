@@ -36,7 +36,6 @@ function HourlyStartPageInner() {
   const date = normalizeDate(searchParams.get("date") ?? ymdTodayJst());
 
   const gateUrl = `/gate?placeId=${encodeURIComponent(placeId)}&slot=${encodeURIComponent(slot)}&date=${encodeURIComponent(date)}`;
-  const hourlyCheckoutUrl = `/hourly-checkout?placeId=${encodeURIComponent(placeId)}&slot=${encodeURIComponent(slot)}&date=${encodeURIComponent(date)}`;
 
   const [plate, setPlate] = useState("");
   const [phone, setPhone] = useState("");
@@ -47,6 +46,7 @@ function HourlyStartPageInner() {
   const [placeName, setPlaceName] = useState("");
   const [hourlyYen, setHourlyYen] = useState<number | null>(null);
   const [dailyYen, setDailyYen] = useState<number | null>(null);
+  const [closed, setClosed] = useState(false);
 
   const canSubmit = useMemo(() => {
     return (
@@ -109,6 +109,15 @@ function HourlyStartPageInner() {
     }
   }
 
+  function handleClose() {
+    // QRから開いたタブは window.close() がブロックされる場合が多いため、
+    // 試行しつつ、閉じられない場合に備えて完了メッセージを表示する
+    try {
+      window.close();
+    } catch {}
+    setClosed(true);
+  }
+
   return (
     <main style={pageStyle}>
       <div style={titleStyle}>時間貸し入庫</div>
@@ -128,37 +137,41 @@ function HourlyStartPageInner() {
       </div>
 
       {done ? (
-        <div style={cardStyle}>
-          <div style={{ fontSize: 22, fontWeight: 800, marginBottom: 12 }}>
-            入庫を受け付けました。
+        closed ? (
+          <div style={cardStyle}>
+            <div style={{ fontSize: 22, fontWeight: 800, marginBottom: 12 }}>
+              ご利用ありがとうございます。
+            </div>
+            <div style={infoRowStyle}>このページは閉じて構いません。</div>
           </div>
-          <div style={infoRowStyle}>場所: {placeName || placeId}</div>
-          <div style={infoRowStyle}>区画: {slot}</div>
-          <div style={infoRowStyle}>日付: {date}</div>
-          <div style={infoRowStyle}>車番: {plate}</div>
-          <div style={infoRowStyle}>電話: {normalizePhone(phone)}</div>
-          {customerName.trim() ? (
-            <div style={infoRowStyle}>氏名: {customerName.trim()}</div>
-          ) : null}
+        ) : (
+          <div style={cardStyle}>
+            <div style={{ fontSize: 22, fontWeight: 800, marginBottom: 12 }}>
+              入庫を受け付けました。
+            </div>
+            <div style={noticeStyle}>
+              出庫される時は、再度QRコードを読み込んで精算してください。
+            </div>
+            <div style={infoRowStyle}>場所: {placeName || placeId}</div>
+            <div style={infoRowStyle}>区画: {slot}</div>
+            <div style={infoRowStyle}>日付: {date}</div>
+            <div style={infoRowStyle}>車番: {plate}</div>
+            <div style={infoRowStyle}>電話: {normalizePhone(phone)}</div>
+            {customerName.trim() ? (
+              <div style={infoRowStyle}>氏名: {customerName.trim()}</div>
+            ) : null}
 
-          <div style={{ display: "grid", gap: 12, marginTop: 16 }}>
-            <button
-              type="button"
-              onClick={() => router.push(hourlyCheckoutUrl)}
-              style={primaryButtonStyle}
-            >
-              精算画面へ
-            </button>
-
-            <button
-              type="button"
-              onClick={() => router.push(gateUrl)}
-              style={secondaryButtonStyle}
-            >
-              gateへ戻る
-            </button>
+            <div style={{ display: "grid", gap: 12, marginTop: 16 }}>
+              <button
+                type="button"
+                onClick={handleClose}
+                style={primaryButtonStyle}
+              >
+                閉じる
+              </button>
+            </div>
           </div>
-        </div>
+        )
       ) : (
         <>
           <label style={labelStyle}>
