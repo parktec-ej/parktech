@@ -46,6 +46,13 @@ export async function resolveActivePlace(input?: {
     if (place) return place;
   }
 
+  // 識別子（placeId/placeSlug）が指定されたのに解決できなかった場合は、
+  // 誤った place への書き込みを防ぐため null を返す（呼び出し側は place_not_found）。
+  if (placeId || placeSlug) {
+    return null;
+  }
+
+  // 識別子が一切指定されていない場合のみ、従来どおり最古の有効 place を返す。
   return prisma.place.findFirst({
     where: { isActive: true },
     orderBy: { createdAt: "asc" },
