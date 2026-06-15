@@ -244,7 +244,7 @@ ${extra}
 </div>
 
 <div class="sec">
-<div>発行者: パークテック イーストジャパン株式会社</div>
+<div>発行者: パークテックイーストジャパン</div>
 <div>登録番号: T5810943607466</div>
 <div>決済ID: ${paymentRef}</div>
 <div>発行日時: ${formatDate(new Date())}</div>

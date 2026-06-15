@@ -11,7 +11,7 @@ import crypto from "crypto";
 export const runtime = "nodejs";
 
 const ISSUER_NAME =
-  process.env.ISSUER_NAME || "パークテック イーストジャパン";
+  process.env.ISSUER_NAME || "パークテックイーストジャパン";
 const ISSUER_INVOICE_NO =
   process.env.ISSUER_INVOICE_NO || "T5810943607466";
 
