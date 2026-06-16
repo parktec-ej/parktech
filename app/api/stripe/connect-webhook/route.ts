@@ -13,11 +13,12 @@
 import { NextResponse } from "next/server";
 import { headers } from "next/headers";
 import { prisma } from "@/lib/db";
+import { stripe } from "@/lib/stripe";
 import Stripe from "stripe";
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
 const CONNECT_WEBHOOK_SECRET = process.env.STRIPE_CONNECT_WEBHOOK_SECRET;
 
+export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 export const preferredRegion = "hnd1";
 
