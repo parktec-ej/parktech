@@ -144,9 +144,9 @@ export async function GET(req: Request) {
     const url = new URL(req.url);
 
     const placeId = String(url.searchParams.get("placeId") ?? "").trim();
-    const date = normalizeDate(
-      String(url.searchParams.get("date") ?? ymdTodayJst()).trim()
-    );
+    const rawDate = String(url.searchParams.get("date") ?? ymdTodayJst()).trim();
+    const isAllDates = rawDate.toUpperCase() === "ALL" || rawDate === "";
+    const date = isAllDates ? "" : normalizeDate(rawDate);
     const status = String(url.searchParams.get("status") ?? "ALL").trim();
     const q = String(url.searchParams.get("q") ?? "").trim();
     const sort = String(url.searchParams.get("sort") ?? "slot_asc").trim();
@@ -176,10 +176,7 @@ export async function GET(req: Request) {
     }
 
     const reservations = await prisma.reservation.findMany({
-      where: {
-        placeId,
-        date,
-      },
+      where: isAllDates ? { placeId } : { placeId, date },
       orderBy: [{ createdAt: "desc" }],
       select: {
         id: true,
@@ -296,7 +293,7 @@ export async function GET(req: Request) {
     return NextResponse.json({
       ok: true,
       place,
-      date,
+      date: isAllDates ? "ALL" : date,
       filters: {
         status,
         q,

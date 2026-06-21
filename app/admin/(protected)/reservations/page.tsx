@@ -162,6 +162,13 @@ function AdminReservationsPageInner() {
     [searchParams]
   );
 
+  // バス Place（slug が -bus で終わる）は日付選択なし・全日程表示
+  const selectedPlace = useMemo(
+    () => places.find((p) => p.id === placeId) ?? null,
+    [places, placeId]
+  );
+  const isBusPlace = (selectedPlace?.slug ?? "").endsWith("-bus");
+
   async function loadPlaces() {
     setPlacesLoading(true);
     setPlacesErr("");
@@ -228,9 +235,13 @@ function AdminReservationsPageInner() {
     setErr("");
 
     try {
+      const targetPlace = places.find((p) => p.id === target.placeId);
+      const isBus = (targetPlace?.slug ?? "").endsWith("-bus");
+      const dateParam = isBus ? "ALL" : target.date;
+
       const params = new URLSearchParams({
         placeId: target.placeId,
-        date: target.date,
+        date: dateParam,
         status: target.status,
         sort: target.sort,
       });
@@ -475,17 +486,31 @@ function AdminReservationsPageInner() {
             <div style={{ fontSize: 12, color: "#666", marginBottom: 6 }}>
               日付
             </div>
-            <input
-              type="date"
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-              style={{
-                width: "100%",
-                padding: 10,
-                borderRadius: 10,
-                border: "1px solid #d1d5db",
-              }}
-            />
+            {isBusPlace ? (
+              <div
+                style={{
+                  padding: 10,
+                  borderRadius: 10,
+                  border: "1px solid #d1d5db",
+                  background: "#f9fafb",
+                  color: "#666",
+                }}
+              >
+                全日程を表示
+              </div>
+            ) : (
+              <input
+                type="date"
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+                style={{
+                  width: "100%",
+                  padding: 10,
+                  borderRadius: 10,
+                  border: "1px solid #d1d5db",
+                }}
+              />
+            )}
           </div>
 
           <div>

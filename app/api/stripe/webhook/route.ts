@@ -684,6 +684,23 @@ export async function POST(req: Request) {
               console.error("Bus reservation mail send error detail:", mailErr);
             }
           }
+
+          await sendSlackNotification(
+            [
+              "🚌 新規バス予約",
+              `駐車場：${placeNameForReceipt}`,
+              `利用日：${date}`,
+              eventName ? `イベント：${eventName}` : null,
+              `予約名：${reservationName}`,
+              arrivalTime ? `到着予定：${arrivalTime}` : null,
+              `車種：${vehicleType === "bus" ? "バス" : "普通車"}${
+                hasExtraCar ? "（+普通車1台）" : ""
+              }`,
+              `金額：¥${price.toLocaleString("ja-JP")}`,
+            ]
+              .filter(Boolean)
+              .join("\n")
+          );
         }
 
         const hasPayment = await paymentExists({
