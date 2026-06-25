@@ -32,6 +32,7 @@ model Place {
   spots              Spot[]
   spotModeCalendars  SpotModeCalendar[]
   events             Event[]
+  monthlyContracts   MonthlyContract[]
 
   @@index([ownerId])
   @@index([operationMode])
@@ -50,6 +51,7 @@ model Spot {
   reservations          Reservation[]
   place                 Place              @relation(fields: [placeId], references: [id])
   spotModeCalendars     SpotModeCalendar[]
+  monthlyContracts      MonthlyContract[]
 
   @@unique([placeId, code])
   @@index([placeId])
@@ -867,4 +869,86 @@ model MemoLog {
   parsed    Json?
   notionIds String[]
   createdAt DateTime @default(now())
+}
+
+// ===== 月極駐車場 (Monthly contract) =====
+
+enum TenantStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum MonthlyContractPlan {
+  NON_EVENT_ONLY   // プラン1: 非イベント日のみ
+  INCLUDES_EVENT   // プラン2: イベント日も都度予約で駐車可
+}
+
+enum MonthlyContractBillingTerm {
+  MONTHLY      // 月払い: Stripeサブスク(自動継続)
+  QUARTERLY    // 3ヶ月一括前払い
+  SEMIANNUAL   // 半年一括前払い
+  ANNUAL       // 1年一括前払い(10%割引)
+}
+
+enum MonthlyContractStatus {
+  PENDING          // 申込受付・承認待ち
+  AWAITING_PAYMENT // 承認済・支払い登録待ち
+  ACTIVE           // 契約有効
+  PAST_DUE         // 支払い遅延
+  CANCELED         // 解約
+  REJECTED         // 申込却下
+}
+
+model Tenant {
+  id               String            @id @default(cuid())
+  email            String            @unique
+  passwordHash     String?           // bcrypt。契約成立時に発行
+  name             String
+  phone            String
+  postalCode       String?
+  address          String
+  status           TenantStatus      @default(ACTIVE)
+  sessionToken     String?           @unique
+  sessionExpiresAt DateTime?
+  stripeCustomerId String?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  contracts        MonthlyContract[]
+
+  @@index([status])
+  @@index([sessionExpiresAt])
+}
+
+model MonthlyContract {
+  id                     String                     @id @default(cuid())
+  tenantId               String
+  placeId                String
+  spotId                 String?
+  plan                   MonthlyContractPlan        @default(NON_EVENT_ONLY)
+  billingTerm            MonthlyContractBillingTerm @default(MONTHLY)
+  baseFeeYen             Int                        @default(3000)  // 月額・税込
+  prepaidMonths          Int                        @default(1)     // 1/3/6/12
+  discountBps            Int                        @default(0)     // 12ヶ月=1000(10%)
+  totalFeeYen            Int                        // 期間合計(割引適用後・税込)
+  vehicleType            String                     // 車種
+  plate                  String                     // ナンバー
+  importantTermsAgreedAt DateTime?                  // 重要事項同意日時
+  startDate              String?                    // JST 'YYYY-MM-DD'
+  endDate                String?                    // 前払い満了日 JST 'YYYY-MM-DD'
+  status                 MonthlyContractStatus      @default(PENDING)
+  stripeSubscriptionId   String?                    // 月払い時
+  stripeCheckoutSession  String?
+  stripePaymentIntentId  String?                    // 前払い一括時
+  approvedAt             DateTime?
+  canceledAt             DateTime?
+  createdAt              DateTime                   @default(now())
+  updatedAt              DateTime                   @updatedAt
+  tenant                 Tenant                     @relation(fields: [tenantId], references: [id])
+  place                  Place                      @relation(fields: [placeId], references: [id])
+  spot                   Spot?                      @relation(fields: [spotId], references: [id])
+
+  @@index([tenantId])
+  @@index([placeId])
+  @@index([status])
+  @@index([startDate])
 }
