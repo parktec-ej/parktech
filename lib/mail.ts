@@ -468,3 +468,73 @@ TEL: 050-1793-4785
 Email: info@parktec-ej.com`,
   });
 }
+
+export async function sendMonthlyApplicationReceivedMail(params: {
+  to: string;
+  name: string;
+  placeName: string;
+  planLabel: string;
+  billingTermLabel: string;
+  totalFeeYen: number;
+}) {
+  const { to, name, placeName, planLabel, billingTermLabel, totalFeeYen } =
+    params;
+  const amountText = `¥${Number(totalFeeYen).toLocaleString("ja-JP")}`;
+
+  const text = `${safe(name)} 様
+
+月極駐車場のお申し込みを受け付けました。
+内容を確認のうえ、担当者より順次ご連絡いたします。
+
+■ 駐車場: ${safe(placeName)}
+■ プラン: ${safe(planLabel)}
+■ お支払いプラン: ${safe(billingTermLabel)}
+■ お支払い予定額: ${amountText}（税込）
+
+※ このメールは申込受付の自動返信です。この時点では契約は成立しておりません。
+※ 審査・ご連絡のうえ、お支払い手続きのご案内を改めてお送りします。
+※ ご不明な点がございましたら、本メールにそのままご返信ください。
+
+パークテックイーストジャパン
+TEL: 050-1793-4785
+Email: info@parktec-ej.com`;
+
+  return getResend().emails.send({
+    from: MAIL_FROM,
+    to,
+    subject: "【ParkTec】月極駐車場 お申し込みを受け付けました",
+    text,
+    html: `
+      <div style="font-family:Arial,sans-serif;line-height:1.8;color:#111">
+        <h2>${safe(name)} 様</h2>
+        <p>
+          月極駐車場のお申し込みを受け付けました。<br />
+          内容を確認のうえ、担当者より順次ご連絡いたします。
+        </p>
+
+        <div style="padding:16px;border:1px solid #ddd;border-radius:8px;background:#fafafa">
+          <div><strong>駐車場:</strong> ${safe(placeName)}</div>
+          <div><strong>プラン:</strong> ${safe(planLabel)}</div>
+          <div><strong>お支払いプラン:</strong> ${safe(billingTermLabel)}</div>
+          <div><strong>お支払い予定額:</strong> ${amountText}（税込）</div>
+        </div>
+
+        <div style="margin-top:20px;padding:14px 16px;border:1px solid #fde68a;border-radius:8px;background:#fffbeb;color:#92400e;font-size:13px;line-height:1.7">
+          ※ このメールは申込受付の自動返信です。この時点では契約は成立しておりません。<br />
+          審査・ご連絡のうえ、お支払い手続きのご案内を改めてお送りします。
+        </div>
+
+        <p style="margin-top:16px;font-size:13px;color:#555">
+          ご不明な点がございましたら、本メールにそのままご返信ください。
+        </p>
+
+        <hr style="margin:24px 0" />
+        <p>
+          パークテックイーストジャパン<br />
+          TEL: 050-1793-4785<br />
+          Email: info@parktec-ej.com
+        </p>
+      </div>
+    `,
+  });
+}
