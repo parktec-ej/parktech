@@ -4,7 +4,6 @@ export const preferredRegion = "hnd1";
 import { NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import { getAdminSession } from "@/lib/admin-auth";
-import { supabase } from "@/lib/supabase";
 
 const BUCKET = "sns-media";
 const MAX_BYTES = 8 * 1024 * 1024; // 8MB（Instagram要件）
@@ -48,23 +47,38 @@ export async function POST(req: Request) {
     const path = `uploads/${randomUUID()}.${ext}`;
     const buffer = Buffer.from(await file.arrayBuffer());
 
-    const { error: uploadError } = await supabase.storage
-      .from(BUCKET)
-      .upload(path, buffer, {
-        contentType: file.type,
-        upsert: false,
-      });
+    const projectUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
-    if (uploadError) {
+    const uploadRes = await fetch(
+      `${projectUrl}/storage/v1/object/${BUCKET}/${path}`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${serviceKey}`,
+          apikey: serviceKey,
+          "Content-Type": file.type,
+          "x-upsert": "false",
+        },
+        body: buffer,
+      }
+    );
+
+    if (!uploadRes.ok) {
+      const detail = await uploadRes.text().catch(() => "");
       return NextResponse.json(
-        { ok: false, error: "upload_failed", message: uploadError.message },
+        {
+          ok: false,
+          error: "upload_failed",
+          message: `storage ${uploadRes.status}: ${detail.slice(0, 300)}`,
+        },
         { status: 500 }
       );
     }
 
-    const { data } = supabase.storage.from(BUCKET).getPublicUrl(path);
+    const publicUrl = `${projectUrl}/storage/v1/object/public/${BUCKET}/${path}`;
 
-    return NextResponse.json({ ok: true, url: data.publicUrl });
+    return NextResponse.json({ ok: true, url: publicUrl });
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
     return NextResponse.json({ ok: false, error: "server_error", message }, { status: 500 });
