@@ -126,6 +126,136 @@ ParkTec
   });
 }
 
+export async function sendMonthlyPaymentLinkMail(params: {
+  to: string;
+  name: string;
+  placeName: string;
+  planLabel: string;
+  termLabel: string;
+  totalFeeYen: number;
+  isSubscription: boolean;
+  checkoutUrl: string;
+}) {
+  const { to, name, placeName, planLabel, termLabel, totalFeeYen, isSubscription, checkoutUrl } = params;
+  const feeNote = isSubscription ? "（毎月のお支払い・自動継続）" : "（一括前払い）";
+
+  return getResend().emails.send({
+    from: MAIL_FROM,
+    to,
+    subject: "【ParkTec】月極駐車場 お支払い手続きのご案内",
+    html: `
+      <div style="font-family:Arial,sans-serif;line-height:1.8;color:#111">
+        <h2>お申込みが承認されました</h2>
+        <p>${safe(name)} 様</p>
+        <p>月極駐車場のお申込みを承認いたしました。下記ボタンよりお支払い手続きをお願いします。お支払いの完了をもってご契約成立となります。</p>
+
+        <div style="padding:16px;border:1px solid #ddd;border-radius:8px;background:#fafafa">
+          <div><strong>駐車場:</strong> ${safe(placeName)}</div>
+          <div><strong>プラン:</strong> ${safe(planLabel)}</div>
+          <div><strong>お支払い:</strong> ${safe(termLabel)}</div>
+          <div><strong>金額:</strong> ${safe(totalFeeYen)} 円（税込）${feeNote}</div>
+        </div>
+
+        <p style="margin-top:24px;text-align:center">
+          <a href="${checkoutUrl}" target="_blank" rel="noopener noreferrer"
+             style="display:inline-block;padding:14px 28px;background:#111;color:#fff;text-decoration:none;border-radius:8px;font-weight:600">
+            お支払いへ進む
+          </a>
+        </p>
+        <p style="font-size:12px;color:#666">ボタンが開けない場合はこちらのURLをブラウザに貼り付けてください:<br />${checkoutUrl}</p>
+
+        <hr style="margin:24px 0" />
+        <p>パークテックイーストジャパン</p>
+      </div>
+    `,
+    text: `お申込みが承認されました。
+${safe(name)} 様
+
+月極駐車場のお申込みを承認いたしました。
+下記URLよりお支払い手続きをお願いします。お支払いの完了をもってご契約成立となります。
+
+駐車場: ${safe(placeName)}
+プラン: ${safe(planLabel)}
+お支払い: ${safe(termLabel)}
+金額: ${safe(totalFeeYen)} 円（税込）${feeNote}
+
+お支払い: ${checkoutUrl}
+
+パークテックイーストジャパン`.trim(),
+  });
+}
+
+export async function sendMonthlyContractActivatedMail(params: {
+  to: string;
+  name: string;
+  placeName: string;
+  loginUrl: string;
+  tempPassword: string;
+  startDate: string;
+  endDate?: string | null;
+}) {
+  const { to, name, placeName, loginUrl, tempPassword, startDate, endDate } = params;
+
+  return getResend().emails.send({
+    from: MAIL_FROM,
+    to,
+    subject: "【ParkTec】月極駐車場 ご契約が成立しました",
+    html: `
+      <div style="font-family:Arial,sans-serif;line-height:1.8;color:#111">
+        <h2>ご契約が成立しました</h2>
+        <p>${safe(name)} 様</p>
+        <p>お支払いを確認し、月極駐車場のご契約が成立しました。ありがとうございます。</p>
+
+        <div style="padding:16px;border:1px solid #ddd;border-radius:8px;background:#fafafa">
+          <div><strong>駐車場:</strong> ${safe(placeName)}</div>
+          <div><strong>契約開始日:</strong> ${safe(startDate)}</div>
+          ${endDate ? `<div><strong>契約満了日:</strong> ${safe(endDate)}</div>` : `<div><strong>更新:</strong> 毎月自動更新</div>`}
+        </div>
+
+        <div style="margin-top:20px;padding:16px;border:1px solid #bfdbfe;border-radius:8px;background:#eff6ff">
+          <strong>契約者ページ ログイン情報</strong><br />
+          <div style="margin-top:8px"><strong>ログインURL:</strong> <a href="${loginUrl}">${loginUrl}</a></div>
+          <div><strong>メールアドレス:</strong> ${safe(to)}</div>
+          <div><strong>仮パスワード:</strong> <span style="font-family:monospace;font-size:16px">${safe(tempPassword)}</span></div>
+          <div style="font-size:12px;color:#555;margin-top:8px">契約者ページから、イベント開催日の確認・必要に応じた予約・契約内容・領収書発行ができます。</div>
+        </div>
+
+        <div style="margin-top:20px;padding:14px 16px;border:1px solid #fde68a;border-radius:8px;background:#fffbeb;color:#92400e;font-size:13px;line-height:1.7">
+          <strong>ご利用上の注意</strong><br />
+          ・イベント開催日は月極でのご利用ができません（イベント日は事前にメールでお知らせします）。<br />
+          ・イベント日の駐車をご希望の場合は契約者ページから別途ご予約・追加料金が必要です（プラン2のみ）。<br />
+          ・イベント日の無断駐車には違約金（1回 16,000円）が発生します。
+        </div>
+
+        <hr style="margin:24px 0" />
+        <p>パークテックイーストジャパン</p>
+      </div>
+    `,
+    text: `ご契約が成立しました。
+${safe(name)} 様
+
+お支払いを確認し、月極駐車場のご契約が成立しました。
+
+駐車場: ${safe(placeName)}
+契約開始日: ${safe(startDate)}
+${endDate ? `契約満了日: ${safe(endDate)}` : "更新: 毎月自動更新"}
+
+【契約者ページ ログイン情報】
+ログインURL: ${loginUrl}
+メールアドレス: ${safe(to)}
+仮パスワード: ${safe(tempPassword)}
+
+契約者ページから、イベント日の確認・予約・契約内容・領収書発行ができます。
+
+【ご利用上の注意】
+・イベント開催日は月極でのご利用ができません。
+・イベント日の駐車希望は契約者ページから別途予約・追加料金（プラン2のみ）。
+・イベント日の無断駐車には違約金（1回16,000円）が発生します。
+
+パークテックイーストジャパン`.trim(),
+  });
+}
+
 export async function sendCheckoutThanksMail(params: {
   to: string;
   placeName: string;

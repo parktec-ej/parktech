@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { prisma } from "@/lib/db";
 import { stripe } from "@/lib/stripe";
-import { sendReservationPinMail, sendCheckoutThanksMail } from "@/lib/mail";
+import { sendReservationPinMail, sendCheckoutThanksMail, sendMonthlyContractActivatedMail } from "@/lib/mail";
+import bcrypt from "bcryptjs";
 import { calcSplitAmounts, calcTax } from "@/lib/settlement-math";
 import { buildSettlementSnapshot } from "@/lib/settlement-snapshot";
 import { sendSlackNotification } from "@/lib/slack";
@@ -472,6 +473,73 @@ export async function POST(req: Request) {
           receiptSaved: !hasReceipt,
           googleMapUrl: googleMapUrlForMail,
         });
+      }
+
+      if (session.metadata?.flow === "monthly_contract") {
+        const contractId = String(session.metadata.contractId ?? "").trim();
+        if (contractId) {
+          const contract = await prisma.monthlyContract.findUnique({
+            where: { id: contractId },
+            include: { tenant: true, place: true },
+          });
+
+          if (contract && contract.status !== "ACTIVE" && contract.status !== "CANCELED") {
+            const todayJst = new Date().toLocaleDateString("sv-SE", {
+              timeZone: "Asia/Tokyo",
+            });
+            let endDate: string | null = null;
+            if (contract.billingTerm !== "MONTHLY") {
+              const d = new Date(`${todayJst}T00:00:00+09:00`);
+              d.setMonth(d.getMonth() + contract.prepaidMonths);
+              endDate = d.toLocaleDateString("sv-SE", { timeZone: "Asia/Tokyo" });
+            }
+
+            let tempPassword: string | null = null;
+            if (!contract.tenant.passwordHash) {
+              tempPassword = crypto.randomBytes(6).toString("base64url");
+              const passwordHash = await bcrypt.hash(tempPassword, 10);
+              await prisma.tenant.update({
+                where: { id: contract.tenantId },
+                data: { passwordHash },
+              });
+            }
+
+            await prisma.monthlyContract.update({
+              where: { id: contract.id },
+              data: {
+                status: "ACTIVE",
+                startDate: todayJst,
+                endDate,
+                stripeSubscriptionId:
+                  typeof session.subscription === "string" ? session.subscription : null,
+                stripePaymentIntentId:
+                  typeof session.payment_intent === "string" ? session.payment_intent : null,
+              },
+            });
+
+            try {
+              await sendMonthlyContractActivatedMail({
+                to: contract.tenant.email,
+                name: contract.tenant.name,
+                placeName: contract.place.name,
+                loginUrl: `${(process.env.NEXT_PUBLIC_APP_URL || "").trim()}/tenant/login`,
+                tempPassword: tempPassword ?? "（既存のパスワードをご利用ください）",
+                startDate: todayJst,
+                endDate,
+              });
+            } catch (e) {
+              console.error("monthly activated mail failed:", e);
+            }
+
+            try {
+              await sendSlackNotification(
+                `🏠✅ 月極契約成立: ${contract.tenant.name} 様 / ${contract.place.name} / ${contract.billingTerm}`
+              );
+            } catch {}
+          }
+        }
+
+        return NextResponse.json({ received: true });
       }
 
       if (session.metadata?.flow === "bus_reservation") {
