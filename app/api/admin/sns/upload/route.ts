@@ -50,18 +50,12 @@ export async function POST(req: Request) {
     const projectUrl = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? "").trim();
     const serviceKey = (process.env.SUPABASE_SERVICE_ROLE_KEY ?? "").trim();
 
-    // 新方式キー(sb_secret_...)はそのまま、旧JWT(eyJ...)は Bearer で渡す
-    const authHeader = serviceKey.startsWith("eyJ")
-      ? `Bearer ${serviceKey}`
-      : serviceKey;
-
     const uploadRes = await fetch(
       `${projectUrl}/storage/v1/object/${BUCKET}/${path}`,
       {
         method: "POST",
         headers: {
           apikey: serviceKey,
-          Authorization: authHeader,
           "Content-Type": file.type,
           "x-upsert": "false",
         },
