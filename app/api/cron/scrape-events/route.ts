@@ -43,13 +43,12 @@ function buildStartAt(date: string, showStart: string | null): Date {
 
 /**
  * 既存 Event の重複判定。
- * 「同じ venue」「同じ開催日 (date 部分)」「同じ正規化タイトル」のときに同一とみなす。
+ * 「同じ venue」「同じ開催日 (JST)」のときに同一とみなす。
+ * タイトル違い（PDF・一覧・手動）でも同日同会場なら2件目以降は skip される。
  */
-function normalizeTitle(t: string): string {
-  return t
-    .normalize("NFKC")
-    .replace(/[\s　]/g, "")
-    .toLowerCase();
+function jstDate(d: Date): string {
+  // JST の YYYY-MM-DD。toISOString は UTC で日付がズレるため sv-SE を使う。
+  return d.toLocaleDateString("sv-SE", { timeZone: "Asia/Tokyo" });
 }
 
 async function upsertEventsBatch(params: {
@@ -85,14 +84,12 @@ async function upsertEventsBatch(params: {
   const existingKeys = new Set(
     existing.map(
       (e) =>
-        `${e.venue}|${e.startAt.toISOString().slice(0, 10)}|${normalizeTitle(e.title)}`
+        `${e.venue}|${jstDate(e.startAt)}`
     )
   );
 
   for (const row of rows) {
-    const key = `${row.venue}|${row.startAt
-      .toISOString()
-      .slice(0, 10)}|${normalizeTitle(row.title)}`;
+    const key = `${row.venue}|${jstDate(row.startAt)}`;
     if (existingKeys.has(key)) {
       skipped++;
       continue;

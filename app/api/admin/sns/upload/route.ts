@@ -13,16 +13,6 @@ const ALLOWED: Record<string, string> = {
   "image/png": "png",
 };
 
-async function ensureBucket() {
-  // 既に存在すれば "already exists" 系エラーになるので無視する
-  const { error } = await supabase.storage.createBucket(BUCKET, {
-    public: true,
-  });
-  if (error && !/exist/i.test(error.message)) {
-    throw new Error(`createBucket failed: ${error.message}`);
-  }
-}
-
 export async function POST(req: Request) {
   const admin = await getAdminSession();
   if (!admin) {
@@ -54,8 +44,6 @@ export async function POST(req: Request) {
         { status: 400 }
       );
     }
-
-    await ensureBucket();
 
     const path = `uploads/${randomUUID()}.${ext}`;
     const buffer = Buffer.from(await file.arrayBuffer());
