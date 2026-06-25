@@ -56,6 +56,7 @@ export async function POST(req: Request) {
         method: "POST",
         headers: {
           apikey: serviceKey,
+          authorization: serviceKey,
           "Content-Type": file.type,
           "x-upsert": "false",
         },
