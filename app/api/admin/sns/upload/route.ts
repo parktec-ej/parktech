@@ -47,8 +47,8 @@ export async function POST(req: Request) {
     const path = `uploads/${randomUUID()}.${ext}`;
     const buffer = Buffer.from(await file.arrayBuffer());
 
-    const projectUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+    const projectUrl = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? "").trim();
+    const serviceKey = (process.env.SUPABASE_SERVICE_ROLE_KEY ?? "").trim();
 
     const uploadRes = await fetch(
       `${projectUrl}/storage/v1/object/${BUCKET}/${path}`,
