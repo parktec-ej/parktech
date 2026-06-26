@@ -54,6 +54,14 @@ export default async function TenantDashboard() {
     select: { id: true, date: true, slot: true, price: true, paid: true, paymentRef: true },
   });
 
+  const subscriptionPayments = contract
+    ? await prisma.monthlySubscriptionPayment.findMany({
+        where: { contractId: contract.id },
+        orderBy: { billingPeriod: "desc" },
+        take: 36,
+      })
+    : [];
+
   return (
     <main style={wrap}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -131,6 +139,37 @@ export default async function TenantDashboard() {
                   <td style={{ padding: "8px" }}>¥{r.price.toLocaleString()}</td>
                   <td style={{ padding: "8px" }}>
                     {r.paid ? <a href={`/receipt/request?reservationId=${r.id}`} style={linkBtn}>発行</a> : <span style={{ color: "#aaa" }}>未払い</span>}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </section>
+
+      {/* 月額サブスクのお支払い履歴・領収書 */}
+      <section style={cardBox}>
+        <h2 style={h2}>お支払い履歴（月額）</h2>
+        {subscriptionPayments.length === 0 ? (
+          <p style={{ fontSize: 14, color: "#666" }}>お支払い履歴はまだありません。</p>
+        ) : (
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+            <thead>
+              <tr style={{ textAlign: "left", color: "#666" }}>
+                <th style={{ padding: "6px 8px" }}>対象月</th>
+                <th style={{ padding: "6px 8px" }}>金額（税込）</th>
+                <th style={{ padding: "6px 8px" }}>領収書番号</th>
+                <th style={{ padding: "6px 8px" }}>領収書</th>
+              </tr>
+            </thead>
+            <tbody>
+              {subscriptionPayments.map((p) => (
+                <tr key={p.id} style={{ borderTop: "1px solid #eee" }}>
+                  <td style={{ padding: "8px" }}>{p.billingPeriod}</td>
+                  <td style={{ padding: "8px" }}>¥{p.amountYen.toLocaleString()}</td>
+                  <td style={{ padding: "8px" }}>{p.receiptNumber}</td>
+                  <td style={{ padding: "8px" }}>
+                    <a href={`/api/tenant/receipt/${p.id}/pdf`} target="_blank" rel="noopener noreferrer" style={linkBtn}>領収書PDF</a>
                   </td>
                 </tr>
               ))}

@@ -12,12 +12,8 @@ const PLAN_LABEL: Record<string, string> = {
   NON_EVENT_ONLY: "プラン1：非イベント日のみ",
   INCLUDES_EVENT: "プラン2：イベント日も駐車可（都度予約）",
 };
-const TERM_LABEL: Record<string, string> = {
-  MONTHLY: "月払い（毎月3,000円・自動継続）",
-  QUARTERLY: "3ヶ月一括前払い",
-  SEMIANNUAL: "半年一括前払い",
-  ANNUAL: "1年一括前払い（10%割引）",
-};
+
+const TERM_LABEL = "月額（毎月3,300円・自動継続）";
 
 export async function POST(
   _req: Request,
@@ -45,11 +41,12 @@ export async function POST(
     }
 
     const appUrl = (process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000").trim();
-    const isSubscription = contract.billingTerm === "MONTHLY";
-    const productName = `${contract.place.name} 月極駐車場（${TERM_LABEL[contract.billingTerm] ?? contract.billingTerm}）`;
+    // サブスク一本化: 常に月額サブスクリプション（¥3,300/月・自動継続）
+    const monthlyFeeYen = contract.baseFeeYen; // 新規契約は 3300
+    const productName = `${contract.place.name} 月極駐車場（${TERM_LABEL}）`;
 
     const session = await stripe.checkout.sessions.create({
-      mode: isSubscription ? "subscription" : "payment",
+      mode: "subscription",
       payment_method_types: ["card"],
       customer_email: contract.tenant.email,
       line_items: [
@@ -57,8 +54,8 @@ export async function POST(
           price_data: {
             currency: "jpy",
             product_data: { name: productName },
-            unit_amount: isSubscription ? contract.baseFeeYen : contract.totalFeeYen,
-            ...(isSubscription ? { recurring: { interval: "month" as const } } : {}),
+            unit_amount: monthlyFeeYen,
+            recurring: { interval: "month" as const },
           },
           quantity: 1,
         },
@@ -66,9 +63,9 @@ export async function POST(
       success_url: `${appUrl}/monthly/complete?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${appUrl}/monthly/apply`,
       metadata: { flow: "monthly_contract", contractId: contract.id },
-      ...(isSubscription
-        ? { subscription_data: { metadata: { flow: "monthly_contract", contractId: contract.id } } }
-        : {}),
+      subscription_data: {
+        metadata: { flow: "monthly_contract", contractId: contract.id },
+      },
     });
 
     await prisma.monthlyContract.update({
@@ -86,9 +83,9 @@ export async function POST(
         name: contract.tenant.name,
         placeName: contract.place.name,
         planLabel: PLAN_LABEL[contract.plan] ?? contract.plan,
-        termLabel: TERM_LABEL[contract.billingTerm] ?? contract.billingTerm,
-        totalFeeYen: isSubscription ? contract.baseFeeYen : contract.totalFeeYen,
-        isSubscription,
+        termLabel: TERM_LABEL,
+        totalFeeYen: monthlyFeeYen,
+        isSubscription: true,
         checkoutUrl: session.url!,
       });
     } catch (e) {
@@ -97,7 +94,7 @@ export async function POST(
 
     try {
       await sendSlackNotification(
-        `✅ 月極承認: ${contract.tenant.name} 様 / ${contract.place.name} / ${TERM_LABEL[contract.billingTerm] ?? contract.billingTerm} → 支払いリンク送信 (operator: ${admin.email})`
+        `✅ 月極承認: ${contract.tenant.name} 様 / ${contract.place.name} / 月額¥${monthlyFeeYen.toLocaleString("ja-JP")}（自動継続） → 支払いリンク送信 (operator: ${admin.email})`
       );
     } catch {}
 

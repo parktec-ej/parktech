@@ -1181,6 +1181,193 @@ export async function POST(req: Request) {
       }
     }
 
+    // ===== 月極サブスク: 毎月の課金成功 → 領収書レコード作成（方法B） =====
+    if (event.type === "invoice.payment_succeeded") {
+      const invoice = event.data.object as Stripe.Invoice;
+      const inv = invoice as any;
+      const billingReason = inv.billing_reason as string | undefined;
+
+      // 初回(subscription_create)・継続(subscription_cycle)のみ対象
+      if (
+        billingReason === "subscription_create" ||
+        billingReason === "subscription_cycle"
+      ) {
+        const invoiceId: string | null = invoice.id ?? null;
+
+        // 冪等性: stripeInvoiceId で既に作成済みならスキップ
+        const dup = invoiceId
+          ? await prisma.monthlySubscriptionPayment.findUnique({
+              where: { stripeInvoiceId: invoiceId },
+            })
+          : null;
+
+        if (!dup) {
+          // subscription metadata から contractId を解決
+          const subId =
+            typeof inv.subscription === "string"
+              ? inv.subscription
+              : inv.subscription?.id ?? null;
+          let contractId = "";
+          if (subId) {
+            try {
+              const sub = await stripe.subscriptions.retrieve(subId);
+              contractId = (sub.metadata?.contractId as string) ?? "";
+            } catch (e) {
+              console.error("subscription retrieve failed:", e);
+            }
+          }
+          if (!contractId && inv.subscription_details?.metadata?.contractId) {
+            contractId = inv.subscription_details.metadata.contractId;
+          }
+
+          const contract = contractId
+            ? await prisma.monthlyContract.findUnique({
+                where: { id: contractId },
+                include: { tenant: true },
+              })
+            : null;
+
+          if (contract) {
+            const periodStartUnix =
+              inv.lines?.data?.[0]?.period?.start ?? inv.period_start ?? null;
+            const periodDate = periodStartUnix
+              ? new Date(periodStartUnix * 1000)
+              : new Date();
+            const billingPeriod = getRecognizedMonthFromDate(periodDate);
+
+            const amountYen = inv.amount_paid ?? contract.baseFeeYen;
+            const paidUnix = inv.status_transitions?.paid_at ?? null;
+            const paidAt = paidUnix ? new Date(paidUnix * 1000) : new Date();
+            const paymentIntentId =
+              typeof inv.payment_intent === "string"
+                ? inv.payment_intent
+                : inv.payment_intent?.id ?? null;
+
+            const year = paidAt
+              .toLocaleDateString("sv-SE", { timeZone: "Asia/Tokyo" })
+              .slice(0, 4);
+
+            // 領収書番号 PT-YYYY-NNNNNN を採番（unique制約で二重防止・衝突時リトライ）
+            let created = false;
+            for (let attempt = 0; attempt < 5 && !created; attempt++) {
+              const count = await prisma.monthlySubscriptionPayment.count({
+                where: { receiptNumber: { startsWith: `PT-${year}-` } },
+              });
+              const receiptNumber = `PT-${year}-${String(
+                count + 1 + attempt
+              ).padStart(6, "0")}`;
+              try {
+                await prisma.monthlySubscriptionPayment.create({
+                  data: {
+                    contractId: contract.id,
+                    tenantId: contract.tenantId,
+                    billingPeriod,
+                    amountYen,
+                    taxRate: 10,
+                    receiptNumber,
+                    stripeInvoiceId: invoiceId,
+                    stripePaymentIntentId: paymentIntentId,
+                    paidAt,
+                  },
+                });
+                created = true;
+              } catch (e: any) {
+                if (e?.code === "P2002") {
+                  // stripeInvoiceId 競合（別プロセスが作成済み）なら終了
+                  const exists = invoiceId
+                    ? await prisma.monthlySubscriptionPayment.findUnique({
+                        where: { stripeInvoiceId: invoiceId },
+                      })
+                    : null;
+                  if (exists) {
+                    created = true;
+                    break;
+                  }
+                  // receiptNumber 競合 → 次の attempt で再採番
+                  continue;
+                }
+                throw e;
+              }
+            }
+
+            // 継続課金成功で PAST_DUE から復帰
+            if (contract.status === "PAST_DUE") {
+              await prisma.monthlyContract.update({
+                where: { id: contract.id },
+                data: { status: "ACTIVE" },
+              });
+            }
+          }
+        }
+      }
+
+      return NextResponse.json({ received: true });
+    }
+
+    // ===== 月極サブスク: 支払い失敗 → PAST_DUE =====
+    if (event.type === "invoice.payment_failed") {
+      const invoice = event.data.object as Stripe.Invoice;
+      const inv = invoice as any;
+      const subId =
+        typeof inv.subscription === "string"
+          ? inv.subscription
+          : inv.subscription?.id ?? null;
+      let contractId = "";
+      if (subId) {
+        try {
+          const sub = await stripe.subscriptions.retrieve(subId);
+          contractId = (sub.metadata?.contractId as string) ?? "";
+        } catch (e) {
+          console.error("subscription retrieve failed:", e);
+        }
+      }
+      const contract = contractId
+        ? await prisma.monthlyContract.findUnique({
+            where: { id: contractId },
+            include: { tenant: true, place: true },
+          })
+        : null;
+      if (contract && contract.status !== "CANCELED") {
+        await prisma.monthlyContract.update({
+          where: { id: contract.id },
+          data: { status: "PAST_DUE" },
+        });
+        try {
+          await sendSlackNotification(
+            `⚠️ 月極支払い失敗: ${contract.tenant.name} 様 / ${contract.place.name} → PAST_DUE`
+          );
+        } catch {}
+      }
+      return NextResponse.json({ received: true });
+    }
+
+    // ===== 月極サブスク: Stripe側で解約 → CANCELED 同期（冪等） =====
+    if (event.type === "customer.subscription.deleted") {
+      const sub = event.data.object as Stripe.Subscription;
+      const contractId = (sub.metadata?.contractId as string) ?? "";
+      const contract = contractId
+        ? await prisma.monthlyContract.findUnique({
+            where: { id: contractId },
+            include: { tenant: true, place: true },
+          })
+        : await prisma.monthlyContract.findFirst({
+            where: { stripeSubscriptionId: sub.id },
+            include: { tenant: true, place: true },
+          });
+      if (contract && contract.status !== "CANCELED") {
+        await prisma.monthlyContract.update({
+          where: { id: contract.id },
+          data: { status: "CANCELED", canceledAt: new Date() },
+        });
+        try {
+          await sendSlackNotification(
+            `🛑 月極サブスク解約(Stripe同期): ${contract.tenant.name} 様 / ${contract.place.name}`
+          );
+        } catch {}
+      }
+      return NextResponse.json({ received: true });
+    }
+
     return NextResponse.json({ received: true });
   } catch (e: any) {
     console.error("Webhook handler failed:", e);

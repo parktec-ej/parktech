@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 
 type PlaceLite = {
   id: string;
@@ -23,21 +23,8 @@ type ApplyResponse = {
 };
 
 type Plan = "NON_EVENT_ONLY" | "INCLUDES_EVENT";
-type BillingTerm = "MONTHLY" | "QUARTERLY" | "SEMIANNUAL" | "ANNUAL";
 
-const BASE_FEE_YEN = 3000;
-
-const TERM_OPTIONS: Array<{
-  value: BillingTerm;
-  months: number;
-  discountBps: number;
-  label: string;
-}> = [
-  { value: "MONTHLY", months: 1, discountBps: 0, label: "月払い（自動継続）" },
-  { value: "QUARTERLY", months: 3, discountBps: 0, label: "3ヶ月一括前払い" },
-  { value: "SEMIANNUAL", months: 6, discountBps: 0, label: "半年一括前払い" },
-  { value: "ANNUAL", months: 12, discountBps: 1000, label: "1年一括前払い（10%割引）" },
-];
+const MONTHLY_FEE_YEN = 3300;
 
 const PLAN_OPTIONS: Array<{ value: Plan; label: string; desc: string }> = [
   {
@@ -52,12 +39,6 @@ const PLAN_OPTIONS: Array<{ value: Plan; label: string; desc: string }> = [
   },
 ];
 
-function computeTotal(term: BillingTerm): number {
-  const cfg = TERM_OPTIONS.find((t) => t.value === term)!;
-  const gross = BASE_FEE_YEN * cfg.months;
-  return Math.round(gross * (1 - cfg.discountBps / 10000));
-}
-
 function formatYen(value: number) {
   return `¥${value.toLocaleString("ja-JP")}`;
 }
@@ -66,7 +47,6 @@ export default function MonthlyApplyPage() {
   const [places, setPlaces] = useState<PlaceLite[]>([]);
   const [placeId, setPlaceId] = useState("");
   const [plan, setPlan] = useState<Plan>("NON_EVENT_ONLY");
-  const [billingTerm, setBillingTerm] = useState<BillingTerm>("MONTHLY");
 
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -79,8 +59,6 @@ export default function MonthlyApplyPage() {
 
   const [submitting, setSubmitting] = useState(false);
   const [err, setErr] = useState("");
-
-  const total = useMemo(() => computeTotal(billingTerm), [billingTerm]);
 
   useEffect(() => {
     let cancelled = false;
@@ -127,7 +105,7 @@ export default function MonthlyApplyPage() {
         body: JSON.stringify({
           placeId,
           plan,
-          billingTerm,
+          billingTerm: "MONTHLY",
           name: name.trim(),
           email: email.trim(),
           phone: phone.trim(),
@@ -216,24 +194,14 @@ export default function MonthlyApplyPage() {
             </div>
           </div>
 
-          <div style={fieldStyle}>
-            <label style={labelStyle}>お支払いプラン</label>
-            <select
-              value={billingTerm}
-              onChange={(e) => setBillingTerm(e.target.value as BillingTerm)}
-              style={inputStyle}
-            >
-              {TERM_OPTIONS.map((t) => (
-                <option key={t.value} value={t.value}>
-                  {t.label}（{formatYen(computeTotal(t.value))}）
-                </option>
-              ))}
-            </select>
-          </div>
-
           <div style={totalBoxStyle}>
-            <span style={totalLabelStyle}>お支払い予定額（税込）</span>
-            <span style={totalValueStyle}>{formatYen(total)}</span>
+            <div>
+              <span style={totalLabelStyle}>月額（税込）</span>
+              <div style={{ fontSize: 12, color: "#6b7280", marginTop: 2 }}>
+                毎月自動更新（Stripeサブスクリプション）
+              </div>
+            </div>
+            <span style={totalValueStyle}>{formatYen(MONTHLY_FEE_YEN)}</span>
           </div>
 
           <hr style={hrStyle} />

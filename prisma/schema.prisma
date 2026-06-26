@@ -914,6 +914,7 @@ model Tenant {
   createdAt        DateTime          @default(now())
   updatedAt        DateTime          @updatedAt
   contracts        MonthlyContract[]
+  subscriptionPayments MonthlySubscriptionPayment[]
 
   @@index([status])
   @@index([sessionExpiresAt])
@@ -926,7 +927,7 @@ model MonthlyContract {
   spotId                 String?
   plan                   MonthlyContractPlan        @default(NON_EVENT_ONLY)
   billingTerm            MonthlyContractBillingTerm @default(MONTHLY)
-  baseFeeYen             Int                        @default(3000)  // 月額・税込
+  baseFeeYen             Int                        @default(3300)  // 月額・税込
   prepaidMonths          Int                        @default(1)     // 1/3/6/12
   discountBps            Int                        @default(0)     // 12ヶ月=1000(10%)
   totalFeeYen            Int                        // 期間合計(割引適用後・税込)
@@ -947,9 +948,30 @@ model MonthlyContract {
   tenant                 Tenant                     @relation(fields: [tenantId], references: [id])
   place                  Place                      @relation(fields: [placeId], references: [id])
   spot                   Spot?                      @relation(fields: [spotId], references: [id])
+  subscriptionPayments   MonthlySubscriptionPayment[]
 
   @@index([tenantId])
   @@index([placeId])
   @@index([status])
   @@index([startDate])
+}
+
+model MonthlySubscriptionPayment {
+  id              String          @id @default(cuid())
+  contractId      String
+  tenantId        String
+  billingPeriod   String          // 対象月 "2026-07"（JST基準）
+  amountYen       Int             // 税込
+  taxRate         Int             @default(10)
+  receiptNumber   String          @unique // 適格請求書の連番
+  stripeInvoiceId String?         @unique
+  stripePaymentIntentId String?
+  paidAt          DateTime
+  createdAt       DateTime        @default(now())
+  contract        MonthlyContract @relation(fields: [contractId], references: [id])
+  tenant          Tenant          @relation(fields: [tenantId], references: [id])
+
+  @@index([contractId])
+  @@index([tenantId])
+  @@index([billingPeriod])
 }

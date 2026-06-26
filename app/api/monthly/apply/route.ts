@@ -7,7 +7,7 @@ import { resolveActivePlace } from "@/lib/place-resolver";
 import { sendSlackNotification } from "@/lib/slack";
 import { sendMonthlyApplicationReceivedMail } from "@/lib/mail";
 
-const BASE_FEE_YEN = 3000;
+const BASE_FEE_YEN = 3300;
 
 type BillingTerm = "MONTHLY" | "QUARTERLY" | "SEMIANNUAL" | "ANNUAL";
 type Plan = "NON_EVENT_ONLY" | "INCLUDES_EVENT";
@@ -64,7 +64,8 @@ export async function POST(req: NextRequest) {
     const vehicleType = String(body.vehicleType ?? "").trim();
     const plate = String(body.plate ?? "").trim();
     const plan = String(body.plan ?? "NON_EVENT_ONLY").trim() as Plan;
-    const billingTerm = String(body.billingTerm ?? "MONTHLY").trim() as BillingTerm;
+    // サブスク一本化: リクエストの billingTerm は無視し、常に MONTHLY（月額¥3,300）で作成する。
+    const billingTerm = "MONTHLY" as BillingTerm;
     const importantTermsAgreed = body.importantTermsAgreed === true;
 
     if (!name) return jsonError("氏名を入力してください", 400, "missing_name");
