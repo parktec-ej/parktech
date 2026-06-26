@@ -23,10 +23,6 @@
     {
       "path": "/api/cron/monthly-reminder",
       "schedule": "0 1 * * *"
-    },
-    {
-      "path": "/api/cron/release-a20",
-      "schedule": "0 0 * * *"
     }
   ],
   "functions": {

@@ -161,85 +161,10 @@ export async function POST(req: Request) {
     }
 
     // ── スロット割当 ──────────────────────────────
-    // ・bus 単体 / car 単体        → 区画外のバス専用レーン（spotId なし, slot="BUS_LANE"）
-    // ・bus + 追加普通車(hasExtraCar) → バスは BUS_LANE、追加普通車が A-20 区画を占有
-    let spotId: string | null = null;
-    let slot = "BUS_LANE";
-
-    if (hasExtraCar) {
-      // A-20 はバスplace ではなく一般lot「rifu-main」の区画（クロスplace参照）。
-      // 予約レコードの placeId はバスplaceのまま、spotId だけ rifu-main の A-20。
-      const generalPlace = await prisma.place.findFirst({
-        where: { slug: "rifu-main", isActive: true },
-        select: { id: true },
-      });
-
-      if (!generalPlace) {
-        return jsonError(
-          "一般駐車場（rifu-main）が見つかりません。",
-          500,
-          "general_place_not_found"
-        );
-      }
-
-      const a20 = await prisma.spot.findFirst({
-        where: { placeId: generalPlace.id, code: "A-20", isActive: true },
-        select: { id: true, code: true },
-      });
-
-      if (!a20) {
-        return jsonError(
-          "追加普通車用の A-20 区画が見つかりません。",
-          500,
-          "a20_not_found"
-        );
-      }
-
-      // その日の A-20 が既に一般予約へ開放済み（cron が RESERVATION_ONLY マーカーを
-      // 書いた）なら、バスの追加普通車枠としては使えない（相互排他）。
-      const a20Released = await prisma.spotModeCalendar.findUnique({
-        where: { spotId_date: { spotId: a20.id, date } },
-        select: { operationMode: true },
-      });
-
-      if (a20Released?.operationMode === "RESERVATION_ONLY") {
-        return NextResponse.json(
-          {
-            ok: false,
-            error: "a20_released_to_general",
-            message:
-              "この日付は追加普通車枠（A-20）が一般予約に開放済みのため利用できません。バス単体での予約は可能です。",
-          },
-          { status: 409 }
-        );
-      }
-
-      // A-20 がその日すでに予約済み（CANCELED 以外）なら不可。
-      // 占有判定は spotId 単独（一般予約=placeId rifu-main / バス追加車=placeId
-      // rifu-main-bus の両方を取りこぼさないため、placeId は条件に入れない）。
-      const a20Taken = await prisma.reservation.findFirst({
-        where: {
-          spotId: a20.id,
-          date,
-          status: { not: "CANCELED" },
-        },
-        select: { id: true },
-      });
-
-      if (a20Taken) {
-        return NextResponse.json(
-          {
-            ok: false,
-            error: "a20_already_reserved",
-            message: "この日は追加普通車用の A-20 区画が既に埋まっています。",
-          },
-          { status: 409 }
-        );
-      }
-
-      spotId = a20.id; // rifu-main の A-20 spot id
-      slot = "A-20";
-    }
+    // バス／追加普通車ともに区画外のバス専用レーン（BUS_LANE, spotId なし）に駐車する。
+    // ＋追加普通車(hasExtraCar)でも A 区画(A-20)は使わず、BUS スペースに2台停める。
+    const spotId: string | null = null;
+    const slot = "BUS_LANE";
 
     // 料金はサーバ側で再計算
     const price = computeBusPrice(vehicleType, hasExtraCar);

@@ -538,7 +538,7 @@ function PartnerBusReservePageInner() {
                     onChange={(e) => setHasExtraCar(e.target.checked)}
                   />
                   <span>
-                    追加の普通車を駐車する（+{formatYen(PRICE_EXTRA_CAR)}、A-20区画）
+                    追加の普通車を駐車する（+{formatYen(PRICE_EXTRA_CAR)}、BUSスペースに2台停車）
                   </span>
                 </label>
               ) : null}
