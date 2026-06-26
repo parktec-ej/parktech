@@ -14,6 +14,18 @@ type PlacesResponse = {
   places?: PlaceLite[];
 };
 
+type SlotLite = {
+  code: string;
+  spotId: string | null;
+  available: boolean;
+};
+
+type SlotsResponse = {
+  ok: boolean;
+  placeName?: string;
+  slots?: SlotLite[];
+};
+
 type ApplyResponse = {
   ok: boolean;
   contractId?: string;
@@ -57,6 +69,10 @@ export default function MonthlyApplyPage() {
   const [plate, setPlate] = useState("");
   const [agreed, setAgreed] = useState(false);
 
+  const [slots, setSlots] = useState<SlotLite[]>([]);
+  const [spotId, setSpotId] = useState("");
+  const [slotsLoading, setSlotsLoading] = useState(true);
+
   const [submitting, setSubmitting] = useState(false);
   const [err, setErr] = useState("");
 
@@ -82,11 +98,35 @@ export default function MonthlyApplyPage() {
     };
   }, []);
 
+  // 月極の空き区画（A-17〜A-20）を取得。利府メイン固定。
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        setSlotsLoading(true);
+        const res = await fetch("/api/monthly/slots", { cache: "no-store" });
+        const json: SlotsResponse = await res
+          .json()
+          .catch(() => ({ ok: false }));
+        if (cancelled) return;
+        setSlots(Array.isArray(json.slots) ? json.slots : []);
+      } catch {
+        if (!cancelled) setSlots([]);
+      } finally {
+        if (!cancelled) setSlotsLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setErr("");
 
     if (!placeId) return setErr("駐車場を選択してください");
+    if (!spotId) return setErr("駐車区画を選択してください");
     if (!name.trim()) return setErr("氏名を入力してください");
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
       return setErr("メールアドレスの形式が正しくありません");
@@ -104,6 +144,7 @@ export default function MonthlyApplyPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           placeId,
+          spotId,
           plan,
           billingTerm: "MONTHLY",
           name: name.trim(),
@@ -151,18 +192,53 @@ export default function MonthlyApplyPage() {
         <form onSubmit={submit} style={cardStyle}>
           <div style={fieldStyle}>
             <label style={labelStyle}>駐車場</label>
-            <select
-              value={placeId}
-              onChange={(e) => setPlaceId(e.target.value)}
-              style={inputStyle}
-            >
-              <option value="">-- 駐車場を選択 --</option>
-              {places.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </select>
+            <div style={fixedFieldStyle}>
+              {places.find((p) => p.id === placeId)?.name ??
+                "PARKTEC 利府グランディー前駐車場"}
+            </div>
+            <span style={{ fontSize: 12, color: "#6b7280" }}>
+              ※ 月極のお申し込みは利府グランディー前のみ承っております。
+            </span>
+          </div>
+
+          <div style={fieldStyle}>
+            <label style={labelStyle}>駐車区画（4区画から選択）</label>
+            {slotsLoading ? (
+              <div style={{ fontSize: 14, color: "#6b7280" }}>
+                空き状況を確認しています…
+              </div>
+            ) : slots.length === 0 ? (
+              <div style={{ fontSize: 14, color: "#991b1b" }}>
+                区画情報を取得できませんでした。時間をおいて再度お試しください。
+              </div>
+            ) : (
+              <div style={slotGridStyle}>
+                {slots.map((s) => {
+                  const selected = spotId !== "" && spotId === s.spotId;
+                  const disabled = !s.available || !s.spotId;
+                  return (
+                    <button
+                      key={s.code}
+                      type="button"
+                      disabled={disabled}
+                      onClick={() => s.spotId && setSpotId(s.spotId)}
+                      style={{
+                        ...slotButtonStyle,
+                        ...(selected ? slotButtonActiveStyle : null),
+                        ...(disabled ? slotButtonDisabledStyle : null),
+                      }}
+                    >
+                      <span style={{ fontSize: 18, fontWeight: 900 }}>
+                        {s.code}
+                      </span>
+                      <span style={{ fontSize: 12, marginTop: 2 }}>
+                        {disabled ? "満車" : selected ? "選択中" : "空き"}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
           <div style={fieldStyle}>
@@ -416,4 +492,41 @@ const submitButtonStyle: React.CSSProperties = {
   padding: "14px 18px",
   fontSize: 16,
   fontWeight: 800,
+};
+const fixedFieldStyle: React.CSSProperties = {
+  border: "1px solid #e5e7eb",
+  borderRadius: 12,
+  padding: "12px 14px",
+  fontSize: 16,
+  fontWeight: 700,
+  color: "#111827",
+  background: "#f9fafb",
+};
+const slotGridStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(4, 1fr)",
+  gap: 10,
+};
+const slotButtonStyle: React.CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  alignItems: "center",
+  justifyContent: "center",
+  border: "1px solid #d1d5db",
+  borderRadius: 12,
+  padding: "14px 8px",
+  background: "#fff",
+  color: "#111827",
+  cursor: "pointer",
+};
+const slotButtonActiveStyle: React.CSSProperties = {
+  border: "2px solid #111827",
+  background: "#111827",
+  color: "#fff",
+};
+const slotButtonDisabledStyle: React.CSSProperties = {
+  border: "1px solid #e5e7eb",
+  background: "#f3f4f6",
+  color: "#9ca3af",
+  cursor: "not-allowed",
 };

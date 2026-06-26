@@ -21,7 +21,7 @@ const TERM_LABEL: Record<string, string> = {
 
 export default async function AdminMonthlyPage() {
   const contracts = await prisma.monthlyContract.findMany({
-    include: { tenant: true, place: true },
+    include: { tenant: true, place: true, spot: true },
     orderBy: { createdAt: "desc" },
   });
 
@@ -35,6 +35,7 @@ export default async function AdminMonthlyPage() {
           <tr style={{ background: "#f3f4f6", textAlign: "left" }}>
             <th style={th}>申込者</th>
             <th style={th}>駐車場</th>
+            <th style={th}>区画</th>
             <th style={th}>プラン / 期間</th>
             <th style={th}>金額</th>
             <th style={th}>車両</th>
@@ -47,6 +48,7 @@ export default async function AdminMonthlyPage() {
             <tr key={c.id} style={{ borderBottom: "1px solid #eee" }}>
               <td style={td}>{c.tenant.name}<br /><span style={{ color: "#888" }}>{c.tenant.email}</span></td>
               <td style={td}>{c.place.name}</td>
+              <td style={td}>{c.spot?.code ?? "—"}</td>
               <td style={td}>{PLAN_LABEL[c.plan] ?? c.plan}<br /><span style={{ color: "#888" }}>{TERM_LABEL[c.billingTerm] ?? c.billingTerm}</span></td>
               <td style={td}>¥{c.totalFeeYen.toLocaleString()}</td>
               <td style={td}>{c.vehicleType}<br /><span style={{ color: "#888" }}>{c.plate}</span></td>
@@ -57,7 +59,7 @@ export default async function AdminMonthlyPage() {
             </tr>
           ))}
           {contracts.length === 0 ? (
-            <tr><td style={td} colSpan={7}>契約はまだありません。</td></tr>
+            <tr><td style={td} colSpan={8}>契約はまだありません。</td></tr>
           ) : null}
         </tbody>
       </table>
