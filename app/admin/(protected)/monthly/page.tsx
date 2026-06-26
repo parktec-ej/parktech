@@ -52,7 +52,7 @@ export default async function AdminMonthlyPage() {
               <td style={td}>{c.vehicleType}<br /><span style={{ color: "#888" }}>{c.plate}</span></td>
               <td style={td}><span style={badge(c.status)}>{STATUS_LABEL[c.status] ?? c.status}</span></td>
               <td style={td}>
-                {c.status === "PENDING" ? <MonthlyActions id={c.id} /> : <span style={{ color: "#aaa" }}>―</span>}
+                <MonthlyActions id={c.id} status={c.status} cancelRequested={!!c.cancelRequestedAt} />
               </td>
             </tr>
           ))}

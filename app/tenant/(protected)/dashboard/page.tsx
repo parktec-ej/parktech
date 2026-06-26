@@ -1,6 +1,7 @@
 import { requireTenant } from "@/lib/tenant-auth";
 import { prisma } from "@/lib/db";
 import PasswordChange from "./PasswordChange";
+import CancelRequest from "./CancelRequest";
 
 export const dynamic = "force-dynamic";
 
@@ -142,6 +143,13 @@ export default async function TenantDashboard() {
         <h2 style={h2}>パスワード変更</h2>
         <PasswordChange />
       </section>
+
+      {contract && (contract.status === "ACTIVE" || contract.status === "PAST_DUE") ? (
+        <section style={cardBox}>
+          <h2 style={h2}>解約</h2>
+          <CancelRequest alreadyRequested={!!contract.cancelRequestedAt} />
+        </section>
+      ) : null}
     </main>
   );
 }

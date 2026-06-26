@@ -941,6 +941,7 @@ model MonthlyContract {
   stripePaymentIntentId  String?                    // 前払い一括時
   approvedAt             DateTime?
   canceledAt             DateTime?
+  cancelRequestedAt      DateTime?
   createdAt              DateTime                   @default(now())
   updatedAt              DateTime                   @updatedAt
   tenant                 Tenant                     @relation(fields: [tenantId], references: [id])

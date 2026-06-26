@@ -256,6 +256,39 @@ ${endDate ? `契約満了日: ${safe(endDate)}` : "更新: 毎月自動更新"}
   });
 }
 
+export async function sendMonthlyContractCanceledMail(params: {
+  to: string;
+  name: string;
+  placeName: string;
+}) {
+  const { to, name, placeName } = params;
+  return getResend().emails.send({
+    from: MAIL_FROM,
+    to,
+    subject: "【ParkTec】月極駐車場 解約手続きが完了しました",
+    html: `
+      <div style="font-family:Arial,sans-serif;line-height:1.8;color:#111">
+        <h2>解約手続きが完了しました</h2>
+        <p>${safe(name)} 様</p>
+        <p>月極駐車場（${safe(placeName)}）の解約手続きが完了しました。ご利用ありがとうございました。</p>
+        <p style="font-size:13px;color:#555">前払いプランの場合、ご返金はございません（規約に基づく）。月払いプランの場合、以降の自動課金は停止されます。</p>
+        <hr style="margin:24px 0" />
+        <p>パークテックイーストジャパン</p>
+      </div>
+    `,
+    text: `解約手続きが完了しました。
+${safe(name)} 様
+
+月極駐車場（${safe(placeName)}）の解約手続きが完了しました。
+ご利用ありがとうございました。
+
+前払いプランの場合、ご返金はございません（規約に基づく）。
+月払いプランの場合、以降の自動課金は停止されます。
+
+パークテックイーストジャパン`.trim(),
+  });
+}
+
 export async function sendCheckoutThanksMail(params: {
   to: string;
   placeName: string;
