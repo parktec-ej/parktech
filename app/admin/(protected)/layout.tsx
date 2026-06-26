@@ -68,6 +68,11 @@ function AdminTabs() {
         current={pathname.startsWith("/admin/agents")}
       />
       <NavLink
+        href="/admin/monthly"
+        label="🏠 月極契約"
+        current={pathname.startsWith("/admin/monthly")}
+      />
+      <NavLink
         href={withCurrentPlace("/admin/pricing", searchParams)}
         label="料金設定"
         current={pathname.startsWith("/admin/pricing")}

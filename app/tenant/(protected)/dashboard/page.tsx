@@ -1,5 +1,6 @@
 import { requireTenant } from "@/lib/tenant-auth";
 import { prisma } from "@/lib/db";
+import PasswordChange from "./PasswordChange";
 
 export const dynamic = "force-dynamic";
 
@@ -135,6 +136,11 @@ export default async function TenantDashboard() {
             </tbody>
           </table>
         )}
+      </section>
+
+      <section style={cardBox}>
+        <h2 style={h2}>パスワード変更</h2>
+        <PasswordChange />
       </section>
     </main>
   );
