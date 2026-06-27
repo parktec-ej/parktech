@@ -13,3 +13,7 @@ export const OCCUPYING_STATUSES = [
   "ACTIVE",
   "PAST_DUE",
 ] as const;
+
+// イベント日のプラン2予約の締切（イベント日の何日前まで）。
+// 締切を過ぎて未予約の月極区画は一般予約へ自動開放する。
+export const MONTHLY_EVENT_DEADLINE_DAYS = 14;

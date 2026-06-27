@@ -2,6 +2,7 @@ import { requireTenant } from "@/lib/tenant-auth";
 import { prisma } from "@/lib/db";
 import PasswordChange from "./PasswordChange";
 import CancelRequest from "./CancelRequest";
+import EventReserveButton from "./EventReserveButton";
 
 export const dynamic = "force-dynamic";
 
@@ -105,7 +106,7 @@ export default async function TenantDashboard() {
                 <li key={d.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: "1px solid #eee", fontSize: 14 }}>
                   <span>{ymd}{d.label ? ` ・ ${d.label}` : ""}</span>
                   {includesEvent && place ? (
-                    <a href={`/places/${place.slug}?date=${ymd}`} style={linkBtn}>このイベント日に予約する</a>
+                    <EventReserveButton date={ymd} />
                   ) : (
                     <span style={{ color: "#aaa", fontSize: 13 }}>駐車不可</span>
                   )}

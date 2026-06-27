@@ -10,6 +10,7 @@ import {
   isReservationOpen,
   ymdToUtcDate,
 } from "@/lib/pricing-core";
+import { MONTHLY_PLACE_SLUG, MONTHLY_SLOT_CODES } from "@/lib/monthly-config";
 
 type EventDayLite = {
   id: string;
@@ -278,7 +279,12 @@ export async function GET(req: NextRequest) {
     // 例外的に表示・予約可とする。A-20 が実在するのは rifu-main のみなので slug を
     // ハードコード。他の駐車場・他spotには一切影響させない。
     const spots = (spotsRaw as SpotRow[]).filter((s) => {
-      if (place.slug === "rifu-main" && s.code === "A-20") {
+      // 月極4区画(A-17〜A-20)は契約者専有のため一般グリッドに原則出さない。
+      // 解放cronが RESERVATION_ONLY マーカーを書いた区画だけ例外表示。
+      if (
+        place.slug === MONTHLY_PLACE_SLUG &&
+        (MONTHLY_SLOT_CODES as readonly string[]).includes(s.code)
+      ) {
         return dayModeMap.get(s.id) === "RESERVATION_ONLY";
       }
       return true;
@@ -465,14 +471,17 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // A-20 は rifu-main のバス追加普通車専用枠。一般予約での直接指定は原則拒否。
-    // ただし cron が開放マーカー(RESERVATION_ONLY)を書いた日付だけは許可する。
-    if (place.slug === "rifu-main" && spot.code === "A-20") {
-      const a20Mode = await prisma.spotModeCalendar.findUnique({
+    // 月極4区画(A-17〜A-20)は契約者専有のため一般予約の直接指定は原則拒否。
+    // 解放cronが開放マーカー(RESERVATION_ONLY)を書いた日付だけは許可する。
+    if (
+      place.slug === MONTHLY_PLACE_SLUG &&
+      (MONTHLY_SLOT_CODES as readonly string[]).includes(spot.code)
+    ) {
+      const slotMode = await prisma.spotModeCalendar.findUnique({
         where: { spotId_date: { spotId: spot.id, date } },
         select: { operationMode: true },
       });
-      if (a20Mode?.operationMode !== "RESERVATION_ONLY") {
+      if (slotMode?.operationMode !== "RESERVATION_ONLY") {
         return jsonError("この区画は予約できません", 409, "spot_not_reservable");
       }
     }
