@@ -75,6 +75,7 @@ export async function GET(req: Request) {
     });
 
     const released: string[] = [];
+    const noResponse: string[] = [];
 
     for (const ev of eventDays) {
       const ymd = ymdJst(ev.date);
@@ -109,12 +110,45 @@ export async function GET(req: Request) {
           },
         });
         released.push(`${ymd} ${spot.code}`);
+
+        // プラン2契約者が未回答(NOTIFIED)のまま締切なら EXPIRED 化し記録
+        const contract = await prisma.monthlyContract.findFirst({
+          where: {
+            placeId: place.id,
+            spotId: spot.id,
+            status: "ACTIVE",
+            plan: "INCLUDES_EVENT",
+          },
+          select: { id: true, tenant: { select: { name: true } } },
+        });
+        if (contract) {
+          const meRow = await prisma.monthlyEventResponse.findUnique({
+            where: { contractId_date: { contractId: contract.id, date: ymd } },
+            select: { id: true, status: true },
+          });
+          if (meRow && meRow.status === "NOTIFIED") {
+            await prisma.monthlyEventResponse.update({
+              where: { id: meRow.id },
+              data: { status: "EXPIRED" },
+            });
+            noResponse.push(
+              `${ymd} ${spot.code}（${contract.tenant?.name ?? "契約者"}）`
+            );
+          }
+        }
       }
     }
 
     if (released.length > 0) {
       await sendSlackNotification(
         `【月極区画 自動開放】イベント${MONTHLY_EVENT_DEADLINE_DAYS}日前の締切に到達し未予約だった区画を一般予約へ開放しました：\n${released.join(
+          "\n"
+        )}`
+      );
+    }
+    if (noResponse.length > 0) {
+      await sendSlackNotification(
+        `【月極・未回答】プラン2契約者が${MONTHLY_EVENT_DEADLINE_DAYS}日前までに回答せず締切。未回答のまま開放した区画：\n${noResponse.join(
           "\n"
         )}`
       );

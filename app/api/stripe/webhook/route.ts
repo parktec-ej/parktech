@@ -130,6 +130,17 @@ export async function POST(req: Request) {
         const slot = String(session.metadata.slot ?? "").trim();
         const date = String(session.metadata.date ?? "").trim();
 
+        // 月極プラン2のイベント日予約(④-D)経由なら回答ログを RESERVED に更新
+        const meResponseId = String(session.metadata.meResponseId ?? "").trim();
+        if (meResponseId) {
+          await prisma.monthlyEventResponse
+            .update({
+              where: { id: meResponseId },
+              data: { status: "RESERVED", respondedAt: new Date() },
+            })
+            .catch(() => {});
+        }
+
         const name =
           String(session.metadata.name ?? "").trim() ||
           session.customer_details?.name ||

@@ -722,6 +722,30 @@ enum ReservationType {
   bus
 }
 
+// ④-D 月極プラン2のイベント日「予約する/利用しない」回答ログ
+model MonthlyEventResponse {
+  id          String                     @id @default(uuid())
+  contractId  String
+  placeId     String
+  spotId      String
+  date        String // イベント日 YYYY-MM-DD(JST)
+  status      MonthlyEventResponseStatus @default(NOTIFIED)
+  notifiedAt  DateTime                   @default(now())
+  respondedAt DateTime?
+  createdAt   DateTime                   @default(now())
+  updatedAt   DateTime                   @updatedAt
+
+  @@unique([contractId, date])
+  @@index([placeId, date])
+}
+
+enum MonthlyEventResponseStatus {
+  NOTIFIED
+  RESERVED
+  DECLINED
+  EXPIRED
+}
+
 enum VehicleType {
   bus
   car

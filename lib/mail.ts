@@ -701,3 +701,83 @@ Email: info@parktec-ej.com`;
     `,
   });
 }
+
+export async function sendMonthlyEventNoticeMail(params: {
+  to: string;
+  placeName: string;
+  eventName: string;
+  date: string;
+  reserveUrl: string;
+  declineUrl: string;
+  dashboardUrl: string;
+  deadlineNote: string;
+}) {
+  const {
+    to,
+    placeName,
+    eventName,
+    date,
+    reserveUrl,
+    declineUrl,
+    dashboardUrl,
+    deadlineNote,
+  } = params;
+
+  return getResend().emails.send({
+    from: MAIL_FROM,
+    to,
+    subject: `【ParkTec】イベント日のご利用確認（${safe(date)}）`,
+    html: `
+      <div style="font-family:Arial,sans-serif;line-height:1.8;color:#111">
+        <h2>イベント開催日のご利用確認</h2>
+        <p>月極駐車場をご利用いただきありがとうございます。<br />
+        下記イベント開催日について、当日に駐車場をご利用になるかご回答ください。</p>
+
+        <div style="padding:16px;border:1px solid #ddd;border-radius:8px;background:#fafafa">
+          <div><strong>駐車場:</strong> ${safe(placeName)}</div>
+          <div><strong>イベント:</strong> ${safe(eventName)}</div>
+          <div><strong>開催日:</strong> ${safe(date)}</div>
+        </div>
+
+        <p style="margin-top:20px"><strong>${safe(
+          deadlineNote
+        )}にご回答ください。</strong><br />
+        ご回答がない場合、当日のご利用区画は一般のお客様の予約に開放されます。</p>
+
+        <div style="margin-top:16px">
+          <a href="${reserveUrl}" style="display:inline-block;background:#111;color:#fff;text-decoration:none;padding:12px 20px;border-radius:8px;font-weight:bold;margin-right:8px">この日に予約する（駐車料金のお支払いへ）</a>
+          <a href="${declineUrl}" style="display:inline-block;background:#fff;color:#111;text-decoration:none;padding:12px 20px;border-radius:8px;border:1px solid #111;font-weight:bold">利用しない</a>
+        </div>
+
+        <p style="margin-top:20px;font-size:13px;color:#555">
+          ボタンが開かない場合は契約者ページからもお手続きいただけます：<br />
+          <a href="${dashboardUrl}">${dashboardUrl}</a>
+        </p>
+
+        <hr style="margin:24px 0" />
+        <p>
+          パークテックイーストジャパン<br />
+          TEL: 050-1793-4785<br />
+          Email: info@parktec-ej.com
+        </p>
+      </div>
+    `,
+    text: `イベント開催日のご利用確認
+
+駐車場: ${safe(placeName)}
+イベント: ${safe(eventName)}
+開催日: ${safe(date)}
+
+${safe(deadlineNote)}にご回答ください。
+ご回答がない場合、当日のご利用区画は一般のお客様の予約に開放されます。
+
+この日に予約する: ${reserveUrl}
+利用しない: ${declineUrl}
+
+契約者ページ: ${dashboardUrl}
+
+パークテックイーストジャパン
+TEL: 050-1793-4785
+Email: info@parktec-ej.com`,
+  });
+}
