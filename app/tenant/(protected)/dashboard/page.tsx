@@ -3,12 +3,13 @@ import { prisma } from "@/lib/db";
 import PasswordChange from "./PasswordChange";
 import CancelRequest from "./CancelRequest";
 import EventReserveButton from "./EventReserveButton";
+import EventDeclineButton from "./EventDeclineButton";
 
 export const dynamic = "force-dynamic";
 
 const PLAN_LABEL: Record<string, string> = {
-  NON_EVENT_ONLY: "プラン1：非イベント日のみ",
-  INCLUDES_EVENT: "プラン2：イベント日も駐車可（都度予約）",
+  NON_EVENT_ONLY: "月極（旧・イベント日不可）",
+  INCLUDES_EVENT: "月極（イベント開催日も予約可）",
 };
 const TERM_LABEL: Record<string, string> = {
   MONTHLY: "月払い（毎月3,000円・自動継続）",
@@ -37,7 +38,6 @@ export default async function TenantDashboard() {
 
   const contract = tenant.contracts.find((c) => c.status === "ACTIVE") ?? tenant.contracts[0] ?? null;
   const place = contract?.place ?? null;
-  const includesEvent = contract?.plan === "INCLUDES_EVENT";
 
   const todayStart = new Date(`${jstYmd(new Date())}T00:00:00+09:00`);
   const eventDays = place
@@ -94,7 +94,7 @@ export default async function TenantDashboard() {
       <section style={cardBox}>
         <h2 style={h2}>イベント開催日</h2>
         <p style={{ fontSize: 13, color: "#92400e", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 6, padding: "8px 12px" }}>
-          イベント開催日は月極でのご利用ができません。{includesEvent ? "駐車をご希望の場合は各日付から予約してください（追加料金）。" : "（プラン1のため、イベント日は駐車できません。）"}
+          イベント開催日に駐車をご希望の場合は、各日付から予約してください（追加料金）。ご予約がない場合、当日の区画は一般のお客様の予約に開放されます。
         </p>
         {eventDays.length === 0 ? (
           <p style={{ fontSize: 14, color: "#666" }}>予定されているイベント日はありません。</p>
@@ -105,10 +105,13 @@ export default async function TenantDashboard() {
               return (
                 <li key={d.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: "1px solid #eee", fontSize: 14 }}>
                   <span>{ymd}{d.label ? ` ・ ${d.label}` : ""}</span>
-                  {includesEvent && place ? (
-                    <EventReserveButton date={ymd} />
+                  {place ? (
+                    <span style={{ display: "inline-flex", gap: 8, alignItems: "flex-start" }}>
+                      <EventReserveButton date={ymd} />
+                      <EventDeclineButton date={ymd} />
+                    </span>
                   ) : (
-                    <span style={{ color: "#aaa", fontSize: 13 }}>駐車不可</span>
+                    <span style={{ color: "#aaa", fontSize: 13 }}>—</span>
                   )}
                 </li>
               );

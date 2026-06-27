@@ -57,7 +57,6 @@ export async function GET(req: Request) {
       where: {
         placeId: place.id,
         status: "ACTIVE",
-        plan: "INCLUDES_EVENT",
         spotId: { not: null },
       },
       include: { tenant: true },

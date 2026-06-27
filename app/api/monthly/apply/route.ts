@@ -27,8 +27,8 @@ const TERM_CONFIG: Record<
 };
 
 const PLAN_LABEL: Record<Plan, string> = {
-  NON_EVENT_ONLY: "プラン1：非イベント日のみ",
-  INCLUDES_EVENT: "プラン2：イベント日も駐車可（都度予約）",
+  NON_EVENT_ONLY: "月極（旧・イベント日不可）",
+  INCLUDES_EVENT: "月極（イベント開催日も予約可）",
 };
 
 // 同一メールで重複申込とみなす契約ステータス（解約・却下は再申込を許可）
@@ -68,7 +68,8 @@ export async function POST(req: NextRequest) {
     const vehicleType = String(body.vehicleType ?? "").trim();
     const plate = String(body.plate ?? "").trim();
     const spotId = String(body.spotId ?? "").trim();
-    const plan = String(body.plan ?? "NON_EVENT_ONLY").trim() as Plan;
+    // プラン統合: 申込は常に「イベント開催日も予約可」(旧プラン2相当)で作成。
+    const plan: Plan = "INCLUDES_EVENT";
     // サブスク一本化: リクエストの billingTerm は無視し、常に MONTHLY（月額¥3,300）で作成する。
     const billingTerm = "MONTHLY" as BillingTerm;
     const importantTermsAgreed = body.importantTermsAgreed === true;

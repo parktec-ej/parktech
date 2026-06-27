@@ -34,22 +34,7 @@ type ApplyResponse = {
   message?: string;
 };
 
-type Plan = "NON_EVENT_ONLY" | "INCLUDES_EVENT";
-
 const MONTHLY_FEE_YEN = 3300;
-
-const PLAN_OPTIONS: Array<{ value: Plan; label: string; desc: string }> = [
-  {
-    value: "NON_EVENT_ONLY",
-    label: "プラン1：非イベント日のみ",
-    desc: "イベント開催日を除く日に駐車できます。",
-  },
-  {
-    value: "INCLUDES_EVENT",
-    label: "プラン2：イベント日も駐車可",
-    desc: "イベント日も都度予約のうえ駐車できます。",
-  },
-];
 
 function formatYen(value: number) {
   return `¥${value.toLocaleString("ja-JP")}`;
@@ -58,7 +43,6 @@ function formatYen(value: number) {
 export default function MonthlyApplyPage() {
   const [places, setPlaces] = useState<PlaceLite[]>([]);
   const [placeId, setPlaceId] = useState("");
-  const [plan, setPlan] = useState<Plan>("NON_EVENT_ONLY");
 
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -145,7 +129,6 @@ export default function MonthlyApplyPage() {
         body: JSON.stringify({
           placeId,
           spotId,
-          plan,
           billingTerm: "MONTHLY",
           name: name.trim(),
           email: email.trim(),
@@ -239,35 +222,6 @@ export default function MonthlyApplyPage() {
                 })}
               </div>
             )}
-          </div>
-
-          <div style={fieldStyle}>
-            <label style={labelStyle}>プラン</label>
-            <div style={{ display: "grid", gap: 10 }}>
-              {PLAN_OPTIONS.map((p) => (
-                <label
-                  key={p.value}
-                  style={{
-                    ...choiceStyle,
-                    ...(plan === p.value ? choiceActiveStyle : null),
-                  }}
-                >
-                  <input
-                    type="radio"
-                    name="plan"
-                    checked={plan === p.value}
-                    onChange={() => setPlan(p.value)}
-                  />
-                  <span>
-                    <strong>{p.label}</strong>
-                    <br />
-                    <span style={{ fontSize: 13, color: "#6b7280" }}>
-                      {p.desc}
-                    </span>
-                  </span>
-                </label>
-              ))}
-            </div>
           </div>
 
           <div style={totalBoxStyle}>
@@ -427,20 +381,6 @@ const inputStyle: React.CSSProperties = {
   fontSize: 16,
   background: "#fff",
   boxSizing: "border-box",
-};
-const choiceStyle: React.CSSProperties = {
-  display: "flex",
-  gap: 10,
-  alignItems: "flex-start",
-  border: "1px solid #d1d5db",
-  borderRadius: 12,
-  padding: "12px 14px",
-  cursor: "pointer",
-  lineHeight: 1.6,
-};
-const choiceActiveStyle: React.CSSProperties = {
-  border: "2px solid #111827",
-  background: "#f9fafb",
 };
 const totalBoxStyle: React.CSSProperties = {
   display: "flex",

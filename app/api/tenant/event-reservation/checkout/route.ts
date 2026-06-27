@@ -44,9 +44,6 @@ export async function POST(req: NextRequest) {
 
     const contract = tenant.contracts.find((c) => c.status === "ACTIVE") ?? null;
     if (!contract) return jsonError("有効な契約がありません", 403, "no_active_contract");
-    if (contract.plan !== "INCLUDES_EVENT") {
-      return jsonError("プラン2のみイベント日の予約が可能です", 403, "plan_not_allowed");
-    }
     if (!contract.spotId) {
       return jsonError("契約に駐車区画が割り当てられていません", 409, "no_spot");
     }

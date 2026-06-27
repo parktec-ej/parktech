@@ -33,7 +33,6 @@ export async function GET(req: NextRequest) {
     if (
       !contract ||
       contract.status !== "ACTIVE" ||
-      contract.plan !== "INCLUDES_EVENT" ||
       !contract.spotId ||
       !contract.place
     ) {
