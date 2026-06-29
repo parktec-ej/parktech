@@ -48,6 +48,39 @@ export default async function TenantDashboard() {
       })
     : [];
 
+  // 各イベント日の状態判定（予約済み / 利用しない受付済み / 未回答）。
+  // 優先: 自分の区画にCONFIRMED予約があれば「予約済み」。次に回答ログの状態。
+  const eventYmds = eventDays.map((d) => jstYmd(d.date));
+  const mySpotId = contract?.spotId ?? null;
+
+  const reservedRows =
+    mySpotId && eventYmds.length > 0
+      ? await prisma.reservation.findMany({
+          where: { spotId: mySpotId, status: "CONFIRMED", date: { in: eventYmds } },
+          select: { date: true },
+        })
+      : [];
+  const reservedDates = new Set(reservedRows.map((r) => r.date));
+
+  const responseRows =
+    contract && eventYmds.length > 0
+      ? await prisma.monthlyEventResponse.findMany({
+          where: { contractId: contract.id, date: { in: eventYmds } },
+          select: { date: true, status: true },
+        })
+      : [];
+  const responseByDate = new Map<string, string>(
+    responseRows.map((r) => [r.date, r.status])
+  );
+
+  function eventDayState(ymd: string): "reserved" | "declined" | "open" {
+    if (reservedDates.has(ymd)) return "reserved";
+    const st = responseByDate.get(ymd);
+    if (st === "RESERVED") return "reserved";
+    if (st === "DECLINED" || st === "EXPIRED") return "declined";
+    return "open";
+  }
+
   const reservations = await prisma.reservation.findMany({
     where: { email: tenant.email, canceledAt: null },
     orderBy: { date: "desc" },
@@ -102,16 +135,21 @@ export default async function TenantDashboard() {
           <ul style={{ listStyle: "none", padding: 0, margin: "8px 0 0" }}>
             {eventDays.map((d) => {
               const ymd = jstYmd(d.date);
+              const state = eventDayState(ymd);
               return (
                 <li key={d.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: "1px solid #eee", fontSize: 14 }}>
                   <span>{ymd}{d.label ? ` ・ ${d.label}` : ""}</span>
-                  {place ? (
+                  {!place ? (
+                    <span style={{ color: "#aaa", fontSize: 13 }}>—</span>
+                  ) : state === "reserved" ? (
+                    <span style={{ fontSize: 13, fontWeight: 700, color: "#15803d", background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 6, padding: "6px 12px" }}>予約済み</span>
+                  ) : state === "declined" ? (
+                    <span style={{ fontSize: 13, color: "#6b7280", background: "#f3f4f6", border: "1px solid #e5e7eb", borderRadius: 6, padding: "6px 12px" }}>利用しない（受付済み）</span>
+                  ) : (
                     <span style={{ display: "inline-flex", gap: 8, alignItems: "flex-start" }}>
                       <EventReserveButton date={ymd} />
                       <EventDeclineButton date={ymd} />
                     </span>
-                  ) : (
-                    <span style={{ color: "#aaa", fontSize: 13 }}>—</span>
                   )}
                 </li>
               );
