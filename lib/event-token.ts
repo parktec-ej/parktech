@@ -20,7 +20,7 @@ function b64urlDecode(s: string): Buffer {
 export type EventTokenPayload = {
   c: string; // contractId
   d: string; // date YYYY-MM-DD
-  a: "reserve" | "decline";
+  a: "reserve" | "decline" | "offer_use" | "offer_decline";
 };
 
 export function signEventToken(payload: EventTokenPayload): string {
@@ -45,7 +45,10 @@ export function verifyEventToken(token: string): EventTokenPayload | null {
       p &&
       typeof p.c === "string" &&
       typeof p.d === "string" &&
-      (p.a === "reserve" || p.a === "decline")
+      (p.a === "reserve" ||
+        p.a === "decline" ||
+        p.a === "offer_use" ||
+        p.a === "offer_decline")
     ) {
       return p as EventTokenPayload;
     }

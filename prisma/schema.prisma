@@ -1001,12 +1001,13 @@ model MonthlySubscriptionPayment {
 }
 
 enum EventMonthlyOfferStatus {
-  WAITING       // 月極利用者の回答待ち（＝一般客の承認待ち）
-  RELEASED      // 月極が「使わない」/無回答 → 申請者が決済可
-  TENANT_TOOK   // 月極が「使う」 → 申請者は利用不可
-  PAID          // 申請者の決済完了・予約確定
-  EXPIRED       // 期限切れ
-  CANCELED      // 取消
+  WAITING               // 月極利用者の回答待ち（＝一般客の承認待ち）
+  RELEASED              // 月極が「使わない」/無回答 → 申請者が決済可
+  TENANT_TOOK           // 月極が「使う」 → 申請者は利用不可（決済済）
+  TENANT_CHARGE_PENDING // 月極が「使う」→ 課金失敗、月極の支払い待ち（③・案B）
+  PAID                  // 申請者の決済完了・予約確定
+  EXPIRED               // 期限切れ
+  CANCELED              // 取消
 }
 
 model EventMonthlyOffer {

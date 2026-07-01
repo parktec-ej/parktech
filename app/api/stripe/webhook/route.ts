@@ -528,6 +528,14 @@ export async function POST(req: Request) {
               },
             });
 
+            // ③ オフセッション課金のため Stripe customer を保存
+            if (typeof session.customer === "string" && session.customer) {
+              await prisma.tenant.update({
+                where: { id: contract.tenantId },
+                data: { stripeCustomerId: session.customer },
+              });
+            }
+
             try {
               await sendMonthlyContractActivatedMail({
                 to: contract.tenant.email,
