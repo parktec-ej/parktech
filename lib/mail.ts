@@ -781,3 +781,109 @@ TEL: 050-1793-4785
 Email: info@parktec-ej.com`,
   });
 }
+
+export async function sendMonthlyOfferNoticeMail(params: {
+  to: string;
+  tenantName: string;
+  placeName: string;
+  spotLabel: string;
+  date: string;
+  useUrl: string;
+  declineUrl: string;
+  dashboardUrl: string;
+  deadlineNote: string;
+}) {
+  const { to, tenantName, placeName, spotLabel, date, useUrl, declineUrl, dashboardUrl, deadlineNote } = params;
+  return getResend().emails.send({
+    from: MAIL_FROM,
+    to,
+    subject: `【ParkTec】あなたの月極区画に利用希望者がいます（${safe(date)}）`,
+    html: `
+      <div style="font-family:Arial,sans-serif;line-height:1.8;color:#111">
+        <h2>イベント開催日 区画利用のご確認</h2>
+        <p>${safe(tenantName)} 様</p>
+        <p>下記イベント開催日について、一般のお客様から<strong>あなたの月極区画のご利用希望</strong>が入りました。<br />
+        当日ご自身で駐車される場合は「利用する」、利用されない場合は「希望者にお譲りする」をお選びください。</p>
+        <div style="padding:16px;border:1px solid #ddd;border-radius:8px;background:#fafafa">
+          <div><strong>駐車場:</strong> ${safe(placeName)}</div>
+          <div><strong>区画:</strong> ${safe(spotLabel)}</div>
+          <div><strong>開催日:</strong> ${safe(date)}</div>
+        </div>
+        <p style="margin-top:20px"><strong>${safe(deadlineNote)}にご回答ください。</strong><br />
+        ご回答がない場合、当日のご利用区画は希望者にお譲りします（自動）。</p>
+        <div style="margin-top:16px">
+          <a href="${useUrl}" style="display:inline-block;background:#111;color:#fff;text-decoration:none;padding:12px 20px;border-radius:8px;font-weight:bold;margin-right:8px">利用する（当日ご自身で駐車）</a>
+          <a href="${declineUrl}" style="display:inline-block;background:#fff;color:#111;text-decoration:none;padding:12px 20px;border-radius:8px;border:1px solid #111;font-weight:bold">利用しない（希望者にお譲り）</a>
+        </div>
+        <p style="margin-top:12px;font-size:13px;color:#555">
+          ※「利用する」を選ぶと、当日分の駐車料金がご登録のカードから自動的にお支払いとなります。
+        </p>
+        <p style="margin-top:16px;font-size:13px;color:#555">契約者ページ：<a href="${dashboardUrl}">${dashboardUrl}</a></p>
+        <hr style="margin:24px 0" />
+        <p>パークテックイーストジャパン<br />TEL: 050-1793-4785<br />Email: info@parktec-ej.com</p>
+      </div>
+    `,
+    text: `イベント開催日 区画利用のご確認
+${safe(tenantName)} 様
+
+${safe(date)} のイベント開催日に、あなたの月極区画(${safe(spotLabel)})の利用希望者がいます。
+${safe(deadlineNote)}にご回答ください。ご回答がない場合は希望者にお譲りします。
+
+利用する（当日ご自身で駐車・カード自動決済）: ${useUrl}
+利用しない（希望者にお譲り）: ${declineUrl}
+
+パークテックイーストジャパン`.trim(),
+  });
+}
+
+export async function sendOfferApplicantPaymentMail(params: {
+  to: string;
+  name: string;
+  placeName: string;
+  spotLabel: string;
+  date: string;
+  priceYen: number;
+  checkoutUrl: string;
+}) {
+  const { to, name, placeName, spotLabel, date, priceYen, checkoutUrl } = params;
+  return getResend().emails.send({
+    from: MAIL_FROM,
+    to,
+    subject: `【ParkTec】ご予約が承認されました。お支払いのご案内（${safe(date)}）`,
+    html: `
+      <div style="font-family:Arial,sans-serif;line-height:1.8;color:#111">
+        <h2>ご予約が承認されました</h2>
+        <p>${safe(name)} 様</p>
+        <p>お申し込みいただいた区画のご利用が承認されました。下記ボタンよりお支払いをお願いします。<br />
+        <strong>お支払いの完了をもってご予約確定</strong>となります。</p>
+        <div style="padding:16px;border:1px solid #ddd;border-radius:8px;background:#fafafa">
+          <div><strong>駐車場:</strong> ${safe(placeName)}</div>
+          <div><strong>区画:</strong> ${safe(spotLabel)}</div>
+          <div><strong>利用日:</strong> ${safe(date)}</div>
+          <div><strong>料金:</strong> ${safe(priceYen)} 円（税込）</div>
+        </div>
+        <p style="margin-top:24px;text-align:center">
+          <a href="${checkoutUrl}" target="_blank" rel="noopener noreferrer"
+             style="display:inline-block;padding:14px 28px;background:#111;color:#fff;text-decoration:none;border-radius:8px;font-weight:600">お支払いへ進む</a>
+        </p>
+        <p style="font-size:12px;color:#666">ボタンが開けない場合はこちらのURLを貼り付けてください:<br />${checkoutUrl}</p>
+        <p style="font-size:13px;color:#555">※お支払いは開催日の3日前までにお願いします。期限を過ぎるとご予約は無効となります。</p>
+        <hr style="margin:24px 0" />
+        <p>パークテックイーストジャパン</p>
+      </div>
+    `,
+    text: `ご予約が承認されました。
+${safe(name)} 様
+
+お支払いの完了をもってご予約確定となります。
+駐車場: ${safe(placeName)}
+区画: ${safe(spotLabel)}
+利用日: ${safe(date)}
+料金: ${safe(priceYen)} 円（税込）
+
+お支払い: ${checkoutUrl}
+※開催日の3日前までにお支払いください。
+
+パークテックイーストジャパン`.trim(),
+  });
+}

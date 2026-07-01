@@ -7,6 +7,8 @@ import {
   OCCUPYING_STATUSES,
   MONTHLY_EVENT_OFFER_DEADLINE_DAYS,
 } from "@/lib/monthly-config";
+import { signEventToken } from "@/lib/event-token";
+import { sendMonthlyOfferNoticeMail } from "@/lib/mail";
 
 export const dynamic = "force-dynamic";
 
@@ -121,7 +123,38 @@ export async function POST(req: NextRequest) {
         select: { id: true },
       });
 
-      // ③でここから月極利用者へ通知メールを送る（今は未実装）
+      // ③-2 月極利用者へ「利用する／利用しない」通知メール（送信失敗しても申請は成立）
+      try {
+        const info = await prisma.monthlyContract.findUnique({
+          where: { id: contract.id },
+          select: {
+            tenant: { select: { email: true, name: true } },
+            place: { select: { name: true } },
+          },
+        });
+        if (info?.tenant?.email) {
+          const useUrl = `${appUrl}/api/tenant/event-response/offer-use?token=${encodeURIComponent(
+            signEventToken({ c: contract.id, d: date, a: "offer_use" })
+          )}`;
+          const declineUrl = `${appUrl}/api/tenant/event-response/offer-decline?token=${encodeURIComponent(
+            signEventToken({ c: contract.id, d: date, a: "offer_decline" })
+          )}`;
+          await sendMonthlyOfferNoticeMail({
+            to: info.tenant.email,
+            tenantName: info.tenant.name ?? "",
+            placeName: info.place?.name ?? "",
+            spotLabel: spot.code,
+            date,
+            useUrl,
+            declineUrl,
+            dashboardUrl: `${appUrl}/tenant/dashboard`,
+            deadlineNote: `${deadlineYmd}（開催${MONTHLY_EVENT_OFFER_DEADLINE_DAYS}日前）まで`,
+          });
+        }
+      } catch (e) {
+        console.error("offer notice mail failed:", e);
+      }
+
       return NextResponse.json({ ok: true, offerId: offer.id });
     } catch (e) {
       if (

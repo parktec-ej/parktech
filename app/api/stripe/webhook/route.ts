@@ -141,6 +141,22 @@ export async function POST(req: Request) {
             .catch(() => {});
         }
 
+        // ③-2 承認待ちオファー経由の決済：オファーが RELEASED の時のみ受け付ける。
+        // 締切超過(EXPIRED)等で古いリンクから支払われた場合は予約を作らず、要手動返金でSlack通知。
+        const offerId = String(session.metadata.offerId ?? "").trim();
+        if (offerId) {
+          const offer = await prisma.eventMonthlyOffer.findUnique({
+            where: { id: offerId },
+            select: { status: true },
+          });
+          if (!offer || offer.status !== "RELEASED") {
+            await sendSlackNotification(
+              `⚠️【承認待ち】無効なオファー(${offerId})への決済を検知。予約は作成していません。手動返金をご確認ください。`
+            ).catch(() => {});
+            return NextResponse.json({ received: true, skipped: "offer_not_released" });
+          }
+        }
+
         const name =
           String(session.metadata.name ?? "").trim() ||
           session.customer_details?.name ||
@@ -276,6 +292,16 @@ export async function POST(req: Request) {
 
           reservationId = reservation.id;
           reservationPin = reservation.pin;
+
+          // ③-2 承認待ちオファー経由なら PAID＋申請者予約IDを記録
+          if (offerId) {
+            await prisma.eventMonthlyOffer
+              .update({
+                where: { id: offerId },
+                data: { status: "PAID", applicantReservationId: reservation.id },
+              })
+              .catch(() => {});
+          }
 
           const place = placeId
             ? await prisma.place.findUnique({
