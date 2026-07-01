@@ -10,7 +10,12 @@ import {
   isReservationOpen,
   ymdToUtcDate,
 } from "@/lib/pricing-core";
-import { MONTHLY_PLACE_SLUG, MONTHLY_SLOT_CODES } from "@/lib/monthly-config";
+import {
+  MONTHLY_PLACE_SLUG,
+  MONTHLY_SLOT_CODES,
+  OCCUPYING_STATUSES,
+  MONTHLY_EVENT_OFFER_DEADLINE_DAYS,
+} from "@/lib/monthly-config";
 
 type EventDayLite = {
   id: string;
@@ -328,7 +333,9 @@ export async function GET(req: NextRequest) {
         | "RESERVED"
         | "NOT_OPEN"
         | "PENDING_EVENT"
-        | "CLOSED";
+        | "CLOSED"
+        | "REQUIRES_APPROVAL"
+        | "PENDING_APPROVAL";
       if (isReserved) {
         status = "RESERVED"; // 実際に予約済み
       } else if (!reservationOpen.ok) {
@@ -347,8 +354,100 @@ export async function GET(req: NextRequest) {
         mode: effectiveMode,
         isAvailable,
         status,
+        requiresApproval: false,
       };
     });
+
+    // --- ① event-monthly：満車時の月極区画「要承認」枠の登場 ---
+    // イベント日に一般枠が満車のときだけ、保持中の月極区画（未解放・未予約）を
+    // 「要承認(REQUIRES_APPROVAL)」で登場させる。既に申請中なら「承認待ち(PENDING_APPROVAL)」。
+    // 受付窓：today(JST) <= 開催日 - MONTHLY_EVENT_OFFER_DEADLINE_DAYS 日。
+    // ※申請アクション・画面表示は②。ここは在庫判定と表示ステータスのみ。
+    // availableSpots の status は代入値で 5 種に絞られるため、承認枠用に status を
+    // 広げた要素型を明示（他フィールドは availableSpots と同一）。
+    type ApprovalSpot = Omit<(typeof availableSpots)[number], "status"> & {
+      status: "REQUIRES_APPROVAL" | "PENDING_APPROVAL";
+    };
+    const approvalSpots: ApprovalSpot[] = [];
+    const generalSoldOut =
+      eventDayActive &&
+      reservationOpen.ok &&
+      availableSpots.length > 0 &&
+      availableSpots.every((s) => !s.isAvailable);
+
+    const offerDeadline = new Date(targetUtcDate);
+    offerDeadline.setUTCDate(
+      offerDeadline.getUTCDate() - MONTHLY_EVENT_OFFER_DEADLINE_DAYS
+    );
+    const offerDeadlineYmd = offerDeadline.toISOString().slice(0, 10);
+    const offerWindowOpen = ymdTodayJst() <= offerDeadlineYmd;
+
+    if (
+      place.slug === MONTHLY_PLACE_SLUG &&
+      generalSoldOut &&
+      offerWindowOpen
+    ) {
+      // 保持中の月極区画（解放マーカー無し・当日予約無し）
+      const heldMonthlySpots = (spotsRaw as SpotRow[]).filter(
+        (s) =>
+          (MONTHLY_SLOT_CODES as readonly string[]).includes(s.code) &&
+          dayModeMap.get(s.id) !== "RESERVATION_ONLY" &&
+          !reservedSpotIds.has(s.id) &&
+          !reservedSlots.has(normalizeSlot(s.code))
+      );
+
+      if (heldMonthlySpots.length > 0) {
+        const heldSpotIds = heldMonthlySpots.map((s) => s.id);
+        const [occupyingContracts, offers] = await Promise.all([
+          prisma.monthlyContract.findMany({
+            where: {
+              spotId: { in: heldSpotIds },
+              status: { in: [...OCCUPYING_STATUSES] },
+            },
+            select: { id: true, spotId: true },
+          }),
+          prisma.eventMonthlyOffer.findMany({
+            where: { spotId: { in: heldSpotIds }, date },
+            select: { spotId: true, status: true },
+          }),
+        ]);
+
+        const contractBySpot = new Map(
+          occupyingContracts
+            .filter((c) => Boolean(c.spotId))
+            .map((c) => [c.spotId as string, c.id])
+        );
+        const offerBySpot = new Map(offers.map((o) => [o.spotId, o.status]));
+
+        for (const s of heldMonthlySpots) {
+          // 月極契約が押さえている区画のみ対象（契約の無い空き区画は対象外）
+          if (!contractBySpot.has(s.id)) continue;
+
+          const offerStatus = offerBySpot.get(s.id);
+          // 既に決着済み（月極が使う/決済済/期限切れ/取消）は再提供しない＝1枠1人固定
+          if (
+            offerStatus === "TENANT_TOOK" ||
+            offerStatus === "PAID" ||
+            offerStatus === "EXPIRED" ||
+            offerStatus === "CANCELED"
+          ) {
+            continue;
+          }
+
+          // オファー未作成→要承認(申請可)、WAITING/RELEASED→承認待ち(選択不可)
+          const requiresApproval = !offerStatus;
+          approvalSpots.push({
+            id: s.id,
+            code: s.code,
+            label: s.label,
+            mode: "EVENT_ONLY",
+            isAvailable: false,
+            status: requiresApproval ? "REQUIRES_APPROVAL" : "PENDING_APPROVAL",
+            requiresApproval,
+          });
+        }
+      }
+    }
 
     return NextResponse.json({
       ok: true,
@@ -356,7 +455,7 @@ export async function GET(req: NextRequest) {
       date,
       reservationOpen,
       eventDayActive,
-      spots: availableSpots,
+      spots: [...availableSpots, ...approvalSpots],
       reservations,
     });
   } catch (error: unknown) {

@@ -999,3 +999,35 @@ model MonthlySubscriptionPayment {
   @@index([tenantId])
   @@index([billingPeriod])
 }
+
+enum EventMonthlyOfferStatus {
+  WAITING       // 月極利用者の回答待ち（＝一般客の承認待ち）
+  RELEASED      // 月極が「使わない」/無回答 → 申請者が決済可
+  TENANT_TOOK   // 月極が「使う」 → 申請者は利用不可
+  PAID          // 申請者の決済完了・予約確定
+  EXPIRED       // 期限切れ
+  CANCELED      // 取消
+}
+
+model EventMonthlyOffer {
+  id                           String   @id @default(uuid())
+  placeId                      String
+  spotId                       String
+  date                         String   // "YYYY-MM-DD"（Reservation.date と同形式）
+  contractId                   String
+  applicantName                String?
+  applicantEmail               String?
+  applicantPhone               String?
+  applicantPlate               String?
+  status                       EventMonthlyOfferStatus @default(WAITING)
+  monthlyChargePaymentIntentId String?
+  applicantCheckoutSession     String?
+  applicantReservationId       String?
+  createdAt                    DateTime @default(now())
+  updatedAt                    DateTime @updatedAt
+  expiresAt                    DateTime?
+
+  @@unique([spotId, date])   // 1区画×1日=1オファー（先着1人固定・次に回さない）
+  @@index([placeId, date])
+  @@index([status])
+}

@@ -17,3 +17,7 @@ export const OCCUPYING_STATUSES = [
 // イベント日のプラン2予約の締切（イベント日の何日前まで）。
 // 締切を過ぎて未予約の月極区画は一般予約へ自動開放する。
 export const MONTHLY_EVENT_DEADLINE_DAYS = 14;
+
+// event-monthly 承認待ちの受付／月極の回答 締切（イベント日の何日前まで）。
+// 「満車時点〜開催◯日前まで」承認待ちを受け付け、月極の回答期限も同じ。
+export const MONTHLY_EVENT_OFFER_DEADLINE_DAYS = 3;
