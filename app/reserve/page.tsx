@@ -10,12 +10,15 @@ type Spot = {
   label: string | null;
   mode: string | null;
   isAvailable: boolean;
+  requiresApproval?: boolean;
   status?:
     | "AVAILABLE"
     | "RESERVED"
     | "NOT_OPEN"
     | "PENDING_EVENT"
     | "CLOSED"
+    | "REQUIRES_APPROVAL"
+    | "PENDING_APPROVAL"
     | string;
 };
 
@@ -73,6 +76,10 @@ function slotStatusLabel(spot: Spot): string {
       return "予約不可";
     case "AVAILABLE":
       return "予約可能";
+    case "REQUIRES_APPROVAL":
+      return "要承認";
+    case "PENDING_APPROVAL":
+      return "承認待ち";
     default:
       return spot.isAvailable ? "予約可能" : "予約不可";
   }
@@ -80,6 +87,7 @@ function slotStatusLabel(spot: Spot): string {
 
 function slotDisabledStyle(spot: Spot) {
   if (spot.status === "PENDING_EVENT") return styles.slotButtonPending;
+  if (spot.status === "PENDING_APPROVAL") return styles.slotButtonApproval;
   if (spot.status === "NOT_OPEN") return styles.slotButtonNotOpen;
   // RESERVED / CLOSED / その他 は従来のグレー
   return styles.slotButtonDisabled;
@@ -152,6 +160,7 @@ function ReservePageInner() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [err, setErr] = useState("");
+  const [approvalDone, setApprovalDone] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -276,7 +285,8 @@ function ReservePageInner() {
     }
 
     const selectedSpot = spots.find((s) => s.id === selectedSpotId);
-    if (!selectedSpot?.isAvailable) {
+    const isApprovalFlow = selectedSpot?.requiresApproval === true;
+    if (!selectedSpot?.isAvailable && !isApprovalFlow) {
       setErr("その区画は予約済みです");
       return;
     }
@@ -303,6 +313,42 @@ function ReservePageInner() {
 
     setSubmitting(true);
     setErr("");
+
+    // 要承認区画：決済せず承認申請(WAITING)を作成する（②）
+    if (isApprovalFlow) {
+      try {
+        const { res, json } = await fetchJson(
+          "/api/reservations/approval-request",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              placeId: place.id,
+              spotId: selectedSpotId,
+              date,
+              name: name.trim(),
+              plate: plate.trim(),
+              email: email.trim(),
+              phone: phone.trim(),
+            }),
+          }
+        );
+        if (!res.ok || !json?.ok) {
+          setErr(
+            json?.message ||
+              json?.error ||
+              "申請に失敗しました。最新状態でお試しください。"
+          );
+          return;
+        }
+        setApprovalDone(true);
+      } catch (e) {
+        setErr("申請の送信に失敗しました");
+      } finally {
+        setSubmitting(false);
+      }
+      return;
+    }
 
     try {
       const { res, json } = await fetchJson("/api/stripe/checkout/reservation", {
@@ -439,14 +485,15 @@ function ReservePageInner() {
           <div style={styles.labelRow}>
             <label style={styles.label}>区画</label>
             <span style={styles.legend}>
-              白: 空き / 黄: 開催待ち / 青: 予約解放待ち / グレー: 予約済み / 黒: 選択中
+              白: 空き / 橙: 要承認 / 黄: 開催待ち / 青: 予約解放待ち / グレー: 予約済み / 黒: 選択中
             </span>
           </div>
 
           <div style={styles.slotGrid}>
             {spots.map((spot) => {
               const selected = selectedSpotId === spot.id;
-              const disabled = !spot.isAvailable;
+              const approvalOpen = spot.requiresApproval === true;
+              const disabled = !spot.isAvailable && !approvalOpen;
 
               return (
                 <button
@@ -457,6 +504,7 @@ function ReservePageInner() {
                   style={{
                     ...styles.slotButton,
                     ...(disabled ? slotDisabledStyle(spot) : {}),
+                    ...(approvalOpen && !selected ? styles.slotButtonApproval : {}),
                     ...(selected ? styles.slotButtonSelected : {}),
                   }}
                 >
@@ -512,22 +560,48 @@ function ReservePageInner() {
           />
         </section>
 
-        {err ? <div style={styles.error}>{err}</div> : null}
-        {loading ? <div style={styles.subtle}>読み込み中...</div> : null}
+        {(() => {
+          const selForRender = spots.find((s) => s.id === selectedSpotId);
+          const approvalSelected = selForRender?.requiresApproval === true;
+          const submitDisabled =
+            loading || submitting || !selectedSpotId || approvalDone;
+          return (
+            <>
+              {approvalSelected && !approvalDone ? (
+                <div style={styles.approvalNotice}>
+                  この区画は<strong>月極利用者の承認</strong>が必要です。今は料金は発生しません。
+                  申請後、月極利用者が「利用しない」と回答した場合のみ、メールでお支払いのご案内をお送りします。
+                </div>
+              ) : null}
 
-        <button
-          type="button"
-          onClick={submit}
-          disabled={loading || submitting || !selectedSpotId}
-          style={{
-            ...styles.submitButton,
-            ...(loading || submitting || !selectedSpotId
-              ? styles.submitButtonDisabled
-              : {}),
-          }}
-        >
-          {submitting ? "処理中..." : "予約して決済へ進む"}
-        </button>
+              {err ? <div style={styles.error}>{err}</div> : null}
+              {loading ? <div style={styles.subtle}>読み込み中...</div> : null}
+
+              {approvalDone ? (
+                <div style={styles.approvalDone}>
+                  承認申請を受け付けました。月極利用者の承認をお待ちください。
+                  結果はメール（{email.trim()}）でお知らせします。この時点では料金は発生しません。
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={submit}
+                  disabled={submitDisabled}
+                  style={{
+                    ...styles.submitButton,
+                    ...(submitDisabled ? styles.submitButtonDisabled : {}),
+                  }}
+                >
+                  {submitting
+                    ? "処理中..."
+                    : approvalSelected
+                    ? "承認を申請する"
+                    : "予約して決済へ進む"}
+                </button>
+              )}
+            </>
+          );
+        })()}
       </div>
     </main>
   );
@@ -656,6 +730,12 @@ const styles: Record<string, React.CSSProperties> = {
     borderColor: "#111827",
   },
 
+  slotButtonApproval: {
+    background: "#fff7ed",
+    borderColor: "#f97316",
+    color: "#9a3412",
+  },
+
   slotButtonDisabled: {
     background: "#d1d5db",
     color: "#4b5563",
@@ -722,6 +802,27 @@ const styles: Record<string, React.CSSProperties> = {
   submitButtonDisabled: {
     opacity: 0.6,
     cursor: "not-allowed",
+  },
+
+  approvalNotice: {
+    background: "#fff7ed",
+    border: "1px solid #fdba74",
+    color: "#9a3412",
+    borderRadius: 12,
+    padding: "12px 14px",
+    fontSize: 13,
+    lineHeight: 1.6,
+    marginBottom: 12,
+  },
+
+  approvalDone: {
+    background: "#ecfdf5",
+    border: "1px solid #6ee7b7",
+    color: "#065f46",
+    borderRadius: 12,
+    padding: "14px 16px",
+    fontSize: 14,
+    lineHeight: 1.7,
   },
 
   placeGrid: {
