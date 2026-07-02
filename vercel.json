@@ -25,8 +25,8 @@
       "schedule": "0 1 * * *"
     },
     {
-      "path": "/api/cron/release-monthly-slots",
-      "schedule": "0 0 * * *"
+      "path": "/api/cron/monthly-offer-batch",
+      "schedule": "0 22 * * *"
     },
     {
       "path": "/api/cron/notify-monthly-event",

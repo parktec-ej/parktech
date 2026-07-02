@@ -963,3 +963,34 @@ ${safe(date)} の自動決済ができませんでした。開催日3日前ま�
 パークテックイーストジャパン`.trim(),
   });
 }
+
+export async function sendMonthlyOfferSelfUseNoticeMail(params: {
+  to: string;
+  tenantName: string;
+  placeName: string;
+  spotLabel: string;
+  date: string;
+}) {
+  const { to, tenantName, placeName, spotLabel, date } = params;
+  return getResend().emails.send({
+    from: MAIL_FROM,
+    to,
+    subject: `【ParkTec】${safe(date)} は区画をそのままご利用いただけます`,
+    html: `
+      <div style="font-family:Arial,sans-serif;line-height:1.8;color:#111">
+        <h2>そのままご利用いただけます</h2>
+        <p>${safe(tenantName)} 様</p>
+        <p>${safe(date)} のイベント開催日について、${safe(placeName)} のご利用区画（${safe(spotLabel)}）は、
+        他のお客様からのご利用希望がなく、<strong>当日そのままご利用いただけます</strong>。</p>
+        <p>ご予約手続きは不要です。当日はご登録の区画をご利用ください。</p>
+        <hr style="margin:24px 0" /><p>パークテックイーストジャパン</p>
+      </div>
+    `,
+    text: `そのままご利用いただけます。
+${safe(tenantName)} 様
+
+${safe(date)} の ${safe(placeName)}（${safe(spotLabel)}）は、当日そのままご利用いただけます。ご予約手続きは不要です。
+
+パークテックイーストジャパン`.trim(),
+  });
+}
