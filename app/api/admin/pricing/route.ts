@@ -2,7 +2,6 @@ export const runtime = "nodejs";
 export const preferredRegion = "hnd1";
 
 import { NextRequest, NextResponse } from "next/server";
-import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { requireAdmin } from "@/lib/admin-auth";
 
@@ -279,144 +278,115 @@ export async function POST(req: NextRequest) {
 
     console.log("ADMIN PRICING normalizedEventDays:", normalizedEventDays);
 
-    const txResult = await prisma.$transaction(
-      async (tx: Prisma.TransactionClient) => {
-        const reservationRule = await tx.pricingRule.findFirst({
-          where: {
-            placeId,
-            pricingType: "RESERVATION_FIXED",
-          },
-          orderBy: { createdAt: "desc" },
-          select: { id: true },
-        });
+    // NOTE: Supabase Pooler(transaction mode) では interactive transaction
+    // (prisma.$transaction(async ...)) が「Transaction not found」で落ちるため、
+    // トランザクションを張らず単発文を順次実行する（event-day-sync と同じ方針）。
 
-        let reservationRuleId: string;
+    // ── 料金ルール(RESERVATION_FIXED) ──
+    const reservationRule = await prisma.pricingRule.findFirst({
+      where: { placeId, pricingType: "RESERVATION_FIXED" },
+      orderBy: { createdAt: "desc" },
+      select: { id: true },
+    });
 
-        if (reservationRule) {
-          const updated = await tx.pricingRule.update({
-            where: { id: reservationRule.id },
-            data: {
-              fixedYen: reservationFixedYen,
-              isActive: true,
-            },
-            select: { id: true },
-          });
+    let reservationRuleId: string;
 
-          reservationRuleId = updated.id;
-        } else {
-          const created = await tx.pricingRule.create({
-            data: {
-              placeId,
-              pricingType: "RESERVATION_FIXED",
-              fixedYen: reservationFixedYen,
-              isActive: true,
-            },
-            select: { id: true },
-          });
+    if (reservationRule) {
+      const updated = await prisma.pricingRule.update({
+        where: { id: reservationRule.id },
+        data: { fixedYen: reservationFixedYen, isActive: true },
+        select: { id: true },
+      });
+      reservationRuleId = updated.id;
+    } else {
+      const created = await prisma.pricingRule.create({
+        data: {
+          placeId,
+          pricingType: "RESERVATION_FIXED",
+          fixedYen: reservationFixedYen,
+          isActive: true,
+        },
+        select: { id: true },
+      });
+      reservationRuleId = created.id;
+    }
 
-          reservationRuleId = created.id;
-        }
+    // ── 料金ルール(HOURLY) ──
+    const hourlyRule = await prisma.pricingRule.findFirst({
+      where: { placeId, pricingType: "HOURLY" },
+      orderBy: { createdAt: "desc" },
+      select: { id: true },
+    });
 
-        const hourlyRule = await tx.pricingRule.findFirst({
-          where: {
-            placeId,
-            pricingType: "HOURLY",
-          },
-          orderBy: { createdAt: "desc" },
-          select: { id: true },
-        });
+    let hourlyRuleId: string;
 
-        let hourlyRuleId: string;
+    if (hourlyRule) {
+      const updated = await prisma.pricingRule.update({
+        where: { id: hourlyRule.id },
+        data: { hourlyYen, dailyYen, isActive: true },
+        select: { id: true },
+      });
+      hourlyRuleId = updated.id;
+    } else {
+      const created = await prisma.pricingRule.create({
+        data: {
+          placeId,
+          pricingType: "HOURLY",
+          hourlyYen,
+          dailyYen,
+          isActive: true,
+        },
+        select: { id: true },
+      });
+      hourlyRuleId = created.id;
+    }
 
-        if (hourlyRule) {
-          const updated = await tx.pricingRule.update({
-            where: { id: hourlyRule.id },
-            data: {
-              hourlyYen,
-              dailyYen,
-              isActive: true,
-            },
-            select: { id: true },
-          });
+    // ── EventDay 同期 ──
+    const targetDates = normalizedEventDays.map((r) => ymdToUtcDate(r.date));
 
-          hourlyRuleId = updated.id;
-        } else {
-          const created = await tx.pricingRule.create({
-            data: {
-              placeId,
-              pricingType: "HOURLY",
-              hourlyYen,
-              dailyYen,
-              isActive: true,
-            },
-            select: { id: true },
-          });
+    // 送信リストに含まれない既存 EventDay を閉じる（対象日は下の upsert で true にする）
+    await prisma.eventDay.updateMany({
+      where: {
+        placeId,
+        ...(targetDates.length > 0 ? { date: { notIn: targetDates } } : {}),
+      },
+      data: { isActive: false },
+    });
 
-          hourlyRuleId = created.id;
-        }
+    const eventDayIds: string[] = [];
 
-        await tx.eventDay.updateMany({
-          where: { placeId },
-          data: { isActive: false },
-        });
+    for (const row of normalizedEventDays) {
+      const date = ymdToUtcDate(row.date);
 
-        const eventDayIds: string[] = [];
+      const saved = await prisma.eventDay.upsert({
+        where: { placeId_date: { placeId, date } },
+        update: {
+          label: row.label,
+          fixedYenOverride: row.fixedYenOverride,
+          hourlyYenOverride: row.hourlyYenOverride,
+          dailyYenOverride: row.dailyYenOverride,
+          busFixedYen: row.busFixedYen,
+          reservationOpenDaysBefore: row.reservationOpenDaysBefore,
+          isActive: true,
+        },
+        create: {
+          placeId,
+          date,
+          label: row.label,
+          fixedYenOverride: row.fixedYenOverride,
+          hourlyYenOverride: row.hourlyYenOverride,
+          dailyYenOverride: row.dailyYenOverride,
+          busFixedYen: row.busFixedYen,
+          reservationOpenDaysBefore: row.reservationOpenDaysBefore,
+          isActive: true,
+        },
+        select: { id: true },
+      });
 
-        for (const row of normalizedEventDays) {
-          const date = ymdToUtcDate(row.date);
+      eventDayIds.push(saved.id);
+    }
 
-          const existing = await tx.eventDay.findFirst({
-            where: {
-              placeId,
-              date,
-            },
-            orderBy: { createdAt: "desc" },
-            select: { id: true },
-          });
-
-          if (existing) {
-            const updated = await tx.eventDay.update({
-              where: { id: existing.id },
-              data: {
-                label: row.label,
-                fixedYenOverride: row.fixedYenOverride,
-                hourlyYenOverride: row.hourlyYenOverride,
-                dailyYenOverride: row.dailyYenOverride,
-                busFixedYen: row.busFixedYen,
-                reservationOpenDaysBefore: row.reservationOpenDaysBefore,
-                isActive: true,
-              },
-              select: { id: true },
-            });
-
-            eventDayIds.push(updated.id);
-          } else {
-            const created = await tx.eventDay.create({
-              data: {
-                placeId,
-                date,
-                label: row.label,
-                fixedYenOverride: row.fixedYenOverride,
-                hourlyYenOverride: row.hourlyYenOverride,
-                dailyYenOverride: row.dailyYenOverride,
-                busFixedYen: row.busFixedYen,
-                reservationOpenDaysBefore: row.reservationOpenDaysBefore,
-                isActive: true,
-              },
-              select: { id: true },
-            });
-
-            eventDayIds.push(created.id);
-          }
-        }
-
-        return {
-          reservationRuleId,
-          hourlyRuleId,
-          eventDayIds,
-        };
-      }
-    );
+    const txResult = { reservationRuleId, hourlyRuleId, eventDayIds };
 
     console.log("ADMIN PRICING POST SUCCESS:", txResult);
 
