@@ -50,6 +50,12 @@ function ymdToUtcDate(ymd: string) {
   return new Date(`${ymd}T00:00:00.000Z`);
 }
 
+// JST の「今日」0時を UTC 表現で返す（料金設定の一覧を未来日に絞るため）
+function todayJstUtcDate() {
+  const ymd = new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Tokyo" });
+  return ymdToUtcDate(ymd);
+}
+
 function isAllowedOpenDays(value: number) {
   return [0, 7, 14, 30, 60].includes(value);
 }
@@ -142,7 +148,7 @@ export async function GET(req: NextRequest) {
       prisma.eventDay.findMany({
         where: {
           placeId,
-          isActive: true,
+          date: { gte: todayJstUtcDate() },
         },
         orderBy: { date: "asc" },
         select: {
@@ -342,17 +348,10 @@ export async function POST(req: NextRequest) {
     }
 
     // ── EventDay 同期 ──
-    const targetDates = normalizedEventDays.map((r) => ymdToUtcDate(r.date));
-
-    // 送信リストに含まれない既存 EventDay を閉じる（対象日は下の upsert で true にする）
-    await prisma.eventDay.updateMany({
-      where: {
-        placeId,
-        ...(targetDates.length > 0 ? { date: { notIn: targetDates } } : {}),
-      },
-      data: { isActive: false },
-    });
-
+    // 【一本化】予約の開閉(isActive)は Event の publish 状態(event-day-sync)に一元化する。
+    // 料金設定は「金額・予約開放日・ラベル」だけを更新し、isActive は書かない。
+    //   - 既存日: isActive を触らない（publish 済み=開いたまま / 未publish=閉じたまま）
+    //   - 新規日: isActive:false で作成（予約が開くのは Event を publish したときだけ）
     const eventDayIds: string[] = [];
 
     for (const row of normalizedEventDays) {
@@ -367,7 +366,7 @@ export async function POST(req: NextRequest) {
           dailyYenOverride: row.dailyYenOverride,
           busFixedYen: row.busFixedYen,
           reservationOpenDaysBefore: row.reservationOpenDaysBefore,
-          isActive: true,
+          // isActive は触らない（開閉権は publish に一元化）
         },
         create: {
           placeId,
@@ -378,7 +377,7 @@ export async function POST(req: NextRequest) {
           dailyYenOverride: row.dailyYenOverride,
           busFixedYen: row.busFixedYen,
           reservationOpenDaysBefore: row.reservationOpenDaysBefore,
-          isActive: true,
+          isActive: false, // 新規日は閉じた状態。Event を publish して開く。
         },
         select: { id: true },
       });
