@@ -887,3 +887,79 @@ ${safe(name)} 様
 パークテックイーストジャパン`.trim(),
   });
 }
+
+export async function sendOfferApplicantUnavailableMail(params: {
+  to: string;
+  name: string;
+  placeName: string;
+  date: string;
+}) {
+  const { to, name, placeName, date } = params;
+  return getResend().emails.send({
+    from: MAIL_FROM,
+    to,
+    subject: `【ParkTec】${safe(date)} のご利用について`,
+    html: `
+      <div style="font-family:Arial,sans-serif;line-height:1.8;color:#111">
+        <h2>今回はご案内できませんでした</h2>
+        <p>${safe(name)} 様</p>
+        <p>${safe(date)} の ${safe(placeName)} につきまして、申し訳ございませんが今回は当該区画をご案内できないこととなりました。<strong>料金は発生しておりません。</strong></p>
+        <p>また別の機会のご利用をお待ちしております。</p>
+        <hr style="margin:24px 0" /><p>パークテックイーストジャパン</p>
+      </div>
+    `,
+    text: `今回はご案内できませんでした。
+${safe(name)} 様
+
+${safe(date)} の ${safe(placeName)} は今回ご案内できないこととなりました。料金は発生しておりません。
+
+パークテックイーストジャパン`.trim(),
+  });
+}
+
+export async function sendOfferTenantChargeFailedMail(params: {
+  to: string;
+  tenantName: string;
+  placeName: string;
+  spotLabel: string;
+  date: string;
+  priceYen: number;
+  checkoutUrl: string;
+}) {
+  const { to, tenantName, placeName, spotLabel, date, priceYen, checkoutUrl } = params;
+  return getResend().emails.send({
+    from: MAIL_FROM,
+    to,
+    subject: `【ParkTec】自動決済に失敗しました。お支払いのお願い（${safe(date)}）`,
+    html: `
+      <div style="font-family:Arial,sans-serif;line-height:1.8;color:#111">
+        <h2>お支払いのお願い</h2>
+        <p>${safe(tenantName)} 様</p>
+        <p>${safe(date)} のイベント開催日に「利用する」をお選びいただきありがとうございます。<br />
+        ご登録カードでの自動決済ができませんでした。お手数ですが、下記より<strong>開催日の3日前まで</strong>にお支払いをお願いします。</p>
+        <div style="padding:16px;border:1px solid #ddd;border-radius:8px;background:#fafafa">
+          <div><strong>駐車場:</strong> ${safe(placeName)}</div>
+          <div><strong>区画:</strong> ${safe(spotLabel)}</div>
+          <div><strong>利用日:</strong> ${safe(date)}</div>
+          <div><strong>金額:</strong> ${safe(priceYen)} 円（税込）</div>
+        </div>
+        <p style="margin-top:24px;text-align:center">
+          <a href="${checkoutUrl}" target="_blank" rel="noopener noreferrer"
+             style="display:inline-block;padding:14px 28px;background:#111;color:#fff;text-decoration:none;border-radius:8px;font-weight:600">お支払いへ進む</a>
+        </p>
+        <p style="font-size:12px;color:#666">${checkoutUrl}</p>
+        <p style="font-size:13px;color:#555">※3日前までにお支払いがない場合、当日の区画は利用希望者にお譲りする場合があります。</p>
+        <hr style="margin:24px 0" /><p>パークテックイーストジャパン</p>
+      </div>
+    `,
+    text: `お支払いのお願い
+${safe(tenantName)} 様
+
+${safe(date)} の自動決済ができませんでした。開催日3日前までに下記からお支払いください。
+駐車場: ${safe(placeName)} / 区画: ${safe(spotLabel)} / 利用日: ${safe(date)} / 金額: ${safe(priceYen)} 円（税込）
+
+お支払い: ${checkoutUrl}
+
+パークテックイーストジャパン`.trim(),
+  });
+}

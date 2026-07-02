@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { prisma } from "@/lib/db";
 import { stripe } from "@/lib/stripe";
-import { sendReservationPinMail, sendCheckoutThanksMail, sendMonthlyContractActivatedMail } from "@/lib/mail";
+import { sendReservationPinMail, sendCheckoutThanksMail, sendMonthlyContractActivatedMail, sendOfferApplicantUnavailableMail } from "@/lib/mail";
 import bcrypt from "bcryptjs";
 import { calcSplitAmounts, calcTax } from "@/lib/settlement-math";
 import { buildSettlementSnapshot } from "@/lib/settlement-snapshot";
@@ -141,19 +141,23 @@ export async function POST(req: Request) {
             .catch(() => {});
         }
 
-        // ③-2 承認待ちオファー経由の決済：オファーが RELEASED の時のみ受け付ける。
-        // 締切超過(EXPIRED)等で古いリンクから支払われた場合は予約を作らず、要手動返金でSlack通知。
+        // ③-2/③-3 承認待ちオファー経由の決済ガード（role別に期待状態を検証）。
+        // applicant: RELEASED（申請者の決済）／tenant: TENANT_CHARGE_PENDING（月極の手動決済）。
+        // 期待状態でない古いリンク決済は予約を作らず、要手動返金でSlack通知。
         const offerId = String(session.metadata.offerId ?? "").trim();
+        const offerRole = String(session.metadata.offerRole ?? "applicant").trim();
         if (offerId) {
           const offer = await prisma.eventMonthlyOffer.findUnique({
             where: { id: offerId },
             select: { status: true },
           });
-          if (!offer || offer.status !== "RELEASED") {
+          const expectedStatus =
+            offerRole === "tenant" ? "TENANT_CHARGE_PENDING" : "RELEASED";
+          if (!offer || offer.status !== expectedStatus) {
             await sendSlackNotification(
-              `⚠️【承認待ち】無効なオファー(${offerId})への決済を検知。予約は作成していません。手動返金をご確認ください。`
+              `⚠️【承認待ち】無効なオファー(${offerId}/${offerRole})への決済を検知。予約は作成していません。手動返金をご確認ください。`
             ).catch(() => {});
-            return NextResponse.json({ received: true, skipped: "offer_not_released" });
+            return NextResponse.json({ received: true, skipped: "offer_state_mismatch" });
           }
         }
 
@@ -293,14 +297,47 @@ export async function POST(req: Request) {
           reservationId = reservation.id;
           reservationPin = reservation.pin;
 
-          // ③-2 承認待ちオファー経由なら PAID＋申請者予約IDを記録
+          // ③-2/③-3 承認待ちオファー経由の決済後処理（role別）
           if (offerId) {
-            await prisma.eventMonthlyOffer
-              .update({
-                where: { id: offerId },
-                data: { status: "PAID", applicantReservationId: reservation.id },
-              })
-              .catch(() => {});
+            if (offerRole === "tenant") {
+              // 月極の手動決済：TENANT_TOOK 確定＋申請者へ「利用不可」通知
+              await prisma.eventMonthlyOffer
+                .update({
+                  where: { id: offerId },
+                  data: { status: "TENANT_TOOK" },
+                })
+                .catch(() => {});
+              try {
+                const off = await prisma.eventMonthlyOffer.findUnique({
+                  where: { id: offerId },
+                  select: { applicantName: true, applicantEmail: true, date: true },
+                });
+                const pl = placeId
+                  ? await prisma.place.findUnique({
+                      where: { id: placeId },
+                      select: { name: true },
+                    })
+                  : null;
+                if (off?.applicantEmail) {
+                  await sendOfferApplicantUnavailableMail({
+                    to: off.applicantEmail,
+                    name: off.applicantName ?? "",
+                    placeName: pl?.name ?? "",
+                    date: off.date,
+                  });
+                }
+              } catch (e) {
+                console.error("applicant unavailable mail failed:", e);
+              }
+            } else {
+              // 申請者の決済：PAID＋申請者予約IDを記録
+              await prisma.eventMonthlyOffer
+                .update({
+                  where: { id: offerId },
+                  data: { status: "PAID", applicantReservationId: reservation.id },
+                })
+                .catch(() => {});
+            }
           }
 
           const place = placeId
