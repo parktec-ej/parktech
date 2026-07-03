@@ -6,7 +6,7 @@ import { prisma } from "@/lib/db";
 import { resolveActivePlace } from "@/lib/place-resolver";
 import { sendSlackNotification } from "@/lib/slack";
 import { sendMonthlyApplicationReceivedMail } from "@/lib/mail";
-import { MONTHLY_SLOT_CODES, OCCUPYING_STATUSES } from "@/lib/monthly-config";
+import { OCCUPYING_STATUSES, getMonthlyFee, monthlySpotWhere } from "@/lib/monthly-config";
 
 const BASE_FEE_YEN = 3300;
 
@@ -39,9 +39,9 @@ const ACTIVE_ISH_STATUSES = [
   "PAST_DUE",
 ] as const;
 
-function computeTotalFeeYen(term: BillingTerm): number {
+function computeTotalFeeYen(term: BillingTerm, baseFee: number): number {
   const c = TERM_CONFIG[term];
-  const gross = BASE_FEE_YEN * c.months;
+  const gross = baseFee * c.months;
   return Math.round(gross * (1 - c.discountBps / 10000));
 }
 
@@ -96,6 +96,10 @@ export async function POST(req: NextRequest) {
     if (!place) {
       return jsonError("駐車場が見つかりません", 404, "place_not_found");
     }
+    const feeYen = getMonthlyFee(place.slug);
+    if (feeYen == null) {
+      return jsonError("この駐車場は月極のお申し込みに対応していません", 400, "not_monthly_place");
+    }
 
     // 月極スロット専有: 4区画(A-17〜A-20)から1つ選択必須。
     if (!spotId) {
@@ -106,7 +110,7 @@ export async function POST(req: NextRequest) {
         id: spotId,
         placeId: place.id,
         isActive: true,
-        code: { in: [...MONTHLY_SLOT_CODES] },
+        ...monthlySpotWhere(place.slug),
       },
       select: { id: true, code: true },
     });
@@ -135,7 +139,7 @@ export async function POST(req: NextRequest) {
     }
 
     const cfg = TERM_CONFIG[billingTerm];
-    const totalFeeYen = computeTotalFeeYen(billingTerm);
+    const totalFeeYen = computeTotalFeeYen(billingTerm, feeYen);
 
     const { contract } = await prisma.$transaction(async (tx) => {
       const tenant = await tx.tenant.upsert({
@@ -173,7 +177,7 @@ export async function POST(req: NextRequest) {
           spotId: selectedSpot.id,
           plan,
           billingTerm,
-          baseFeeYen: BASE_FEE_YEN,
+          baseFeeYen: feeYen,
           prepaidMonths: cfg.months,
           discountBps: cfg.discountBps,
           totalFeeYen,
