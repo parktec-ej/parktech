@@ -10,7 +10,8 @@ type OperationMode =
   | "HOURLY_ONLY"
   | "RESERVATION_THEN_HOURLY"
   | "EVENT_ONLY"
-  | "CLOSED";
+  | "CLOSED"
+  | "MONTHLY";
 
 export async function POST(req: Request) {
   try {

@@ -37,6 +37,7 @@ export async function POST(req: Request) {
         "RESERVATION_THEN_HOURLY",
         "EVENT_ONLY",
         "CLOSED",
+        "MONTHLY",
       ].includes(operationModeOverride)
     ) {
       return NextResponse.json(
@@ -54,6 +55,7 @@ export async function POST(req: Request) {
           | "RESERVATION_THEN_HOURLY"
           | "EVENT_ONLY"
           | "CLOSED"
+          | "MONTHLY"
           | null,
       },
       select: {

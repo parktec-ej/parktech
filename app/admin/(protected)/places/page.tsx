@@ -35,6 +35,7 @@ const PLACE_MODE_OPTIONS = [
   "RESERVATION_THEN_HOURLY",
   "EVENT_ONLY",
   "CLOSED",
+  "MONTHLY",
 ] as const;
 
 const SPOT_MODE_OPTIONS = [
@@ -43,6 +44,7 @@ const SPOT_MODE_OPTIONS = [
   "RESERVATION_THEN_HOURLY",
   "EVENT_ONLY",
   "CLOSED",
+  "MONTHLY",
 ] as const;
 
 function ymdTodayJst() {

@@ -22,6 +22,7 @@ function modeLabel(mode?: string | null) {
   if (mode === "HOURLY_ONLY") return "時間貸し専用";
   if (mode === "RESERVATION_THEN_HOURLY") return "予約優先→空きは時間貸し";
   if (mode === "CLOSED") return "利用停止";
+  if (mode === "MONTHLY") return "月極専用";
   return mode;
 }
 

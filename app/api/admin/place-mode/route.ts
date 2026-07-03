@@ -31,6 +31,7 @@ export async function POST(req: Request) {
         "RESERVATION_THEN_HOURLY",
         "EVENT_ONLY",
         "CLOSED",
+        "MONTHLY",
       ].includes(operationMode)
     ) {
       return NextResponse.json(
@@ -47,7 +48,8 @@ export async function POST(req: Request) {
           | "HOURLY_ONLY"
           | "RESERVATION_THEN_HOURLY"
           | "EVENT_ONLY"
-          | "CLOSED",
+          | "CLOSED"
+          | "MONTHLY",
       },
       select: {
         id: true,

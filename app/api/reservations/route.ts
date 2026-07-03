@@ -104,7 +104,8 @@ type OperationMode =
   | "HOURLY_ONLY"
   | "RESERVATION_THEN_HOURLY"
   | "EVENT_ONLY"
-  | "CLOSED";
+  | "CLOSED"
+  | "MONTHLY";
 
 type SpotRow = {
   id: string;
@@ -284,6 +285,12 @@ export async function GET(req: NextRequest) {
     // 例外的に表示・予約可とする。A-20 が実在するのは rifu-main のみなので slug を
     // ハードコード。他の駐車場・他spotには一切影響させない。
     const spots = (spotsRaw as SpotRow[]).filter((s) => {
+      // MONTHLY モードの区画は契約者専有のため一般グリッドに出さない（多拠点対応・石堂等）。
+      // 実効モード＝日別上書き ?? 区画上書き ?? 駐車場モード。
+      const effForFilter =
+        dayModeMap.get(s.id) ?? s.operationModeOverride ?? place.operationMode;
+      if (effForFilter === "MONTHLY") return false;
+
       // 月極4区画(A-17〜A-20)は契約者専有のため一般グリッドに原則出さない。
       // 解放cronが RESERVATION_ONLY マーカーを書いた区画だけ例外表示。
       if (

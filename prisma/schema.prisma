@@ -626,6 +626,7 @@ enum OperationMode {
   RESERVATION_THEN_HOURLY
   CLOSED
   EVENT_ONLY
+  MONTHLY
 }
 
 enum PricingType {

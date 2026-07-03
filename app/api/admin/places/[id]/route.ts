@@ -29,6 +29,7 @@ function isValidOperationMode(value: string) {
     "RESERVATION_THEN_HOURLY",
     "EVENT_ONLY",
     "CLOSED",
+    "MONTHLY",
   ].includes(value);
 }
 
@@ -429,7 +430,8 @@ export async function PATCH(
               | "HOURLY_ONLY"
               | "RESERVATION_THEN_HOURLY"
               | "EVENT_ONLY"
-              | "CLOSED",
+              | "CLOSED"
+              | "MONTHLY",
           },
         });
 

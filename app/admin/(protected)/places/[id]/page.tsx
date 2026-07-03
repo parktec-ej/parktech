@@ -8,7 +8,8 @@ type OperationMode =
   | "HOURLY_ONLY"
   | "RESERVATION_THEN_HOURLY"
   | "EVENT_ONLY"
-  | "CLOSED";
+  | "CLOSED"
+  | "MONTHLY";
 
 type ContractType =
   | "HQ_BULK"
@@ -36,6 +37,7 @@ const operationModes: OperationMode[] = [
   "RESERVATION_THEN_HOURLY",
   "EVENT_ONLY",
   "CLOSED",
+  "MONTHLY",
 ];
 
 export default function PlaceEditPage() {

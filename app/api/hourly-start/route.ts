@@ -61,7 +61,8 @@ type OperationMode =
   | "HOURLY_ONLY"
   | "RESERVATION_THEN_HOURLY"
   | "EVENT_ONLY"
-  | "CLOSED";
+  | "CLOSED"
+  | "MONTHLY";
 
 function canStartHourly(mode: string | null | undefined) {
   return mode === "HOURLY_ONLY" || mode === "RESERVATION_THEN_HOURLY";

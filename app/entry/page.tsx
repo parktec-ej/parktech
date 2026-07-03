@@ -7,7 +7,8 @@ type OperationMode =
   | "HOURLY_ONLY"
   | "RESERVATION_THEN_HOURLY"
   | "EVENT_ONLY"
-  | "CLOSED";
+  | "CLOSED"
+  | "MONTHLY";
 
 function normalizeDate(input: string) {
   const value = String(input ?? "").trim();

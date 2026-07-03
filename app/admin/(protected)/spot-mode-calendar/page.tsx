@@ -8,7 +8,8 @@ type OperationMode =
   | "HOURLY_ONLY"
   | "RESERVATION_THEN_HOURLY"
   | "EVENT_ONLY"
-  | "CLOSED";
+  | "CLOSED"
+  | "MONTHLY";
 
 type CalendarItem = {
   spotId: string;
@@ -56,6 +57,7 @@ function modeLabel(v: string | null | undefined) {
   if (v === "RESERVATION_THEN_HOURLY") return "予約優先→時間貸し";
   if (v === "EVENT_ONLY") return "イベント日のみ予約営業";
   if (v === "CLOSED") return "CLOSED";
+  if (v === "MONTHLY") return "月極専用";
   return v;
 }
 

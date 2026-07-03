@@ -9,7 +9,8 @@ type OperationMode =
   | "HOURLY_ONLY"
   | "RESERVATION_THEN_HOURLY"
   | "EVENT_ONLY"
-  | "CLOSED";
+  | "CLOSED"
+  | "MONTHLY";
 
 type SpotRow = {
   id: string;
@@ -57,6 +58,7 @@ function isValidOperationMode(v: string): v is OperationMode {
     "RESERVATION_THEN_HOURLY",
     "EVENT_ONLY",
     "CLOSED",
+    "MONTHLY",
   ].includes(v);
 }
 
