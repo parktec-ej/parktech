@@ -23,6 +23,7 @@ type SlotLite = {
 type SlotsResponse = {
   ok: boolean;
   placeName?: string;
+  feeYen?: number;
   slots?: SlotLite[];
 };
 
@@ -43,6 +44,12 @@ function formatYen(value: number) {
 export default function MonthlyApplyPage() {
   const [places, setPlaces] = useState<PlaceLite[]>([]);
   const [placeId, setPlaceId] = useState("");
+  const [placeSlug, setPlaceSlug] = useState(() =>
+    typeof window !== "undefined"
+      ? new URLSearchParams(window.location.search).get("place")?.trim() ||
+        "rifu-main"
+      : "rifu-main"
+  );
 
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -56,6 +63,8 @@ export default function MonthlyApplyPage() {
   const [slots, setSlots] = useState<SlotLite[]>([]);
   const [spotId, setSpotId] = useState("");
   const [slotsLoading, setSlotsLoading] = useState(true);
+  const [feeYen, setFeeYen] = useState(MONTHLY_FEE_YEN);
+  const [placeName, setPlaceName] = useState("");
 
   const [submitting, setSubmitting] = useState(false);
   const [err, setErr] = useState("");
@@ -69,10 +78,19 @@ export default function MonthlyApplyPage() {
         if (cancelled) return;
         const list = Array.isArray(json.places) ? json.places : [];
         setPlaces(list);
-        // 利府グランディ前（rifu-main）を優先して初期選択
+        // ?place= を優先。無ければ利府グランディ前。
+        const wanted =
+          (typeof window !== "undefined"
+            ? new URLSearchParams(window.location.search).get("place")?.trim()
+            : "") || "rifu-main";
         const def =
-          list.find((p) => p.slug === "rifu-main") ?? list[0];
-        if (def) setPlaceId(def.id);
+          list.find((p) => p.slug === wanted) ??
+          list.find((p) => p.slug === "rifu-main") ??
+          list[0];
+        if (def) {
+          setPlaceId(def.id);
+          setPlaceSlug(def.slug);
+        }
       } catch {
         if (!cancelled) setPlaces([]);
       }
@@ -88,12 +106,17 @@ export default function MonthlyApplyPage() {
     (async () => {
       try {
         setSlotsLoading(true);
-        const res = await fetch("/api/monthly/slots", { cache: "no-store" });
+        const res = await fetch(
+          `/api/monthly/slots?place=${encodeURIComponent(placeSlug)}`,
+          { cache: "no-store" }
+        );
         const json: SlotsResponse = await res
           .json()
           .catch(() => ({ ok: false }));
         if (cancelled) return;
         setSlots(Array.isArray(json.slots) ? json.slots : []);
+        if (typeof json.feeYen === "number") setFeeYen(json.feeYen);
+        if (json.placeName) setPlaceName(json.placeName);
       } catch {
         if (!cancelled) setSlots([]);
       } finally {
@@ -103,7 +126,7 @@ export default function MonthlyApplyPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [placeSlug]);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -176,16 +199,14 @@ export default function MonthlyApplyPage() {
           <div style={fieldStyle}>
             <label style={labelStyle}>駐車場</label>
             <div style={fixedFieldStyle}>
-              {places.find((p) => p.id === placeId)?.name ??
-                "PARKTEC 利府グランディー前駐車場"}
+              {placeName ||
+                places.find((p) => p.id === placeId)?.name ||
+                ""}
             </div>
-            <span style={{ fontSize: 12, color: "#6b7280" }}>
-              ※ 月極のお申し込みは利府グランディー前のみ承っております。
-            </span>
           </div>
 
           <div style={fieldStyle}>
-            <label style={labelStyle}>駐車区画（4区画から選択）</label>
+            <label style={labelStyle}>駐車区画（下記から選択）</label>
             {slotsLoading ? (
               <div style={{ fontSize: 14, color: "#6b7280" }}>
                 空き状況を確認しています…
@@ -231,7 +252,7 @@ export default function MonthlyApplyPage() {
                 毎月自動更新（Stripeサブスクリプション）
               </div>
             </div>
-            <span style={totalValueStyle}>{formatYen(MONTHLY_FEE_YEN)}</span>
+            <span style={totalValueStyle}>{formatYen(feeYen)}</span>
           </div>
 
           <hr style={hrStyle} />
