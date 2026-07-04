@@ -188,6 +188,9 @@ export default function MonthlyApplyPage() {
   return (
     <main style={pageStyle}>
       <div style={containerStyle}>
+        <a href="https://parktec-ej.com/monthly" style={backLinkStyle}>
+          ← HPに戻る
+        </a>
         <h1 style={titleStyle}>月極駐車場 お申し込み</h1>
         <p style={descStyle}>
           必要事項をご入力ください。お申し込み後、受付確認メールをお送りし、担当者が内容を確認のうえご連絡いたします。
@@ -366,6 +369,16 @@ const pageStyle: React.CSSProperties = {
   padding: 24,
 };
 const containerStyle: React.CSSProperties = { maxWidth: 680, margin: "0 auto" };
+const backLinkStyle: React.CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 4,
+  marginBottom: 16,
+  color: "#374151",
+  fontSize: 14,
+  fontWeight: 700,
+  textDecoration: "none",
+};
 const titleStyle: React.CSSProperties = {
   margin: 0,
   fontSize: 28,
