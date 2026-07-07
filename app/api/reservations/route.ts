@@ -279,11 +279,35 @@ export async function GET(req: NextRequest) {
       dayModes.map((x: DayModeRow) => [x.spotId, x.operationMode])
     );
 
-    // A-20 は rifu-main（一般lot）の区画だが、バス追加普通車専用に予約されるため
-    // 一般予約のグリッドには原則出さない。ただし cron が「その日のバス利用なし」と
-    // 判定して SpotModeCalendar に RESERVATION_ONLY の開放マーカーを書いた日付だけは
-    // 例外的に表示・予約可とする。A-20 が実在するのは rifu-main のみなので slug を
-    // ハードコード。他の駐車場・他spotには一切影響させない。
+    // 月極4区画(A-17〜A-20)の扱いは「有効な月極契約の有無」で振り分ける。
+    // 契約あり＝契約者専有（一般グリッドに出さず、満車後に要承認ティアへ）。
+    // 契約なし＝一般枠として白表示（実質18枠）。SpotModeCalendar の
+    // RESERVATION_ONLY マーカーには依存しない（decline由来の残マーカーを無害化）。
+    // rifu-main のみ対象。他拠点・他spotには一切影響させない。
+    const monthlyCodeSpotIds =
+      place.slug === MONTHLY_PLACE_SLUG
+        ? (spotsRaw as SpotRow[])
+            .filter((s) =>
+              (MONTHLY_SLOT_CODES as readonly string[]).includes(s.code)
+            )
+            .map((s) => s.id)
+        : [];
+    const occupyingContracts = monthlyCodeSpotIds.length
+      ? await prisma.monthlyContract.findMany({
+          where: {
+            spotId: { in: monthlyCodeSpotIds },
+            status: { in: [...OCCUPYING_STATUSES] },
+          },
+          select: { id: true, spotId: true },
+        })
+      : [];
+    const contractBySpot = new Map<string, string>(
+      occupyingContracts
+        .filter((c) => Boolean(c.spotId))
+        .map((c) => [c.spotId as string, c.id])
+    );
+    const contractSpotIds = new Set<string>(contractBySpot.keys());
+
     const spots = (spotsRaw as SpotRow[]).filter((s) => {
       // MONTHLY モードの区画は契約者専有のため一般グリッドに出さない（多拠点対応・石堂等）。
       // 実効モード＝日別上書き ?? 区画上書き ?? 駐車場モード。
@@ -291,13 +315,12 @@ export async function GET(req: NextRequest) {
         dayModeMap.get(s.id) ?? s.operationModeOverride ?? place.operationMode;
       if (effForFilter === "MONTHLY") return false;
 
-      // 月極4区画(A-17〜A-20)は契約者専有のため一般グリッドに原則出さない。
-      // 解放cronが RESERVATION_ONLY マーカーを書いた区画だけ例外表示。
+      // 月極4区画(A-17〜A-20)は契約ありなら非表示・契約なしなら白表示。
       if (
         place.slug === MONTHLY_PLACE_SLUG &&
         (MONTHLY_SLOT_CODES as readonly string[]).includes(s.code)
       ) {
-        return dayModeMap.get(s.id) === "RESERVATION_ONLY";
+        return !contractSpotIds.has(s.id);
       }
       return true;
     });
@@ -394,36 +417,23 @@ export async function GET(req: NextRequest) {
       generalSoldOut &&
       offerWindowOpen
     ) {
-      // 保持中の月極区画（解放マーカー無し・当日予約無し）
+      // 契約が押さえている月極区画（当日予約無し）。契約有無は上で判定済み。
       const heldMonthlySpots = (spotsRaw as SpotRow[]).filter(
         (s) =>
           (MONTHLY_SLOT_CODES as readonly string[]).includes(s.code) &&
-          dayModeMap.get(s.id) !== "RESERVATION_ONLY" &&
+          contractSpotIds.has(s.id) &&
           !reservedSpotIds.has(s.id) &&
           !reservedSlots.has(normalizeSlot(s.code))
       );
 
       if (heldMonthlySpots.length > 0) {
         const heldSpotIds = heldMonthlySpots.map((s) => s.id);
-        const [occupyingContracts, offers] = await Promise.all([
-          prisma.monthlyContract.findMany({
-            where: {
-              spotId: { in: heldSpotIds },
-              status: { in: [...OCCUPYING_STATUSES] },
-            },
-            select: { id: true, spotId: true },
-          }),
-          prisma.eventMonthlyOffer.findMany({
-            where: { spotId: { in: heldSpotIds }, date },
-            select: { spotId: true, status: true },
-          }),
-        ]);
+        // 契約(contractBySpot)は GET 冒頭で取得済み。ここではオファーのみ取得。
+        const offers = await prisma.eventMonthlyOffer.findMany({
+          where: { spotId: { in: heldSpotIds }, date },
+          select: { spotId: true, status: true },
+        });
 
-        const contractBySpot = new Map(
-          occupyingContracts
-            .filter((c) => Boolean(c.spotId))
-            .map((c) => [c.spotId as string, c.id])
-        );
         const offerBySpot = new Map(offers.map((o) => [o.spotId, o.status]));
 
         for (const s of heldMonthlySpots) {
@@ -577,18 +587,22 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 月極4区画(A-17〜A-20)は契約者専有のため一般予約の直接指定は原則拒否。
-    // 解放cronが開放マーカー(RESERVATION_ONLY)を書いた日付だけは許可する。
+    // 月極4区画(A-17〜A-20)は有効な月極契約があれば契約者専有のため直接予約を拒否。
+    // 契約が無ければ一般枠として通過（マーカーには依存しない）。
     if (
       place.slug === MONTHLY_PLACE_SLUG &&
       (MONTHLY_SLOT_CODES as readonly string[]).includes(spot.code)
     ) {
-      const slotMode = await prisma.spotModeCalendar.findUnique({
-        where: { spotId_date: { spotId: spot.id, date } },
-        select: { operationMode: true },
+      const occupying = await prisma.monthlyContract.findFirst({
+        where: { spotId: spot.id, status: { in: [...OCCUPYING_STATUSES] } },
+        select: { id: true },
       });
-      if (slotMode?.operationMode !== "RESERVATION_ONLY") {
-        return jsonError("この区画は予約できません", 409, "spot_not_reservable");
+      if (occupying) {
+        return jsonError(
+          "この区画は月極契約者専有のため予約できません",
+          409,
+          "spot_not_reservable"
+        );
       }
     }
 

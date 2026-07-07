@@ -27,7 +27,7 @@ export async function GET(req: NextRequest) {
   return htmlPage(`
     <h2>イベント日を「利用しない」にしますか？</h2>
     <p>対象日: ${payload.d}</p>
-    <p>「利用しない」を確定すると、当日のご利用区画は一般のお客様の予約に開放されます（取り消せません）。</p>
+    <p>「利用しない」を確定すると、当日はこの区画を利用しないものとして受け付けます。一般枠が満車になった場合のみ、この区画が一般のお客様の申請（要承認）の対象になることがあります。この操作は取り消せません。</p>
     <form method="POST" action="${APP_URL}/api/tenant/event-response/decline">
       <input type="hidden" name="token" value="${token}" />
       <button type="submit" style="background:#111;color:#fff;border:none;padding:12px 20px;border-radius:8px;font-weight:bold;cursor:pointer">利用しないを確定する</button>
@@ -35,7 +35,7 @@ export async function GET(req: NextRequest) {
   `);
 }
 
-// POST: 確定（DECLINED化＋区画を一般開放＋Slack）
+// POST: 確定（DECLINED化＋承認待ち枠化＋Slack）
 export async function POST(req: NextRequest) {
   let token = "";
   try {
@@ -81,19 +81,11 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    await prisma.spotModeCalendar.upsert({
-      where: { spotId_date: { spotId: contract.spotId, date } },
-      update: { operationMode: "RESERVATION_ONLY" },
-      create: {
-        placeId: place.id,
-        spotId: contract.spotId,
-        date,
-        operationMode: "RESERVATION_ONLY",
-      },
-    });
+    // マーカー(RESERVATION_ONLY)は書かない。契約は ACTIVE のまま残し、
+    // 満車時に「要承認」枠として登場させる（自動の白開放はしない）。
 
     await sendSlackNotification(
-      `【月極・利用しない】${contract.tenant.name} さんが ${date} のイベント日を「利用しない」と回答。区画を一般開放しました。`
+      `【月極・利用しない】${contract.tenant.name} さんが ${date} のイベント日を「利用しない」と回答。承認待ち枠として受け付けます（満車時に一般申請可）。`
     ).catch(() => {});
 
     return htmlPage(

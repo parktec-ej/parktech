@@ -181,7 +181,16 @@ export async function GET(req: Request) {
           });
           if (!contract?.tenant?.email) continue;
 
-          // 既に解放済み（利用しない等）はスキップ
+          // 「利用しない」と回答済みの契約者には「そのまま使えます」通知を送らない。
+          const declined = await prisma.monthlyEventResponse.findUnique({
+            where: {
+              contractId_date: { contractId: contract.id, date: deadlineDay },
+            },
+            select: { status: true },
+          });
+          if (declined?.status === "DECLINED") continue;
+
+          // 既に解放済み（旧仕様の残マーカー等）はスキップ
           const dayMode = await prisma.spotModeCalendar.findUnique({
             where: { spotId_date: { spotId: spot.id, date: deadlineDay } },
             select: { operationMode: true },

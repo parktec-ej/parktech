@@ -74,19 +74,11 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    await prisma.spotModeCalendar.upsert({
-      where: { spotId_date: { spotId: contract.spotId, date } },
-      update: { operationMode: "RESERVATION_ONLY" },
-      create: {
-        placeId: place.id,
-        spotId: contract.spotId,
-        date,
-        operationMode: "RESERVATION_ONLY",
-      },
-    });
+    // マーカー(RESERVATION_ONLY)は書かない。契約は ACTIVE のまま残し、
+    // 満車時に「要承認」枠として登場させる（自動の白開放はしない）。
 
     await sendSlackNotification(
-      `【月極・利用しない】${tenant.name} さんが ${date} のイベント日を「利用しない」と回答（契約者ページ）。区画を一般開放しました。`
+      `【月極・利用しない】${tenant.name} さんが ${date} のイベント日を「利用しない」と回答（契約者ページ）。承認待ち枠として受け付けます（満車時に一般申請可）。`
     ).catch(() => {});
 
     return NextResponse.json({ ok: true });

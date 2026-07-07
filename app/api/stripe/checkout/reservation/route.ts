@@ -7,7 +7,11 @@ import {
   isReservationOpen,
   ymdToUtcDate,
 } from "@/lib/pricing-core";
-import { MONTHLY_PLACE_SLUG, MONTHLY_SLOT_CODES } from "@/lib/monthly-config";
+import {
+  MONTHLY_PLACE_SLUG,
+  MONTHLY_SLOT_CODES,
+  OCCUPYING_STATUSES,
+} from "@/lib/monthly-config";
 
 export const runtime = "nodejs";
 export const preferredRegion = "hnd1";
@@ -143,18 +147,22 @@ export async function POST(req: NextRequest) {
       return jsonError("spot が見つかりません", 404, "spot_not_found");
     }
 
-    // 月極4区画(A-17〜A-20)は契約者専有のため一般予約の直接指定は原則拒否。
-    // 解放cronが開放マーカー(RESERVATION_ONLY)を書いた日付だけは許可する。
+    // 月極4区画(A-17〜A-20)は有効な月極契約があれば契約者専有のため決済を拒否。
+    // 契約が無ければ一般枠として通過（decline由来の残マーカーには依存しない）。
     if (
       place.slug === MONTHLY_PLACE_SLUG &&
       (MONTHLY_SLOT_CODES as readonly string[]).includes(spot.code)
     ) {
-      const slotMode = await prisma.spotModeCalendar.findUnique({
-        where: { spotId_date: { spotId: spot.id, date } },
-        select: { operationMode: true },
+      const occupying = await prisma.monthlyContract.findFirst({
+        where: { spotId: spot.id, status: { in: [...OCCUPYING_STATUSES] } },
+        select: { id: true },
       });
-      if (slotMode?.operationMode !== "RESERVATION_ONLY") {
-        return jsonError("この区画は予約できません", 409, "spot_not_reservable");
+      if (occupying) {
+        return jsonError(
+          "この区画は月極契約者専有のため予約できません",
+          409,
+          "spot_not_reservable"
+        );
       }
     }
 
