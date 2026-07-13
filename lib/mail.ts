@@ -994,3 +994,68 @@ ${safe(date)} の ${safe(placeName)}（${safe(spotLabel)}）は、当日その�
 パークテックイーストジャパン`.trim(),
   });
 }
+
+export async function sendUnexitNoticeMail(params: {
+  to: string;
+  placeName: string;
+  spotLabel: string;
+  useDate: string;
+  leftUrl: string;
+  parkedUrl: string;
+}) {
+  const { to, placeName, spotLabel, useDate, leftUrl, parkedUrl } = params;
+  const text = `
+ParkTecをご利用いただきありがとうございます。
+
+ご予約の駐車場について、出庫手続き（QRの読み取り）が確認できておりません。
+お手数ですが、下記からお知らせください。
+
+■ 駐車場: ${placeName}
+■ 区画: ${spotLabel}
+■ ご利用日: ${useDate}
+
+すでに出庫された場合:
+${leftUrl}
+
+まだ駐車中の場合:
+${parkedUrl}
+
+※ すでに出庫済みでお心当たりがない場合はこのメールを破棄してください。
+ParkTec
+`.trim();
+
+  return getResend().emails.send({
+    from: MAIL_FROM,
+    to,
+    subject: "【ParkTec】出庫手続きのご確認",
+    text,
+    html: `
+      <div style="font-family:Arial,sans-serif;line-height:1.8;color:#111">
+        <h2>出庫手続きのご確認</h2>
+        <p>ParkTecをご利用いただきありがとうございます。<br />
+        ご予約の駐車場について、出庫手続き（QRの読み取り）が確認できておりません。</p>
+        <div style="padding:16px;border:1px solid #ddd;border-radius:8px;background:#fafafa">
+          <div><strong>駐車場:</strong> ${safe(placeName)}</div>
+          <div><strong>区画:</strong> ${safe(spotLabel)}</div>
+          <div><strong>ご利用日:</strong> ${safe(useDate)}</div>
+        </div>
+        <p style="margin-top:20px">お手数ですが、下記のいずれかをお選びください。</p>
+        <div style="margin:16px 0">
+          <a href="${leftUrl}" target="_blank" rel="noopener noreferrer"
+             style="display:inline-block;padding:12px 20px;background:#0a7d32;color:#fff;border-radius:8px;text-decoration:none;margin-right:8px">
+            すでに出庫しました
+          </a>
+          <a href="${parkedUrl}" target="_blank" rel="noopener noreferrer"
+             style="display:inline-block;padding:12px 20px;background:#b45309;color:#fff;border-radius:8px;text-decoration:none">
+            まだ駐車中です
+          </a>
+        </div>
+        <p style="margin-top:16px;font-size:12px;color:#666">
+          ※ すでに出庫済みでお心当たりがない場合はこのメールを破棄してください。
+        </p>
+        <hr style="margin:24px 0" />
+        <p>ParkTec</p>
+      </div>
+    `,
+  });
+}
