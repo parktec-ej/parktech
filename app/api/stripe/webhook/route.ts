@@ -272,27 +272,61 @@ export async function POST(req: Request) {
             }
           }
         } else {
-          const reservation = await prisma.reservation.create({
-            data: {
-              placeId,
-              spotId,
-              date,
-              slot,
-              name,
-              plate,
-              email,
-              phone,
-              price,
-              pin: genPin4(),
-              paid: true,
-              paidAt: new Date(),
-              paymentRef,
-              status: "CONFIRMED",
-              cancelToken: crypto.randomUUID(),
-              refundStatus: "NONE",
-              refundAmount: null,
-            },
-          });
+          let reservation: Awaited<ReturnType<typeof prisma.reservation.create>>;
+          try {
+            reservation = await prisma.reservation.create({
+              data: {
+                placeId,
+                spotId,
+                date,
+                slot,
+                name,
+                plate,
+                email,
+                phone,
+                price,
+                pin: genPin4(),
+                paid: true,
+                paidAt: new Date(),
+                paymentRef,
+                status: "CONFIRMED",
+                cancelToken: crypto.randomUUID(),
+                refundStatus: "NONE",
+                refundAmount: null,
+              },
+            });
+          } catch (e: any) {
+            if (e?.code === "P2002") {
+              // 同一枠(spotId,date)に別決済のCONFIRMEDが先に成立 → 二重予約の敗者。
+              // 予約を作らず全額自動返金し、Slackで手動フォローを促す。
+              let refundOk = false;
+              if (paymentIntentId) {
+                try {
+                  await stripe.refunds.create({
+                    payment_intent: paymentIntentId,
+                    reason: "requested_by_customer",
+                    metadata: { reason: "double_booking_guard", spotId, date, slot, name },
+                  });
+                  refundOk = true;
+                } catch (refundErr) {
+                  console.error("double-booking auto-refund failed:", refundErr);
+                }
+              }
+              await sendSlackNotification(
+                [
+                  "⚠️【二重予約ブロック】同一枠に同時決済を検知",
+                  `枠：${slot} / 利用日：${date}`,
+                  `お客様：${name}（${email ?? "-"} / ${phone ?? "-"}）`,
+                  `金額：¥${price.toLocaleString("ja-JP")}`,
+                  `自動返金：${refundOk ? "成功" : "失敗→手動返金してください"}`,
+                  `Stripe session：${paymentRef}`,
+                  "※予約は作成していません。別枠振替が可能ならお客様へご連絡ください。",
+                ].join("\n")
+              ).catch(() => {});
+              return NextResponse.json({ received: true, skipped: "double_booking_refunded" });
+            }
+            throw e;
+          }
 
           reservationId = reservation.id;
           reservationPin = reservation.pin;
