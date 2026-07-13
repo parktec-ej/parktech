@@ -45,6 +45,13 @@ export async function GET(req: Request) {
         where: { id: reservation.id, checkedOutAt: null },
         data: { checkedOutAt: now, selfCheckedOut: true },
       });
+      await sendSlackNotification(
+        [
+          "✅ 未出庫→お客様が「出庫しました」と回答（自己申告で出庫確定）",
+          `reservationId: ${reservation.id}`,
+          `駐車場: ${reservation.place?.name ?? "-"}`,
+        ].join("\n")
+      );
     }
     return htmlPage("ありがとうございました", "出庫の確認が完了しました。ご協力ありがとうございました。またのご利用をお待ちしております。");
   }
