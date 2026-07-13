@@ -81,6 +81,17 @@ export async function POST(req: Request) {
       },
     });
 
+    // 紐づく予約があれば、未出庫アラートcronが判定に使う
+    // reservation.checkedOutAt も同一時刻で閉じる。
+    // Supabase Pooler では interactive transaction が不安定なため $transaction は使わず、
+    // null ガード付きの逐次 update とする（正規の出庫時刻がある場合は上書きしない）。
+    if (session.reservationId) {
+      await prisma.reservation.updateMany({
+        where: { id: session.reservationId, checkedOutAt: null },
+        data: { checkedOutAt: now },
+      });
+    }
+
     await sendSlackNotification(
       [
         "🚗 [管理者操作] 強制出庫",
