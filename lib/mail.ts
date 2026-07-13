@@ -1059,3 +1059,84 @@ ParkTec
     `,
   });
 }
+
+export async function sendDoubleBookingRefundMail(params: {
+  to: string;
+  name: string;
+  date: string;
+  slot: string;
+  refundAmount: number;
+  reserveUrl: string;
+}) {
+  const { to, name, date, slot, refundAmount, reserveUrl } = params;
+
+  return getResend().emails.send({
+    from: MAIL_FROM,
+    to,
+    subject: "【ParkTec】ご予約について（満車のため成立せず・全額返金のお知らせ）",
+    html: `
+      <div style="font-family:Arial,sans-serif;line-height:1.8;color:#111">
+        <h2>ご予約について、お詫びとご連絡</h2>
+        <p>${safe(name)} 様</p>
+        <p>
+          このたびは ParkTec をご利用いただきありがとうございます。<br />
+          大変申し訳ございませんが、ほぼ同時刻に他のお客様のご予約が成立したため、
+          ご希望の区画が満車となり、今回のご予約は成立いたしませんでした。
+        </p>
+
+        <div style="padding:16px;border:1px solid #ddd;border-radius:8px;background:#fafafa">
+          <div><strong>利用日:</strong> ${safe(date)}</div>
+          <div><strong>ご希望区画:</strong> ${safe(slot)}</div>
+        </div>
+
+        <div style="margin-top:20px;padding:16px;border:1px solid #ddd;border-radius:8px;background:#fff">
+          <div><strong>ご返金:</strong> ${safe(refundAmount)} 円（全額）を自動で返金いたしました。</div>
+          <p style="margin:8px 0 0;font-size:12px;color:#666">
+            ※ カード会社への反映まで数日かかることがあります。二重にご請求されることはございません。
+          </p>
+        </div>
+
+        <p style="margin-top:20px">
+          他の区画に空きがある場合は、下記より再度ご予約いただけます。<br />
+          また、空き状況によっては担当者より別区画をご案内できる場合がございますので、
+          その際はこちらからご連絡いたします。
+        </p>
+        <p>
+          <a href="${safe(reserveUrl)}" target="_blank" rel="noopener noreferrer"
+             style="display:inline-block;padding:10px 18px;background:#2563eb;color:#fff;border-radius:8px;text-decoration:none">
+            空き状況を確認して再予約する
+          </a>
+        </p>
+
+        <p style="margin-top:16px">
+          ご不便をおかけし誠に申し訳ございません。ご不明な点がございましたら、本メールにご返信ください。
+        </p>
+
+        <hr style="margin:24px 0" />
+        <p>ParkTec（パークテックイーストジャパン）</p>
+      </div>
+    `,
+    text: `
+${safe(name)} 様
+
+このたびは ParkTec をご利用いただきありがとうございます。
+大変申し訳ございませんが、ほぼ同時刻に他のお客様のご予約が成立したため、
+ご希望の区画が満車となり、今回のご予約は成立いたしませんでした。
+
+利用日: ${safe(date)}
+ご希望区画: ${safe(slot)}
+
+ご返金: ${safe(refundAmount)} 円（全額）を自動で返金いたしました。
+※ カード会社への反映まで数日かかることがあります。二重にご請求されることはございません。
+
+他の区画に空きがある場合は、下記より再度ご予約いただけます。
+また、空き状況によっては担当者より別区画をご案内できる場合がございます。
+
+空き状況を確認して再予約する: ${reserveUrl}
+
+ご不便をおかけし誠に申し訳ございません。ご不明な点がございましたら、本メールにご返信ください。
+
+ParkTec（パークテックイーストジャパン）
+    `.trim(),
+  });
+}

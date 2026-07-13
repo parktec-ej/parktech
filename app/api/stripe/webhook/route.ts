@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { prisma } from "@/lib/db";
 import { stripe } from "@/lib/stripe";
-import { sendReservationPinMail, sendCheckoutThanksMail, sendMonthlyContractActivatedMail, sendOfferApplicantUnavailableMail } from "@/lib/mail";
+import { sendReservationPinMail, sendCheckoutThanksMail, sendMonthlyContractActivatedMail, sendOfferApplicantUnavailableMail, sendDoubleBookingRefundMail } from "@/lib/mail";
 import bcrypt from "bcryptjs";
 import { calcSplitAmounts, calcTax } from "@/lib/settlement-math";
 import { buildSettlementSnapshot } from "@/lib/settlement-snapshot";
@@ -323,6 +323,21 @@ export async function POST(req: Request) {
                   "※予約は作成していません。別枠振替が可能ならお客様へご連絡ください。",
                 ].join("\n")
               ).catch(() => {});
+              // 返金に成功した場合のみ、お客様へお詫び＋再予約案内メールを送る
+              if (email && refundOk) {
+                try {
+                  await sendDoubleBookingRefundMail({
+                    to: email,
+                    name,
+                    date,
+                    slot,
+                    refundAmount: price,
+                    reserveUrl: appUrl,
+                  });
+                } catch (mailErr) {
+                  console.error("double-booking refund mail failed:", mailErr);
+                }
+              }
               return NextResponse.json({ received: true, skipped: "double_booking_refunded" });
             }
             throw e;
