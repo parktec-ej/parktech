@@ -26,6 +26,9 @@ type ReservationRow = {
   checkedIn: boolean;
   checkedInAt: Date | null;
   checkedOutAt: Date | null;
+  unexitNoticeSentAt: Date | null;
+  unexitAckAt: Date | null;
+  selfCheckedOut: boolean;
   createdAt: Date;
   spotId: string | null;
   qrToken: string | null;
@@ -61,6 +64,9 @@ type ReservationItem = {
   checkedIn: boolean;
   checkedInAt: Date | null;
   checkedOutAt: Date | null;
+  unexitNoticeSentAt: Date | null;
+  unexitAckAt: Date | null;
+  selfCheckedOut: boolean;
   createdAt: Date;
   spotId: string | null;
   qrToken: string | null;
@@ -193,6 +199,9 @@ export async function GET(req: Request) {
         checkedIn: true,
         checkedInAt: true,
         checkedOutAt: true,
+        unexitNoticeSentAt: true,
+        unexitAckAt: true,
+        selfCheckedOut: true,
         createdAt: true,
         spotId: true,
         qrToken: true,
@@ -236,6 +245,9 @@ export async function GET(req: Request) {
       checkedIn: r.checkedIn,
       checkedInAt: r.checkedInAt,
       checkedOutAt: r.checkedOutAt,
+      unexitNoticeSentAt: r.unexitNoticeSentAt,
+      unexitAckAt: r.unexitAckAt,
+      selfCheckedOut: r.selfCheckedOut,
       createdAt: r.createdAt,
       spotId: r.spotId,
       qrToken: r.qrToken,

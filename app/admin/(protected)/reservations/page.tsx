@@ -24,6 +24,9 @@ type ReservationItem = {
   checkedIn: boolean;
   checkedInAt: string | null;
   checkedOutAt: string | null;
+  unexitNoticeSentAt: string | null;
+  unexitAckAt: string | null;
+  selfCheckedOut: boolean;
   createdAt: string;
   spotId: string | null;
   qrToken: string;
@@ -105,6 +108,27 @@ function statusLabel(status: ReservationItem["status"]) {
   }
 }
 
+// 未出庫対応の進捗バッジ（該当しない予約は null）
+function unexitBadge(
+  r: ReservationItem
+): { label: string; bg: string; color: string } | null {
+  // 自己申告で出庫確定（実QRではないので念のため確認推奨）
+  if (r.selfCheckedOut) {
+    return { label: "🟢 自己申告で出庫", bg: "#dcfce7", color: "#166534" };
+  }
+  // 実QR出庫済みなら対応不要
+  if (r.checkedOutAt) return null;
+  // お客様が「まだ駐車中」と回答（要フォロー）
+  if (r.unexitAckAt) {
+    return { label: "🟠 まだ駐車中と回答", bg: "#ffedd5", color: "#9a3412" };
+  }
+  // 確認メール送信済み・返信待ち
+  if (r.unexitNoticeSentAt) {
+    return { label: "🔵 通知済み・返信待ち", bg: "#dbeafe", color: "#1e40af" };
+  }
+  return null;
+}
+
 function updateUrl(
   router: ReturnType<typeof useRouter>,
   current: URLSearchParams,
@@ -135,6 +159,7 @@ function AdminReservationsPageInner() {
   const initialSort = searchParams.get("sort") || "slot_asc";
   const initialQ = searchParams.get("q") || "";
   const initialPlaceId = searchParams.get("placeId") || "";
+  const initialUnexit = searchParams.get("unexit") === "1";
 
   const [placeId, setPlaceId] = useState(initialPlaceId);
   const [date, setDate] = useState(initialDate);
@@ -142,6 +167,7 @@ function AdminReservationsPageInner() {
   const [sort, setSort] = useState(initialSort);
   const [qInput, setQInput] = useState(initialQ);
   const [qApplied, setQApplied] = useState(initialQ);
+  const [unexitOnly, setUnexitOnly] = useState(initialUnexit);
 
   const [placesLoading, setPlacesLoading] = useState(true);
   const [placesErr, setPlacesErr] = useState("");
@@ -168,6 +194,12 @@ function AdminReservationsPageInner() {
     [places, placeId]
   );
   const isBusPlace = (selectedPlace?.slug ?? "").endsWith("-bus");
+
+  // 「未出庫のみ」ONのときは、未出庫対応バッジが付く行だけを表示
+  const visibleReservations = useMemo(() => {
+    const list = data?.reservations ?? [];
+    return unexitOnly ? list.filter((r) => unexitBadge(r) !== null) : list;
+  }, [data, unexitOnly]);
 
   async function loadPlaces() {
     setPlacesLoading(true);
@@ -223,6 +255,7 @@ function AdminReservationsPageInner() {
     status: string;
     sort: string;
     q: string;
+    unexitOnly?: boolean;
   }) {
     if (!target.placeId) {
       setLoading(false);
@@ -237,7 +270,8 @@ function AdminReservationsPageInner() {
     try {
       const targetPlace = places.find((p) => p.id === target.placeId);
       const isBus = (targetPlace?.slug ?? "").endsWith("-bus");
-      const dateParam = isBus ? "ALL" : target.date;
+      // 未出庫のみ表示は過去日にまたがるため、拠点の全日程を取得する
+      const dateParam = isBus || target.unexitOnly ? "ALL" : target.date;
 
       const params = new URLSearchParams({
         placeId: target.placeId,
@@ -294,6 +328,7 @@ function AdminReservationsPageInner() {
       status,
       sort,
       q: qApplied,
+      unexit: unexitOnly ? "1" : "",
     });
 
     loadReservations({
@@ -302,9 +337,10 @@ function AdminReservationsPageInner() {
       status,
       sort,
       q: qApplied,
+      unexitOnly,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [placeId, date, status, sort, qApplied]);
+  }, [placeId, date, status, sort, qApplied, unexitOnly]);
 
   async function doCancel(reservationId: string) {
     if (!confirm("この予約をキャンセルしますか？")) return;
@@ -624,6 +660,29 @@ function AdminReservationsPageInner() {
           </div>
         </div>
 
+        <div style={{ marginTop: 14 }}>
+          <button
+            type="button"
+            onClick={() => setUnexitOnly((v) => !v)}
+            style={{
+              padding: "10px 16px",
+              borderRadius: 999,
+              border: `1px solid ${unexitOnly ? "#9a3412" : "#d1d5db"}`,
+              background: unexitOnly ? "#9a3412" : "#fff",
+              color: unexitOnly ? "#fff" : "#374151",
+              fontWeight: 800,
+              cursor: "pointer",
+            }}
+          >
+            {unexitOnly ? "☑ 未出庫のみ表示中" : "☐ 未出庫のみ"}
+          </button>
+          {unexitOnly ? (
+            <span style={{ marginLeft: 10, fontSize: 12, color: "#666" }}>
+              ※ 対応が必要な件（🔵通知済み / 🟠まだ駐車中 / 🟢自己申告）を拠点の全日程から表示。日付・状態の絞り込みは無視されます。
+            </span>
+          ) : null}
+        </div>
+
         {placesErr ? (
           <div style={{ marginTop: 12, color: "crimson", fontWeight: 700 }}>
             {placesErr}
@@ -639,6 +698,19 @@ function AdminReservationsPageInner() {
               marginTop: 16,
             }}
           >
+            {unexitOnly ? (
+              <div
+                style={{
+                  padding: "10px 14px",
+                  borderRadius: 999,
+                  background: "#ffedd5",
+                  color: "#9a3412",
+                  fontWeight: 800,
+                }}
+              >
+                未出庫（要対応） {visibleReservations.length}
+              </div>
+            ) : null}
             <div
               style={{
                 padding: "10px 14px",
@@ -718,7 +790,7 @@ function AdminReservationsPageInner() {
         >
           Place を選択してください。
         </div>
-      ) : !data?.reservations || data.reservations.length === 0 ? (
+      ) : visibleReservations.length === 0 ? (
         <div
           style={{
             border: "1px solid #e5e7eb",
@@ -727,11 +799,13 @@ function AdminReservationsPageInner() {
             padding: 20,
           }}
         >
-          条件に一致する予約はありません。
+          {unexitOnly
+            ? "対応が必要な未出庫はありません。"
+            : "条件に一致する予約はありません。"}
         </div>
       ) : (
         <div style={{ display: "grid", gap: 14 }}>
-          {data.reservations.map((r) => (
+          {visibleReservations.map((r) => (
             <div
               key={r.id}
               style={{
@@ -797,7 +871,34 @@ function AdminReservationsPageInner() {
                   {r.checkedOutAt
                     ? new Date(r.checkedOutAt).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" })
                     : "未"}
+                  {r.checkedOutAt
+                    ? r.selfCheckedOut
+                      ? "（自己申告）"
+                      : "（QR）"
+                    : ""}
                 </div>
+                {(() => {
+                  const badge = unexitBadge(r);
+                  if (!badge) return null;
+                  return (
+                    <div style={{ marginTop: 2 }}>
+                      未出庫対応:{" "}
+                      <span
+                        style={{
+                          display: "inline-block",
+                          padding: "2px 8px",
+                          borderRadius: 999,
+                          fontWeight: 800,
+                          fontSize: 12,
+                          background: badge.bg,
+                          color: badge.color,
+                        }}
+                      >
+                        {badge.label}
+                      </span>
+                    </div>
+                  );
+                })()}
               </div>
 
               <div
