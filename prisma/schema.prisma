@@ -87,6 +87,9 @@ model Reservation {
   checkedIn         Boolean           @default(false)
   checkedInAt       DateTime?
   checkedOutAt      DateTime?
+  unexitNoticeSentAt DateTime?   // 未出庫の確認メールを送信した時刻（1回のみ送るための重複防止）
+  unexitAckAt        DateTime?   // 顧客が「まだ駐車中」を押して認識した時刻
+  selfCheckedOut     Boolean     @default(false)  // 顧客が「出庫しました」を自己申告した（実QR出庫と区別）
   email             String?
   phone             String?
   paid              Boolean           @default(false)
