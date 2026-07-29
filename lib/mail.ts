@@ -92,7 +92,13 @@ export async function sendReservationPinMail(params: {
         }
 
         <hr style="margin:24px 0" />
-        <p>ParkTec</p>
+        <div style="font-size:13px;color:#555;line-height:1.8">
+          <strong>お困りのときは</strong><br />
+          サポート・よくある質問：<a href="https://parktec-ej.com/help" target="_blank" rel="noopener noreferrer" style="color:#2563eb">https://parktec-ej.com/help</a><br />
+          出庫できない・QRが読めないなど、お急ぎの場合はお電話ください。<br />
+          TEL: 050-1793-4785（1番を押してください）
+        </div>
+        <p style="margin-top:16px">ParkTec</p>
       </div>
     `,
     text: `
@@ -120,6 +126,11 @@ ${manageUrl ? `予約管理（予約確認・日付変更・キャンセル）: 
 ・利用日の48時間以内: キャンセル不可（全額請求）
 日付変更:
 ・予約受付から24時間以内: 1回まで無料で変更可能` : ""}
+
+お困りのときは
+サポート・よくある質問: https://parktec-ej.com/help
+出庫できない・QRが読めないなど、お急ぎの場合はお電話ください。
+TEL: 050-1793-4785（1番を押してください）
 
 ParkTec
     `.trim(),

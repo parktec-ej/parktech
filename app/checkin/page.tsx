@@ -128,9 +128,20 @@ function CheckinInner() {
           <div style={cardStyle}>
             <div style={successTitleStyle}>チェックイン完了しました ✓</div>
             <div style={normalTextStyle}>駐車してコーンを戻してください。</div>
-            <div style={{ ...normalTextStyle, marginBottom: 0 }}>
+            <div style={normalTextStyle}>
               出庫時は再度QRコードを読み込んでください。
             </div>
+            <div style={normalTextStyle}>
+              当日中は車の出し入れが自由です。途中でお出かけの際、QR操作は不要です。
+            </div>
+            <a
+              href="https://parktec-ej.com/help/inout"
+              target="_blank"
+              rel="noopener noreferrer"
+              style={inoutLinkStyle}
+            >
+              詳しくはこちら（入庫後の出し入れについて）
+            </a>
           </div>
 
           <div style={cardStyle}>
@@ -362,4 +373,11 @@ const infoRowStyle: React.CSSProperties = {
   lineHeight: 1.9,
   fontSize: 15,
   color: "#333",
+};
+
+const inoutLinkStyle: React.CSSProperties = {
+  display: "inline-block",
+  color: "#2563eb",
+  fontSize: 13,
+  marginTop: 8,
 };
