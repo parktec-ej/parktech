@@ -6,6 +6,7 @@ import { sendReservationPinMail, sendCheckoutThanksMail, sendMonthlyContractActi
 import bcrypt from "bcryptjs";
 import { calcSplitAmounts, calcTax } from "@/lib/settlement-math";
 import { buildSettlementSnapshot } from "@/lib/settlement-snapshot";
+import { fetchStripeFee } from "@/lib/stripe-fee";
 import { sendSlackNotification } from "@/lib/slack";
 import crypto from "crypto";
 
@@ -475,6 +476,8 @@ export async function POST(req: Request) {
               snapshot.platformRateBps
             );
 
+            const feeInfo = await fetchStripeFee(paymentIntentId);
+
             await prisma.payment.create({
               data: {
                 id: crypto.randomUUID(),
@@ -489,7 +492,7 @@ export async function POST(req: Request) {
                 paymentRef,
                 paymentIntentId,
                 checkoutSessionId: session.id,
-                stripeChargeId: null,
+                stripeChargeId: feeInfo.chargeId,
 
                 placeId: snapshot.placeId,
                 spotId: snapshot.spotId,
@@ -523,7 +526,7 @@ export async function POST(req: Request) {
                 agentAmount,
                 platformAmount,
 
-                stripeFeeAmount: 0,
+                stripeFeeAmount: feeInfo.fee,
                 connectFeeAmount: 0,
                 payoutFeeAmount: 0,
 
@@ -937,6 +940,8 @@ export async function POST(req: Request) {
               .filter(Boolean)
               .join("\n");
 
+            const feeInfo = await fetchStripeFee(paymentIntentId);
+
             await prisma.payment.create({
               data: {
                 id: crypto.randomUUID(),
@@ -951,7 +956,7 @@ export async function POST(req: Request) {
                 paymentRef,
                 paymentIntentId,
                 checkoutSessionId: session.id,
-                stripeChargeId: null,
+                stripeChargeId: feeInfo.chargeId,
 
                 placeId: snapshot.placeId,
                 spotId: snapshot.spotId,
@@ -986,7 +991,7 @@ export async function POST(req: Request) {
                 agentAmount,
                 platformAmount,
 
-                stripeFeeAmount: 0,
+                stripeFeeAmount: feeInfo.fee,
                 connectFeeAmount: 0,
                 payoutFeeAmount: 0,
 
@@ -1200,6 +1205,8 @@ export async function POST(req: Request) {
             snapshot.platformRateBps
           );
 
+          const feeInfo = await fetchStripeFee(paymentIntentId);
+
           await prisma.payment.create({
             data: {
               id: crypto.randomUUID(),
@@ -1214,7 +1221,7 @@ export async function POST(req: Request) {
               paymentRef,
               paymentIntentId,
               checkoutSessionId: session.id,
-              stripeChargeId: null,
+              stripeChargeId: feeInfo.chargeId,
 
               placeId: snapshot.placeId,
               spotId: snapshot.spotId,
@@ -1248,7 +1255,7 @@ export async function POST(req: Request) {
               agentAmount,
               platformAmount,
 
-              stripeFeeAmount: 0,
+              stripeFeeAmount: feeInfo.fee,
               connectFeeAmount: 0,
               payoutFeeAmount: 0,
 
