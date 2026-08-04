@@ -684,6 +684,7 @@ enum PaymentKind {
   RESERVATION
   HOURLY
   EVENT
+  MONTHLY
 }
 
 enum PaymentStatus {

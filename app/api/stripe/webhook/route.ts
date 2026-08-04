@@ -1428,6 +1428,91 @@ export async function POST(req: Request) {
               }
             }
 
+            // 仕訳連携: Payment にも売上を記録（重複防止つき）
+            const monthlyPaymentRef = invoiceId ? `invoice:${invoiceId}` : null;
+            const hasMonthlyPayment = await paymentExists({
+              paymentRef: monthlyPaymentRef,
+              paymentIntentId,
+            });
+
+            if (!hasMonthlyPayment) {
+              try {
+                const snapshot = await buildSettlementSnapshot({
+                  placeId: contract.placeId,
+                  spotId: contract.spotId,
+                  baseDate: paidAt,
+                });
+
+                const monthlyRecognizedDate = toJstDateStart(
+                  `${billingPeriod}-01`
+                );
+
+                const { ownerAmount, agentAmount, platformAmount } =
+                  calcSplitAmounts(
+                    amountYen,
+                    snapshot.ownerRateBps,
+                    snapshot.agentRateBps,
+                    snapshot.platformRateBps
+                  );
+
+                const feeInfo = await fetchStripeFee(paymentIntentId);
+
+                await prisma.payment.create({
+                  data: {
+                    id: crypto.randomUUID(),
+                    updatedAt: new Date(),
+                    kind: "MONTHLY",
+                    status: "CONFIRMED",
+                    settlementLock: "UNLOCKED",
+
+                    paymentRef: monthlyPaymentRef,
+                    paymentIntentId,
+                    stripeChargeId: feeInfo.chargeId,
+
+                    placeId: snapshot.placeId,
+                    spotId: snapshot.spotId,
+                    ownerId: snapshot.ownerId,
+                    agentId: snapshot.agentId,
+
+                    placeNameSnapshot: snapshot.placeNameSnapshot,
+                    spotCodeSnapshot: snapshot.spotCodeSnapshot,
+                    spotLabelSnapshot: snapshot.spotLabelSnapshot,
+                    ownerNameSnapshot: snapshot.ownerNameSnapshot,
+                    agentNameSnapshot: snapshot.agentNameSnapshot,
+
+                    recognizedDate: monthlyRecognizedDate,
+                    recognizedMonth: billingPeriod,
+
+                    customerNameSnapshot: contract.tenant.name,
+                    plateSnapshot: contract.plate,
+
+                    currency: "JPY",
+                    grossAmount: amountYen,
+
+                    ownerRateBps: snapshot.ownerRateBps,
+                    agentRateBps: snapshot.agentRateBps,
+                    platformRateBps: snapshot.platformRateBps,
+
+                    ownerAmount,
+                    agentAmount,
+                    platformAmount,
+
+                    stripeFeeAmount: feeInfo.fee,
+                    connectFeeAmount: 0,
+                    payoutFeeAmount: 0,
+
+                    memo: [
+                      "MONTHLY_SUBSCRIPTION",
+                      `contractId=${contract.id}`,
+                      `billingPeriod=${billingPeriod}`,
+                    ].join("\n"),
+                  },
+                });
+              } catch (e) {
+                console.error("[monthly payment create] failed:", e);
+              }
+            }
+
             // 継続課金成功で PAST_DUE から復帰
             if (contract.status === "PAST_DUE") {
               await prisma.monthlyContract.update({

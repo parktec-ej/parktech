@@ -20,7 +20,7 @@ type ActivePlaceItem = {
 };
 
 type PaymentItem = {
-  kind: "RESERVATION" | "HOURLY" | "EVENT";
+  kind: "RESERVATION" | "HOURLY" | "EVENT" | "MONTHLY";
   grossAmount: number;
   confirmedAt: Date | null;
   recognizedDate: Date;
@@ -33,7 +33,7 @@ type PaymentItem = {
 };
 
 type SalesRow = {
-  kind: "RESERVATION" | "HOURLY" | "EVENT";
+  kind: "RESERVATION" | "HOURLY" | "EVENT" | "MONTHLY";
   label: string;
   customer: string;
   date: string;
@@ -154,7 +154,7 @@ export default async function AdminSalesPage({
     kind: p.kind,
     label: p.spotLabelSnapshot || p.spotCodeSnapshot || "-",
     customer:
-      p.kind === "RESERVATION"
+      p.kind === "RESERVATION" || p.kind === "MONTHLY"
         ? p.customerNameSnapshot || "-"
         : p.plateSnapshot || "-",
     date:
@@ -177,6 +177,7 @@ export default async function AdminSalesPage({
   );
   const hourlyRows = allRows.filter((r: SalesRow) => r.kind === "HOURLY");
   const eventRows = allRows.filter((r: SalesRow) => r.kind === "EVENT");
+  const monthlyRows = allRows.filter((r: SalesRow) => r.kind === "MONTHLY");
 
   const reservationSales = reservationRows.reduce(
     (sum: number, row: SalesRow) => sum + row.amount,
@@ -190,7 +191,13 @@ export default async function AdminSalesPage({
     (sum: number, row: SalesRow) => sum + row.amount,
     0
   );
-  const totalSales = reservationSales + hourlySales + eventSales;
+  const monthlySales = monthlyRows.reduce(
+    (sum: number, row: SalesRow) => sum + row.amount,
+    0
+  );
+
+  const totalSales =
+    reservationSales + hourlySales + eventSales + monthlySales;
 
   return (
     <main style={pageStyle}>
@@ -248,7 +255,7 @@ export default async function AdminSalesPage({
           value={fmtYen(totalSales)}
           sub={`予約 ${fmtYen(reservationSales)} / 時間貸し ${fmtYen(
             hourlySales
-          )} / イベント ${fmtYen(eventSales)}`}
+          )} / イベント ${fmtYen(eventSales)} / 月極 ${fmtYen(monthlySales)}`}
         />
         <SummaryCard
           title="予約売上"
@@ -294,6 +301,8 @@ export default async function AdminSalesPage({
                         ? "予約"
                         : row.kind === "HOURLY"
                         ? "時間貸し"
+                        : row.kind === "MONTHLY"
+                        ? "月極"
                         : "イベント"}
                     </td>
                     <td style={tdStyle}>{row.label}</td>
