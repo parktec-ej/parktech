@@ -111,6 +111,27 @@ async function journalCsv(month: string): Promise<Response> {
     orderBy: { createdAt: "asc" },
   });
 
+  const adjustments = await prisma.adjustment.findMany({
+    where: {
+      recognizedMonth: month,
+      status: { in: ["CONFIRMED", "SETTLED"] },
+    },
+    include: {
+      Payment: {
+        select: {
+          placeNameSnapshot: true,
+          spotLabelSnapshot: true,
+          spotCodeSnapshot: true,
+          customerNameSnapshot: true,
+          plateSnapshot: true,
+          ownerNameSnapshot: true,
+          agentNameSnapshot: true,
+        },
+      },
+    },
+    orderBy: { recognizedDate: "asc" },
+  });
+
   const monthEnd = monthEndDate(month);
   const stripeFeeTotal = payments.reduce(
     (s, p) => s + (p.stripeFeeAmount ?? 0),
@@ -229,6 +250,71 @@ async function journalCsv(month: string): Promise<Response> {
         creditTax: "",
         creditAmount: s.finalAgentPayoutAmount,
         memo: `代理店報酬 ${s.Agent?.displayName || s.Agent?.name || ""} ${monthLabel(month)}分`,
+      });
+    }
+  }
+
+  // g) 調整（返金・取消）の反転計上
+  for (const adj of adjustments) {
+    const ap = adj.Payment;
+    const aSpot = ap.spotLabelSnapshot ?? ap.spotCodeSnapshot ?? "";
+    const aCustomer = ap.customerNameSnapshot ?? ap.plateSnapshot ?? "";
+    const aMemoBase = `${ap.placeNameSnapshot} ${aSpot} ${aCustomer}`.trim();
+    const isRefund =
+      adj.kind === "REFUND_FULL" || adj.kind === "REFUND_PARTIAL";
+    const label = isRefund ? "返金" : "調整";
+
+    // 売上の増減
+    if (adj.grossDeltaAmount !== 0) {
+      const amt = Math.abs(adj.grossDeltaAmount);
+      const minus = adj.grossDeltaAmount < 0;
+      rows.push({
+        date: adj.recognizedDate,
+        debit: minus ? "売上高" : "売掛金",
+        debitSub: "",
+        debitTax: "",
+        debitAmount: amt,
+        credit: minus ? "売掛金" : "売上高",
+        creditSub: "",
+        creditTax: "",
+        creditAmount: amt,
+        memo: `${label} ${aMemoBase}`.trim(),
+      });
+    }
+
+    // オーナー報酬の増減
+    if (adj.ownerDeltaAmount !== 0) {
+      const amt = Math.abs(adj.ownerDeltaAmount);
+      const minus = adj.ownerDeltaAmount < 0;
+      rows.push({
+        date: adj.recognizedDate,
+        debit: minus ? "未払金" : "業務委託費",
+        debitSub: "",
+        debitTax: "",
+        debitAmount: amt,
+        credit: minus ? "業務委託費" : "未払金",
+        creditSub: "",
+        creditTax: "",
+        creditAmount: amt,
+        memo: `${label}に伴うオーナー報酬調整 ${ap.ownerNameSnapshot}`.trim(),
+      });
+    }
+
+    // 代理店報酬の増減
+    if (adj.agentDeltaAmount !== 0) {
+      const amt = Math.abs(adj.agentDeltaAmount);
+      const minus = adj.agentDeltaAmount < 0;
+      rows.push({
+        date: adj.recognizedDate,
+        debit: minus ? "未払金" : "業務委託費",
+        debitSub: "",
+        debitTax: "",
+        debitAmount: amt,
+        credit: minus ? "業務委託費" : "未払金",
+        creditSub: "",
+        creditTax: "",
+        creditAmount: amt,
+        memo: `${label}に伴う代理店報酬調整 ${ap.agentNameSnapshot ?? ""}`.trim(),
       });
     }
   }
