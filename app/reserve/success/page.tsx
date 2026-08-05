@@ -2,6 +2,7 @@
 
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import CarrierMailSaveNotice from "./CarrierMailSaveNotice";
 
 type ReservationData = {
   id: string;
@@ -164,6 +165,11 @@ function SuccessInner() {
               <div>車両ナンバー: {reservation.plate}</div>
             </div>
           </div>
+
+          <CarrierMailSaveNotice
+            email={reservation.email}
+            pin={reservation.pin}
+          />
 
           <div
             style={{

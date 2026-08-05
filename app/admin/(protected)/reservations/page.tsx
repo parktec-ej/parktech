@@ -2,6 +2,7 @@
 
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import CarrierMailBadge from "../_components/CarrierMailBadge";
 
 function ymdTodayJst() {
   const now = new Date();
@@ -856,7 +857,10 @@ function AdminReservationsPageInner() {
                 <div>ナンバー: {r.plate}</div>
                 <div>金額: {r.price} 円</div>
                 <div>PIN: {r.pin}</div>
-                <div>メール: {r.email || "未入力"}</div>
+                <div>
+                  メール: {r.email || "未入力"}
+                  <CarrierMailBadge email={r.email} />
+                </div>
                 <div>電話: {r.phone || "未入力"}</div>
                 <div>作成: {new Date(r.createdAt).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" })}</div>
                 <div>決済: {r.paid ? "済み" : "未決済"}</div>

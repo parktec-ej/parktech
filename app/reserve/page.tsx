@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import CarrierMailNotice from "./CarrierMailNotice";
 
 type Spot = {
   id: string;
@@ -156,6 +157,7 @@ function ReservePageInner() {
   const [name, setName] = useState("");
   const [plate, setPlate] = useState("");
   const [email, setEmail] = useState("");
+  const [emailTouched, setEmailTouched] = useState(false);
   const [phone, setPhone] = useState("");
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -541,11 +543,15 @@ function ReservePageInner() {
         <section style={styles.section}>
           <label style={styles.label}>メールアドレス</label>
           <input
+            type="email"
+            inputMode="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
+            onBlur={() => setEmailTouched(true)}
             placeholder="example@example.com"
             style={styles.input}
           />
+          {emailTouched && <CarrierMailNotice email={email} />}
         </section>
 
         <section style={styles.section}>
