@@ -203,6 +203,28 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // 同一区画・同一日に確定済みの予約がある場合、ウォークインの時間貸しは開始できない。
+    // 予約は1日単位のため、時刻での重なり判定は行わない。
+    const reservedToday = await prisma.reservation.findFirst({
+      where: {
+        placeId: place.id,
+        spotId: spot.id,
+        date,
+        status: "CONFIRMED",
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    if (reservedToday) {
+      return jsonError(
+        "この区画は本日ご予約が入っているため、時間貸しはご利用いただけません",
+        409,
+        "spot_reserved_on_date"
+      );
+    }
+
     const session = await prisma.parkingSession.create({
       data: {
         placeId: place.id,
