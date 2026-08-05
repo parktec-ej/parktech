@@ -70,6 +70,14 @@ function ymdTodayJst() {
   });
 }
 
+// 指定日の翌日（YYYY-MM-DD）。UTC基準で計算するのでタイムゾーンの影響を受けない。
+function ymdNextDay(ymd: string): string {
+  const [y, m, d] = ymd.split("-").map(Number);
+  const base = new Date(Date.UTC(y, m - 1, d));
+  base.setUTCDate(base.getUTCDate() + 1);
+  return base.toISOString().slice(0, 10);
+}
+
 async function isActiveEventDay(placeId: string, date: string) {
   const targetDate = ymdToUtcDate(date);
 
@@ -219,6 +227,21 @@ export async function GET(req: NextRequest) {
         message: "現在この区画は利用停止中です。",
       });
     }
+
+    // 翌日にこの区画の予約があるか（時間貸しの出庫期限の根拠）。
+    // 期限は「翌日の午前0時」。猶予なし（規約 第6条の2）。
+    // 当日の予約を引く下のクエリとは別物なので混同しないこと。
+    const nextDate = ymdNextDay(date);
+    const nextDayReservation = await prisma.reservation.findFirst({
+      where: {
+        placeId: place.id,
+        spotId: spot.id,
+        date: nextDate,
+        status: "CONFIRMED",
+      },
+      select: { id: true },
+    });
+    const exitDeadlineDate = nextDayReservation ? nextDate : null;
 
     const reservation = await prisma.reservation.findFirst({
       where: {
@@ -393,6 +416,7 @@ export async function GET(req: NextRequest) {
         dayOperationMode: dayMode?.operationMode ?? null,
         spotOperationModeOverride: spot.operationModeOverride ?? null,
         placeOperationMode: place.operationMode,
+        exitDeadlineDate,
         message: "時間貸し利用が可能です。",
       });
     }
