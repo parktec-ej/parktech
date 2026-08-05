@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
 import { prisma } from "@/lib/db";
-import { calcDateChangePolicy } from "@/lib/settlement-math";
+import {
+  calcCancellationPolicy,
+  calcDateChangePolicy,
+} from "@/lib/settlement-math";
 import { sendReservationDateChangedMail } from "@/lib/mail";
 import { sendSlackNotification } from "@/lib/slack";
 
@@ -230,6 +233,26 @@ export async function POST(req: NextRequest) {
           : "日付変更の期限を過ぎています（予約受付から24時間以内）";
       return NextResponse.json(
         { ok: false, error: policy.rule, message },
+        { status: 400 }
+      );
+    }
+
+    // 変更「前」の利用日がキャンセル期限（48時間前）を過ぎている場合、
+    // 日付変更も禁止する。これを許すと、未来日へ移してからキャンセルすることで
+    // キャンセル不可の予約を手数料320円だけで解約できてしまう。
+    const currentCancelPolicy = calcCancellationPolicy(
+      reservation.price,
+      reservation.date
+    );
+
+    if (!currentCancelPolicy.canCancel) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "too_late_to_change",
+          message:
+            "利用日の48時間前を過ぎているため、日付変更はできません",
+        },
         { status: 400 }
       );
     }
