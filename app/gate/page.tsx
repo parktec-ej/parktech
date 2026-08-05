@@ -43,6 +43,7 @@ type GateResponse = {
   effectiveOperationMode?: OperationMode;
   dayOperationMode?: OperationMode | null;
   spotOperationModeOverride?: OperationMode | null;
+  exitDeadlineDate?: string | null;
   placeOperationMode?: OperationMode | null;
 };
 
@@ -145,6 +146,18 @@ function GateInner() {
   const mode = data?.mode ?? "unknown";
   const hourlyYen = data?.hourlyYen ?? null;
   const dailyYen = data?.dailyYen ?? null;
+
+  // 翌日に予約がある場合のみ、出庫期限（YYYY-MM-DD）が入る。
+  // 期限は当該日の午前0時。猶予なし（利用規約 第6条の2）。
+  const exitDeadlineDate = data?.exitDeadlineDate ?? null;
+
+  // 「8/11」形式に整形
+  const exitDeadlineLabel = exitDeadlineDate
+    ? (() => {
+        const [, m, d] = exitDeadlineDate.split("-").map(Number);
+        return `${m}/${d}`;
+      })()
+    : null;
 
   const checkinUrl = `/checkin?placeId=${encodeURIComponent(
     resolvedPlaceId
@@ -361,6 +374,21 @@ function GateInner() {
           ) : null}
         </button>
 
+        {canUseHourly && exitDeadlineLabel ? (
+          <div style={exitDeadlineStyle}>
+            <div style={{ fontWeight: 700, marginBottom: 6 }}>
+              ⚠️ {exitDeadlineLabel} はこの区画にご予約が入っています
+            </div>
+            <div style={{ fontWeight: 700, marginBottom: 8 }}>
+              {exitDeadlineLabel} 0:00 までにご出庫ください
+            </div>
+            <div style={{ fontSize: 13, lineHeight: 1.7 }}>
+              超過された場合、超過分の時間貸し料金に加え、予約者への返金相当額
+              および対応費用5,000円を申し受けます（利用規約 第6条の2）。
+            </div>
+          </div>
+        ) : null}
+
         <button
           type="button"
           style={{
@@ -555,6 +583,17 @@ const actionButtonTitleStyle: React.CSSProperties = {
 const actionButtonSubStyle: React.CSSProperties = {
   fontSize: 14,
   opacity: 0.9,
+};
+
+const exitDeadlineStyle: React.CSSProperties = {
+  background: "#fff7ed",
+  border: "1px solid #fdba74",
+  borderRadius: 16,
+  padding: 16,
+  marginTop: -4,
+  marginBottom: 16,
+  fontSize: 14,
+  color: "#7c2d12",
 };
 
 const subInfoStyle: React.CSSProperties = {
