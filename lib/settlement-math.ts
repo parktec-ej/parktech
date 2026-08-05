@@ -1,3 +1,5 @@
+import { calcHourlyFee } from "@/lib/pricing-core";
+
 function roundYen(value: number) {
   return Math.round(value);
 }
@@ -130,5 +132,62 @@ export function calcDateChangePolicy(
     rule: "too_late",
     canChange: false,
     deadline,
+  };
+}
+
+// ===== 時間貸し超過ペナルティ =====
+// 後続予約がある区画で出庫期限（予約日の午前0時）を超過した場合の請求額。
+// 利用規約 第6条の2 に対応。
+//
+// 純粋関数として保つため、返金相当額は呼び出し側が Reservation.refundAmount から
+// 取得して渡すこと。refundStatus が SUCCEEDED / PENDING のときのみ加算し、
+// FAILED / NONE / NOT_REQUIRED のときは 0 を渡す。
+
+// 対応費用（深夜・時間外対応の実費。規約 第6条の2 第4項）。
+export const OVERSTAY_RESPONSE_FEE = 5000;
+
+export type OverstayPenalty = {
+  isOverstay: boolean;
+  overstayMinutes: number;
+  hourlyFee: number;
+  refundAmount: number;
+  responseFee: number;
+  total: number;
+};
+
+export function calcOverstayPenalty(params: {
+  deadline: Date;
+  exitAt: Date;
+  hourlyYen: number;
+  dailyYen: number | null;
+  refundAmount?: number;
+}): OverstayPenalty {
+  const { deadline, exitAt, hourlyYen, dailyYen } = params;
+  const refundAmount = Math.max(0, params.refundAmount ?? 0);
+
+  const diffMs = exitAt.getTime() - deadline.getTime();
+
+  if (diffMs <= 0) {
+    return {
+      isOverstay: false,
+      overstayMinutes: 0,
+      hourlyFee: 0,
+      refundAmount: 0,
+      responseFee: 0,
+      total: 0,
+    };
+  }
+
+  const overstayMinutes = Math.ceil(diffMs / 60000);
+  const hourlyFee = calcHourlyFee(overstayMinutes, hourlyYen, dailyYen);
+  const total = hourlyFee + refundAmount + OVERSTAY_RESPONSE_FEE;
+
+  return {
+    isOverstay: true,
+    overstayMinutes,
+    hourlyFee,
+    refundAmount,
+    responseFee: OVERSTAY_RESPONSE_FEE,
+    total,
   };
 }
