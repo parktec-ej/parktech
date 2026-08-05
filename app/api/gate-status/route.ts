@@ -87,13 +87,21 @@ async function isActiveEventDay(placeId: string, date: string) {
   return Boolean(row);
 }
 
+// イベント日に時間貸しを開放するかのスイッチ。
+// 現在は利府を EVENT_ONLY のまま運用するため false。
+// 塩竈の実証実験を経て EVENT＋時間貸しへ移行する際に true にする。
+// その際は app/api/hourly-start/route.ts の canStartHourly() に
+// EVENT_ONLY を追加し、同ルートにも EventDay の検索を実装すること。
+// 片側だけ変えると再び gate-status と hourly-start が食い違う。
+const EVENT_DAY_HOURLY_ENABLED = false;
+
 function isHourlyAllowed(
   mode: string | null | undefined,
   eventDayActive: boolean
 ) {
   if (mode === "HOURLY_ONLY") return true;
   if (mode === "RESERVATION_THEN_HOURLY") return true;
-  if (mode === "EVENT_ONLY") return eventDayActive;
+  if (mode === "EVENT_ONLY") return EVENT_DAY_HOURLY_ENABLED && eventDayActive;
   return false;
 }
 

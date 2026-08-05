@@ -57,7 +57,7 @@ function modeLabel(mode?: string | null) {
   if (mode === "RESERVATION_ONLY") return "予約専用";
   if (mode === "HOURLY_ONLY") return "時間貸し専用";
   if (mode === "RESERVATION_THEN_HOURLY") return "予約優先 → 空きは時間貸し";
-  if (mode === "EVENT_ONLY") return "イベント時のみ時間貸し";
+  if (mode === "EVENT_ONLY") return "イベント予約専用";
   if (mode === "CLOSED") return "利用停止";
   return mode;
 }
@@ -214,6 +214,9 @@ function GateInner() {
       case "no_reservation":
         if (data?.effectiveOperationMode === "RESERVATION_ONLY") {
           return "この区画は予約専用です。予約者の方のみご利用いただけます。";
+        }
+        if (data?.effectiveOperationMode === "EVENT_ONLY") {
+          return "この区画はイベント予約専用です。ご予約の方はPINコードで入庫してください。";
         }
         return "予約利用、時間貸し、出庫のいずれかを選んでください。";
       default:
