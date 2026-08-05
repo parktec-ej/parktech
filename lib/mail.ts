@@ -29,7 +29,6 @@ export async function sendReservationPinMail(params: {
     placeName,
     spotLabel,
     date,
-    slot,
     plate,
     phone,
     price,
@@ -52,7 +51,6 @@ export async function sendReservationPinMail(params: {
           ${googleMapUrl ? `<div style="margin-top:4px"><a href="${googleMapUrl}" target="_blank" rel="noopener noreferrer" style="color:#2563eb;font-size:13px">📍 Google Mapで場所を確認する</a></div>` : ""}
           <div><strong>区画:</strong> ${safe(spotLabel)}</div>
           <div><strong>利用日:</strong> ${safe(date)}</div>
-          <div><strong>利用時間:</strong> ${safe(slot)}</div>
           <div><strong>車両ナンバー:</strong> ${safe(plate)}</div>
           ${phone ? `<div><strong>電話番号:</strong> ${safe(phone)}</div>` : ""}
           <div><strong>お支払い金額:</strong> ${safe(price)} 円</div>
@@ -107,7 +105,6 @@ ParkTecをご利用いただきありがとうございます。
 駐車場: ${safe(placeName)}
 区画: ${safe(spotLabel)}
 利用日: ${safe(date)}
-利用時間: ${safe(slot)}
 車両ナンバー: ${safe(plate)}
 ${phone ? `電話番号: ${safe(phone)}` : ""}
 お支払い金額: ${safe(price)} 円
@@ -402,7 +399,6 @@ export async function sendReservationCanceledMail(params: {
     placeName,
     spotLabel,
     date,
-    slot,
     name,
     plate,
     canceledAt,
@@ -425,7 +421,6 @@ export async function sendReservationCanceledMail(params: {
           <div><strong>駐車場:</strong> ${safe(placeName)}</div>
           <div><strong>区画:</strong> ${safe(spotLabel)}</div>
           <div><strong>利用日:</strong> ${safe(date)}</div>
-          <div><strong>利用時間:</strong> ${safe(slot)}</div>
           <div><strong>氏名:</strong> ${safe(name)}</div>
           <div><strong>車両ナンバー:</strong> ${safe(plate)}</div>
           <div><strong>キャンセル日時:</strong> ${safe(canceledAt)}</div>
@@ -460,7 +455,6 @@ export async function sendReservationCanceledMail(params: {
 駐車場: ${safe(placeName)}
 区画: ${safe(spotLabel)}
 利用日: ${safe(date)}
-利用時間: ${safe(slot)}
 氏名: ${safe(name)}
 車両ナンバー: ${safe(plate)}
 キャンセル日時: ${safe(canceledAt)}
