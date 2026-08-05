@@ -551,7 +551,12 @@ function ReservePageInner() {
             placeholder="example@example.com"
             style={styles.input}
           />
-          {emailTouched && <CarrierMailNotice email={email} />}
+          {emailTouched && (
+            <CarrierMailNotice
+              email={email}
+              helpHref="https://parktec-ej.com/help/mail-settings"
+            />
+          )}
         </section>
 
         <section style={styles.section}>
