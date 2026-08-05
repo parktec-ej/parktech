@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { getCarrierName } from "@/lib/email-domain";
 
 type Props = {
@@ -9,8 +10,21 @@ type Props = {
 };
 
 export default function CarrierMailNotice({ email, helpHref }: Props) {
+  const [copied, setCopied] = useState(false);
   const carrier = getCarrierName(email);
   if (!carrier) return null;
+
+  const MAIL_ADDRESS = "noreply@mail.parktec-ej.com";
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(MAIL_ADDRESS);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // クリップボードが使えない環境では何もしない
+    }
+  };
 
   return (
     <div
@@ -42,15 +56,28 @@ export default function CarrierMailNotice({ email, helpHref }: Props) {
 
       <div style={{ marginTop: 6 }}>
         このままご予約される場合は、迷惑メールフィルタの受信リストに{" "}
-        <span
+        <button
+          type="button"
+          onClick={handleCopy}
+          aria-label="メールアドレスをコピー"
           style={{
             fontFamily: "monospace",
             fontWeight: 700,
             wordBreak: "break-all",
+            background: "#fffdf5",
+            border: "1px solid #fbbf24",
+            borderRadius: 6,
+            color: "#92400e",
+            padding: "2px 6px",
+            fontSize: "inherit",
+            cursor: "pointer",
           }}
         >
-          noreply@mail.parktec-ej.com
-        </span>{" "}
+          {MAIL_ADDRESS}
+          <span style={{ marginLeft: 6, fontFamily: "inherit", fontSize: 12 }}>
+            {copied ? "コピーしました" : "タップでコピー"}
+          </span>
+        </button>{" "}
         をご登録ください。
         {helpHref && (
           <a
