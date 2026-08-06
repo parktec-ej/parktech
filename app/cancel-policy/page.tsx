@@ -7,12 +7,13 @@ export default function CancelPolicyPage() {
   return (
     <main className="mx-auto max-w-4xl px-4 py-10">
       <h1 className="text-3xl font-bold">キャンセルポリシー</h1>
-      <p className="mt-2 text-xs text-gray-400">最終更新日: 2026年5月27日</p>
+      <p className="mt-2 text-xs text-gray-400">最終更新日: 2026年8月6日</p>
 
       <div className="mt-8 space-y-8 text-sm leading-7 text-gray-800">
         <p>
           ParkTecをご利用いただきありがとうございます。
-          ご予約のキャンセル・日付変更・返金について、以下のとおり定めます。
+          ご予約のキャンセル・日付変更・返金、および時間貸しご利用時の
+          取扱いについて、以下のとおり定めます。
         </p>
 
         <section>
@@ -90,7 +91,53 @@ export default function CancelPolicyPage() {
         </section>
 
         <section>
-          <h2 className="text-xl font-semibold">4. 当社都合による返金</h2>
+          <h2 className="text-xl font-semibold">
+            4. 時間貸しご利用時の取扱い
+          </h2>
+          <p className="mt-3">
+            時間貸しのご利用は前払いです。入庫時に駐車時間をお選びいただき、
+            その時間に対応する料金をお支払いいただきます。
+          </p>
+          <ul className="mt-3 list-disc space-y-2 pl-6">
+            <li>
+              出庫期限より早くご出庫された場合でも、支払済み料金の払い戻しは
+              行いません。
+            </li>
+            <li>
+              延長された場合の追加料金についても、同様に払い戻しは行いません。
+            </li>
+            <li>
+              出庫期限を超えて駐車を継続された場合、超過した時間に対応する
+              時間貸し料金を申し受けます。
+            </li>
+            <li>
+              後続のご予約がある区画において、当該予約日の午前0時を超えて
+              駐車が継続された場合、上記に加えて予約者への返金相当額および
+              対応費用5,000円を申し受けます（利用規約 第6条の2）。
+            </li>
+          </ul>
+          <p className="mt-3">
+            出庫期限は入庫時および延長時に画面へ表示されます。
+            期限が近づいた場合は、お早めにご出庫または延長のお手続きをお願いします。
+          </p>
+        </section>
+
+        <section>
+          <h2 className="text-xl font-semibold">
+            5. 予約利用の出庫期限
+          </h2>
+          <p className="mt-3">
+            ご予約でのご利用は、予約日の翌日午前0時が出庫期限です。
+          </p>
+          <p className="mt-3">
+            出庫期限を超えて駐車が継続された場合、延滞料金（超過日数分の1日料金）、
+            後続の予約者への返金相当額、および対応費用5,000円を申し受けます
+            （利用規約 第6条の3）。
+          </p>
+        </section>
+
+        <section>
+          <h2 className="text-xl font-semibold">6. 当社都合による返金</h2>
           <p className="mt-3">
             設備不具合、重複予約、災害等によりご利用いただけない場合は、
             <strong>全額返金</strong>いたします。
@@ -98,7 +145,7 @@ export default function CancelPolicyPage() {
         </section>
 
         <section>
-          <h2 className="text-xl font-semibold">5. 不可抗力によるキャンセル</h2>
+          <h2 className="text-xl font-semibold">7. 不可抗力によるキャンセル</h2>
           <p className="mt-3">
             台風、地震、降雪、感染症の流行、警察・行政の指示、その他の不可抗力により
             駐車場をご利用いただけない場合は、お客様・当社双方の協議のうえ、
@@ -107,7 +154,7 @@ export default function CancelPolicyPage() {
         </section>
 
         <section>
-          <h2 className="text-xl font-semibold">6. 返金方法</h2>
+          <h2 className="text-xl font-semibold">8. 返金方法</h2>
           <ul className="mt-3 list-disc space-y-2 pl-6">
             <li>返金は原則としてご決済時と同じ決済手段への返金となります。</li>
             <li>
@@ -117,7 +164,7 @@ export default function CancelPolicyPage() {
         </section>
 
         <section>
-          <h2 className="text-xl font-semibold">7. お問い合わせ</h2>
+          <h2 className="text-xl font-semibold">9. お問い合わせ</h2>
           <p className="mt-3">
             キャンセルおよび返金に関するお問い合わせは{" "}
             <a href="mailto:info@parktec-ej.com" className="text-blue-600 underline">
