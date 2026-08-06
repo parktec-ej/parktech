@@ -675,7 +675,7 @@ export async function POST(req: NextRequest) {
           where: {
             placeId: place.id,
             spotId: spot.id,
-            status: "IN",
+            status: { in: ["IN", "PENDING"] },
           },
           select: {
             id: true,

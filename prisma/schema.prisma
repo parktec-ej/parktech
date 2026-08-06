@@ -622,6 +622,7 @@ enum SessionType {
 }
 
 enum SessionStatus {
+  PENDING  // 事前決済の待機中。区画は押さえるが入庫は未成立
   IN
   OUT
 }

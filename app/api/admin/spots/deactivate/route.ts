@@ -42,7 +42,7 @@ export async function POST(req: Request) {
     const inUseCount = await prisma.parkingSession.count({
       where: {
         spotId,
-        status: "IN",
+        status: { in: ["IN", "PENDING"] },
       },
     });
 

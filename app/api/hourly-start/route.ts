@@ -184,11 +184,12 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // PENDING（事前決済の待機中）も区画を押さえているため二重入庫を拒否する。
     const activeSession = await prisma.parkingSession.findFirst({
       where: {
         placeId: place.id,
         spotId: spot.id,
-        status: "IN",
+        status: { in: ["IN", "PENDING"] },
       },
       select: {
         id: true,
