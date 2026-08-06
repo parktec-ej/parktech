@@ -667,6 +667,30 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // 当日の予約は、その区画に稼働中の時間貸しセッションがある場合は受け付けない。
+    // 時間貸しは日をまたがない前提のため、翌日以降の予約は影響を受けない。
+    if (date === ymdTodayJst()) {
+      const occupiedByHourly =
+        await prisma.parkingSession.findFirst({
+          where: {
+            placeId: place.id,
+            spotId: spot.id,
+            status: "IN",
+          },
+          select: {
+            id: true,
+          },
+        });
+
+      if (occupiedByHourly) {
+        return jsonError(
+          "その区画は現在ご利用中のため、本日の予約は受け付けられません。",
+          409,
+          "occupied_by_hourly"
+        );
+      }
+    }
+
     const price =
       await getReservationFixedPrice(
         place.id,
