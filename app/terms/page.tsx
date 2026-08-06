@@ -139,6 +139,35 @@ export default function TermsPage() {
         </section>
 
         <section>
+          <h2 className="text-xl font-semibold">
+            第6条の3（予約利用における出庫期限および超過時の取扱い）
+          </h2>
+          <ol className="mt-3 list-decimal space-y-2 pl-6">
+            <li>予約利用の出庫期限は、予約日の翌日午前0時とします。</li>
+            <li>
+              利用者が前号の出庫期限を超えて駐車を継続した場合、当社は利用者に
+              対し、次の各号の合計額を請求することができます。
+              <ul className="mt-2 list-disc space-y-1 pl-6">
+                <li>
+                  延滞料金として、超過した日数（1日に満たない端数は1日として
+                  計算します）に当該駐車場の1日分の利用料金を乗じた額
+                </li>
+                <li>
+                  当社が後続の予約者に返金した場合、その返金額に相当する額
+                </li>
+                <li>対応費用として5,000円</li>
+              </ul>
+            </li>
+            <li>
+              前号の対応費用は、同号の出庫期限が常に深夜0時であり、当社が当該
+              時間帯において利用者への連絡および現地対応を行える体制を維持する
+              必要があることに鑑み、その体制維持に要する費用に基づき定めたもの
+              です。
+            </li>
+          </ol>
+        </section>
+
+        <section>
           <h2 className="text-xl font-semibold">第7条（禁止事項）</h2>
           <ul className="mt-3 list-disc space-y-2 pl-6">
             <li>虚偽情報による予約または登録</li>
