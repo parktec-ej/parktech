@@ -302,6 +302,37 @@ function GateInner() {
     { minutes: 1440, label: "24時間" },
   ];
 
+  const [overstayBusy, setOverstayBusy] = useState(false);
+  const [overstayError, setOverstayError] = useState("");
+
+  async function handleOverstay() {
+    if (overstayBusy || !data?.sessionId) return;
+
+    setOverstayBusy(true);
+    setOverstayError("");
+
+    try {
+      const res = await fetch("/api/hourly-prepaid/overstay", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: data.sessionId }),
+      });
+
+      const json = await res.json().catch(() => null);
+
+      if (!res.ok || !json?.checkoutUrl) {
+        setOverstayError(json?.message || "超過精算の手続きに失敗しました");
+        setOverstayBusy(false);
+        return;
+      }
+
+      window.location.href = json.checkoutUrl;
+    } catch {
+      setOverstayError("通信エラーが発生しました");
+      setOverstayBusy(false);
+    }
+  }
+
   async function handleExtend(minutes: number) {
     if (extendBusy || !data?.sessionId) return;
 
@@ -488,9 +519,40 @@ function GateInner() {
             </div>
 
             {data.isOverstay ? (
-              <div style={{ fontSize: 14, lineHeight: 1.7 }}>
-                出庫期限を過ぎています。お手数ですが
-                050-1793-4785 までご連絡ください。
+              <div>
+                <div style={{ fontSize: 14, lineHeight: 1.7, marginBottom: 10 }}>
+                  出庫期限を過ぎています。超過料金のお支払いが必要です。
+                </div>
+
+                {overstayError ? (
+                  <div style={{ fontSize: 13, marginBottom: 8, color: "#b91c1c" }}>
+                    {overstayError}
+                  </div>
+                ) : null}
+
+                <button
+                  type="button"
+                  disabled={overstayBusy}
+                  onClick={handleOverstay}
+                  style={{
+                    width: "100%",
+                    border: "1px solid #7c2d12",
+                    borderRadius: 8,
+                    background: "#7c2d12",
+                    color: "#fff",
+                    padding: "12px",
+                    fontSize: 16,
+                    fontWeight: 700,
+                    cursor: overstayBusy ? "not-allowed" : "pointer",
+                    opacity: overstayBusy ? 0.5 : 1,
+                  }}
+                >
+                  {overstayBusy ? "準備中..." : "超過料金を精算して出庫"}
+                </button>
+
+                <div style={{ fontSize: 12, marginTop: 8, lineHeight: 1.6 }}>
+                  ご不明な点は 050-1793-4785 までご連絡ください。
+                </div>
               </div>
             ) : showExtend ? (
               <div>
