@@ -31,6 +31,10 @@
     {
       "path": "/api/cron/notify-monthly-event",
       "schedule": "0 23 * * *"
+    },
+    {
+      "path": "/api/cron/cleanup-pending-sessions",
+      "schedule": "30 * * * *"
     }
   ],
   "functions": {
