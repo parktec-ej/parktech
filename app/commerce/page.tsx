@@ -60,7 +60,10 @@ export default function CommercePage() {
 
           <div className="grid gap-2 px-4 py-4 md:grid-cols-3">
             <dt className="font-semibold text-gray-900">支払時期</dt>
-            <dd className="md:col-span-2">予約確定時または当サービス所定の時点</dd>
+            <dd className="md:col-span-2">
+              予約サービスは予約確定時、時間貸しサービスは入庫時および延長時に、
+              いずれも前払いでお支払いいただきます。
+            </dd>
           </div>
 
           <div className="grid gap-2 px-4 py-4 md:grid-cols-3">
@@ -73,11 +76,23 @@ export default function CommercePage() {
           <div className="grid gap-2 px-4 py-4 md:grid-cols-3">
             <dt className="font-semibold text-gray-900">キャンセル・返金</dt>
             <dd className="md:col-span-2">
-              予約完了後から利用開始前までのキャンセルは50%返金とし、
-              返金事務手数料300円を差し引きます。
-              利用開始後および無断不使用の場合は返金いたしかねます。
-              当社都合による利用不能の場合は全額返金します。
-              詳細はキャンセルポリシーをご確認ください。
+              <p className="font-semibold">予約サービス</p>
+              <p className="mt-1">
+                利用日の48時間前までにキャンセルされた場合、キャンセル手数料320円を
+                差し引いた金額を返金します。利用日の48時間前を過ぎた場合、
+                キャンセルはできず、返金も行いません。
+                無断不使用（ノーショー）の場合も返金いたしかねます。
+              </p>
+              <p className="mt-3 font-semibold">時間貸しサービス</p>
+              <p className="mt-1">
+                時間貸しのご利用は前払いです。ご出庫が出庫期限より早まった場合でも、
+                支払済み料金の払い戻しは行いません。延長された場合の追加料金についても
+                同様です。
+              </p>
+              <p className="mt-3">
+                当社都合により利用いただけない場合は、いずれのサービスも全額返金します。
+                詳細はキャンセルポリシーおよび利用規約をご確認ください。
+              </p>
             </dd>
           </div>
 
