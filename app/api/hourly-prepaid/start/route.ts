@@ -268,8 +268,10 @@ export async function POST(req: NextRequest) {
     const durationLabel = minutes === 1440 ? "24時間" : `${hours}時間`;
 
     const checkout = await stripe.checkout.sessions.create({
+      // payment_method_types は指定しない。
+      // 明示するとその手段以外が無効になり、Link やウォレットが使えなくなる。
+      // 旧・時間貸し精算（stripe/checkout/hourly）も指定なしで運用している。
       mode: "payment",
-      payment_method_types: ["card"],
       success_url: `${baseUrl}/hourly-prepaid/success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${baseUrl}/gate?placeId=${encodeURIComponent(
         place.slug || place.id
