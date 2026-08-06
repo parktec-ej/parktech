@@ -1066,6 +1066,98 @@ export async function POST(req: Request) {
         });
       }
 
+      // ===== 時間貸し 事前決済：超過精算の確定 =====
+      // 出庫期限を過ぎたセッションの超過料金を受け取り、出庫を確定する。
+      // 返金相当額は自動請求に含めていないため、予約者への返金が発生した場合は
+      // 規約 第6条の2 に基づき別途請求すること（Slackで通知する）。
+      if (session.metadata?.flow === "hourly_overstay") {
+        const parkingSessionId = String(
+          session.metadata.parkingSessionId ?? ""
+        ).trim();
+
+        if (!parkingSessionId) {
+          console.error("[hourly_overstay] parkingSessionId missing");
+          return new NextResponse("parkingSessionId missing", { status: 400 });
+        }
+
+        const current = await prisma.parkingSession.findUnique({
+          where: { id: parkingSessionId },
+          select: {
+            id: true,
+            status: true,
+            checkOutAt: true,
+            checkInAt: true,
+            prepaidYen: true,
+          },
+        });
+
+        if (!current) {
+          console.error(
+            "[hourly_overstay] session not found:",
+            parkingSessionId
+          );
+          await sendSlackNotification(
+            `🚨【要対応】超過決済は成立したがセッションが存在しません\n` +
+              `parkingSessionId=${parkingSessionId}`
+          ).catch(() => {});
+          return NextResponse.json({ received: true, sessionMissing: true });
+        }
+
+        if (current.status === "OUT" || current.checkOutAt) {
+          return NextResponse.json({
+            received: true,
+            parkingSessionId: current.id,
+            alreadyCheckedOut: true,
+          });
+        }
+
+        const now = new Date();
+
+        const metaTotal = Number(session.metadata.totalYen ?? "");
+        const paidYen =
+          Number.isFinite(metaTotal) && metaTotal > 0
+            ? metaTotal
+            : session.amount_total ?? 0;
+
+        const totalMinutes = Math.max(
+          1,
+          Math.ceil((now.getTime() - current.checkInAt.getTime()) / 60000)
+        );
+
+        const paymentIntentId =
+          typeof session.payment_intent === "string"
+            ? session.payment_intent
+            : null;
+
+        await prisma.parkingSession.update({
+          where: { id: parkingSessionId },
+          data: {
+            status: "OUT",
+            checkOutAt: now,
+            totalMinutes,
+            totalYen: (current.prepaidYen ?? 0) + paidYen,
+            prepaidYen: (current.prepaidYen ?? 0) + paidYen,
+            paymentRef: paymentIntentId ?? session.id,
+          },
+        });
+
+        const responseFee = Number(session.metadata.responseFee ?? "0");
+
+        await sendSlackNotification(
+          `⚠️ 時間貸し超過精算: ${session.metadata.slot ?? ""} / ` +
+            `超過${session.metadata.overstayMinutes ?? "?"}分 / ${paidYen}円` +
+            (responseFee > 0
+              ? `\n※ 予約者への返金が発生した場合は返金相当額を別途請求してください（規約 第6条の2）`
+              : "")
+        ).catch(() => {});
+
+        return NextResponse.json({
+          received: true,
+          parkingSessionId: current.id,
+          overstaySettled: true,
+        });
+      }
+
       // ===== 時間貸し 事前決済：延長の確定 =====
       // 既存の IN セッションの scheduledEndAt を延ばし、prepaidYen を加算する。
       if (session.metadata?.flow === "hourly_extend") {
