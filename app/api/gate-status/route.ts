@@ -78,6 +78,23 @@ function ymdNextDay(ymd: string): string {
   return base.toISOString().slice(0, 10);
 }
 
+// 指定日のN日後（YYYY-MM-DD）。
+function ymdPlusDays(ymd: string, days: number): string {
+  const [y, m, d] = ymd.split("-").map(Number);
+  const base = new Date(Date.UTC(y, m - 1, d));
+  base.setUTCDate(base.getUTCDate() + days);
+  return base.toISOString().slice(0, 10);
+}
+
+// YYYY-MM-DD の JST 午前0時を Date で返す。
+function ymdMidnightJst(ymd: string): Date {
+  const [y, m, d] = ymd.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d, -9, 0, 0));
+}
+
+// 事前決済で買える最大日数。これを超える延長は受け付けない。
+const MAX_PREPAID_DAYS = 3;
+
 async function isActiveEventDay(placeId: string, date: string) {
   const targetDate = ymdToUtcDate(date);
 
@@ -228,20 +245,53 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    // 翌日にこの区画の予約があるか（時間貸しの出庫期限の根拠）。
-    // 期限は「翌日の午前0時」。猶予なし（規約 第6条の2）。
+    // 事前決済で選べる上限を決めるため、翌日から MAX_PREPAID_DAYS 日先までの
+    // 予約を検索する。最も近い予約日の午前0時が上限になる。
+    // 予約が無ければ「現在時刻 + MAX_PREPAID_DAYS 日」が上限。
     // 当日の予約を引く下のクエリとは別物なので混同しないこと。
-    const nextDate = ymdNextDay(date);
-    const nextDayReservation = await prisma.reservation.findFirst({
+    const searchFrom = ymdNextDay(date);
+    const searchTo = ymdPlusDays(date, MAX_PREPAID_DAYS);
+
+    const upcomingReservation = await prisma.reservation.findFirst({
       where: {
         placeId: place.id,
         spotId: spot.id,
-        date: nextDate,
+        date: { gte: searchFrom, lte: searchTo },
         status: "CONFIRMED",
       },
-      select: { id: true },
+      orderBy: { date: "asc" },
+      select: { date: true },
     });
-    const exitDeadlineDate = nextDayReservation ? nextDate : null;
+
+    // 予約による上限（その日の午前0時）
+    const reservationLimit = upcomingReservation
+      ? ymdMidnightJst(upcomingReservation.date)
+      : null;
+
+    // 最大日数による上限
+    const maxDaysLimit = new Date(
+      Date.now() + MAX_PREPAID_DAYS * 24 * 60 * 60 * 1000
+    );
+
+    // 実際の上限は、両者のうち早いほう
+    const prepaidLimitAt =
+      reservationLimit && reservationLimit.getTime() < maxDaysLimit.getTime()
+        ? reservationLimit
+        : maxDaysLimit;
+
+    // 上限までの残り分数（負なら0）
+    const prepaidLimitMinutes = Math.max(
+      0,
+      Math.floor((prepaidLimitAt.getTime() - Date.now()) / 60000)
+    );
+
+    // 既存の警告表示用。翌日の予約がある場合のみ表示する。
+    // prepaidLimitAt は3日先まで見るが、警告文は「明日までに出てください」の
+    // 意味なので、3日後の予約を根拠に表示すると誤解を招く。
+    const exitDeadlineDate =
+      upcomingReservation && upcomingReservation.date === searchFrom
+        ? upcomingReservation.date
+        : null;
 
     const reservation = await prisma.reservation.findFirst({
       where: {
@@ -417,6 +467,9 @@ export async function GET(req: NextRequest) {
         spotOperationModeOverride: spot.operationModeOverride ?? null,
         placeOperationMode: place.operationMode,
         exitDeadlineDate,
+        prepaidLimitAt: prepaidLimitAt.toISOString(),
+        prepaidLimitMinutes,
+        maxPrepaidDays: MAX_PREPAID_DAYS,
         message: "時間貸し利用が可能です。",
       });
     }
