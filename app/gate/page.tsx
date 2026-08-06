@@ -287,6 +287,49 @@ function GateInner() {
   const [checkoutDone, setCheckoutDone] = useState(false);
   const [checkoutBusy, setCheckoutBusy] = useState(false);
 
+  const [showExtend, setShowExtend] = useState(false);
+  const [extendBusy, setExtendBusy] = useState(false);
+  const [extendError, setExtendError] = useState("");
+
+  // 入庫時と同じ7択。API 側の ALLOWED_MINUTES と揃えること。
+  const extendOptions = [
+    { minutes: 60, label: "1時間" },
+    { minutes: 120, label: "2時間" },
+    { minutes: 180, label: "3時間" },
+    { minutes: 240, label: "4時間" },
+    { minutes: 300, label: "5時間" },
+    { minutes: 360, label: "6時間" },
+    { minutes: 1440, label: "24時間" },
+  ];
+
+  async function handleExtend(minutes: number) {
+    if (extendBusy || !data?.sessionId) return;
+
+    setExtendBusy(true);
+    setExtendError("");
+
+    try {
+      const res = await fetch("/api/hourly-prepaid/extend", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: data.sessionId, minutes }),
+      });
+
+      const json = await res.json().catch(() => null);
+
+      if (!res.ok || !json?.checkoutUrl) {
+        setExtendError(json?.message || "延長手続きに失敗しました");
+        setExtendBusy(false);
+        return;
+      }
+
+      window.location.href = json.checkoutUrl;
+    } catch {
+      setExtendError("通信エラーが発生しました");
+      setExtendBusy(false);
+    }
+  }
+
   async function handleCheckout() {
     if (!canUseCheckout || checkoutBusy) return;
 
@@ -428,6 +471,105 @@ function GateInner() {
             </div>
           ) : null}
         </button>
+
+        {mode === "can_checkout_hourly" && data?.prepaidYen != null ? (
+          <div style={exitDeadlineStyle}>
+            <div style={{ fontWeight: 700, marginBottom: 8 }}>
+              出庫期限:{" "}
+              {data.scheduledEndAt
+                ? new Date(data.scheduledEndAt).toLocaleString("ja-JP", {
+                    timeZone: "Asia/Tokyo",
+                    month: "numeric",
+                    day: "numeric",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })
+                : "-"}
+            </div>
+
+            {data.isOverstay ? (
+              <div style={{ fontSize: 14, lineHeight: 1.7 }}>
+                出庫期限を過ぎています。お手数ですが
+                050-1793-4785 までご連絡ください。
+              </div>
+            ) : showExtend ? (
+              <div>
+                <div style={{ fontSize: 14, marginBottom: 8 }}>
+                  延長する時間を選んでください
+                </div>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(3, 1fr)",
+                    gap: 6,
+                  }}
+                >
+                  {extendOptions.map((opt) => (
+                    <button
+                      key={opt.minutes}
+                      type="button"
+                      disabled={extendBusy}
+                      onClick={() => handleExtend(opt.minutes)}
+                      style={{
+                        border: "1px solid #7c2d12",
+                        borderRadius: 8,
+                        background: "#fff",
+                        color: "#7c2d12",
+                        padding: "10px 4px",
+                        fontSize: 15,
+                        fontWeight: 700,
+                        cursor: extendBusy ? "not-allowed" : "pointer",
+                        opacity: extendBusy ? 0.5 : 1,
+                      }}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+
+                {extendError ? (
+                  <div style={{ fontSize: 13, marginTop: 8, color: "#b91c1c" }}>
+                    {extendError}
+                  </div>
+                ) : null}
+
+                <button
+                  type="button"
+                  onClick={() => setShowExtend(false)}
+                  style={{
+                    marginTop: 8,
+                    background: "none",
+                    border: "none",
+                    color: "#7c2d12",
+                    textDecoration: "underline",
+                    fontSize: 14,
+                    cursor: "pointer",
+                  }}
+                >
+                  やめる
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setShowExtend(true)}
+                style={{
+                  width: "100%",
+                  border: "1px solid #7c2d12",
+                  borderRadius: 8,
+                  background: "#fff",
+                  color: "#7c2d12",
+                  padding: "12px",
+                  fontSize: 16,
+                  fontWeight: 700,
+                  cursor: "pointer",
+                }}
+              >
+                延長する
+              </button>
+            )}
+          </div>
+        ) : null}
 
         {canUseHourly && exitDeadlineLabel ? (
           <div style={exitDeadlineStyle}>
