@@ -1066,6 +1066,89 @@ export async function POST(req: Request) {
         });
       }
 
+      // ===== 時間貸し 事前決済：延長の確定 =====
+      // 既存の IN セッションの scheduledEndAt を延ばし、prepaidYen を加算する。
+      if (session.metadata?.flow === "hourly_extend") {
+        const parkingSessionId = String(
+          session.metadata.parkingSessionId ?? ""
+        ).trim();
+
+        if (!parkingSessionId) {
+          console.error("[hourly_extend] parkingSessionId missing");
+          return new NextResponse("parkingSessionId missing", { status: 400 });
+        }
+
+        const current = await prisma.parkingSession.findUnique({
+          where: { id: parkingSessionId },
+          select: {
+            id: true,
+            status: true,
+            prepaidYen: true,
+            scheduledEndAt: true,
+          },
+        });
+
+        if (!current) {
+          console.error("[hourly_extend] session not found:", parkingSessionId);
+          await sendSlackNotification(
+            `🚨【要対応】延長決済は成立したがセッションが存在しません\n` +
+              `parkingSessionId=${parkingSessionId}`
+          ).catch(() => {});
+          return NextResponse.json({ received: true, sessionMissing: true });
+        }
+
+        const addYen = Number(session.metadata.totalYen ?? "");
+        const addedYen =
+          Number.isFinite(addYen) && addYen > 0
+            ? addYen
+            : session.amount_total ?? 0;
+
+        const newEndRaw = String(
+          session.metadata.newScheduledEndAt ?? ""
+        ).trim();
+        const newEnd = newEndRaw ? new Date(newEndRaw) : null;
+
+        if (!newEnd || Number.isNaN(newEnd.getTime())) {
+          console.error("[hourly_extend] invalid newScheduledEndAt");
+          await sendSlackNotification(
+            `🚨【要対応】延長決済は成立したが期限の再計算に失敗しました\n` +
+              `parkingSessionId=${parkingSessionId}`
+          ).catch(() => {});
+          return NextResponse.json({ received: true, invalidEnd: true });
+        }
+
+        // 同じ決済が二重に届いた場合、期限が既に新しければ何もしない。
+        if (
+          current.scheduledEndAt &&
+          current.scheduledEndAt.getTime() >= newEnd.getTime()
+        ) {
+          return NextResponse.json({
+            received: true,
+            parkingSessionId: current.id,
+            alreadyExtended: true,
+          });
+        }
+
+        await prisma.parkingSession.update({
+          where: { id: parkingSessionId },
+          data: {
+            scheduledEndAt: newEnd,
+            prepaidYen: (current.prepaidYen ?? 0) + addedYen,
+          },
+        });
+
+        await sendSlackNotification(
+          `⏱️ 時間貸し延長: ${session.metadata.slot ?? ""} / ` +
+            `+${addedYen}円 / +${session.metadata.minutes ?? "?"}分`
+        ).catch(() => {});
+
+        return NextResponse.json({
+          received: true,
+          parkingSessionId: current.id,
+          extended: true,
+        });
+      }
+
       // ===== 時間貸し 事前決済：PENDING → IN 確定 =====
       // hourly-prepaid/start が作った PENDING セッションを入庫成立させる。
       // Payment レコードの作成と入庫完了メールは、精算ロジック改修時に別途対応する。
