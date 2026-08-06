@@ -19,12 +19,16 @@ export async function GET(req: Request) {
   try {
     const checkoutSession = await stripe.checkout.sessions.retrieve(sessionId);
 
-    if (checkoutSession.metadata?.flow !== "hourly_prepaid") {
+    // 入庫（hourly_prepaid）と延長（hourly_extend）の両方を受け付ける。
+    // どちらも success_url がこのページを指しているため、片方だけ通すと
+    // 延長後にポーリングが空回りして画面が壊れる。
+    const flow = checkoutSession.metadata?.flow;
+    if (flow !== "hourly_prepaid" && flow !== "hourly_extend") {
       return NextResponse.json(
         {
           ok: false,
           error: "invalid_flow",
-          message: "時間貸し入庫のセッションではありません",
+          message: "時間貸しのセッションではありません",
         },
         { status: 400 }
       );
@@ -80,7 +84,13 @@ export async function GET(req: Request) {
 
     // webhook がまだ処理していない場合は status: "PENDING" のまま返る。
     // 画面側でポーリングして IN になるのを待つ。
-    return NextResponse.json({ ok: true, parkingSession });
+    // 延長の場合は既に IN なので、期限が延びたかを画面側で判断する。
+    return NextResponse.json({
+      ok: true,
+      flow,
+      expectedEndAt: checkoutSession.metadata?.newScheduledEndAt ?? null,
+      parkingSession,
+    });
   } catch (e: unknown) {
     return NextResponse.json(
       {

@@ -31,6 +31,7 @@ function SuccessInner() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [session, setSession] = useState<ParkingSession | null>(null);
+  const [isExtend, setIsExtend] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -59,10 +60,26 @@ function SuccessInner() {
           if (res.ok && json?.ok) {
             const ps: ParkingSession = json.parkingSession;
 
-            if (!cancelled) setSession(ps);
+            if (!cancelled) {
+              setSession(ps);
+              if (json.flow === "hourly_extend") setIsExtend(true);
+            }
 
-            // webhook 処理が完了したら終了
-            if (ps.status === "IN") {
+            if (json.flow === "hourly_extend") {
+              // 延長は既に IN なので、期限が延びたかどうかで完了を判断する。
+              const expected = json.expectedEndAt
+                ? new Date(json.expectedEndAt).getTime()
+                : null;
+              const actual = ps.scheduledEndAt
+                ? new Date(ps.scheduledEndAt).getTime()
+                : null;
+
+              if (expected == null || (actual != null && actual >= expected)) {
+                if (!cancelled) setLoading(false);
+                return;
+              }
+            } else if (ps.status === "IN") {
+              // 入庫は PENDING → IN への変化を待つ。
               if (!cancelled) setLoading(false);
               return;
             }
@@ -89,16 +106,26 @@ function SuccessInner() {
     };
   }, []);
 
-  const gateUrl = session?.place?.slug
-    ? `/gate?placeId=${encodeURIComponent(
-        session.place.slug
-      )}&slot=${encodeURIComponent(session.spot?.code ?? "")}`
-    : "/gate";
+  // slug と slot が両方揃っているときだけゲートURLを組み立てる。
+  // 片方でも欠けると /gate?placeId=&slot= のような壊れたURLになり、
+  // 「QRコードが正しくありません」の画面に飛んでしまう。
+  const gateUrl =
+    session?.place?.slug && session?.spot?.code
+      ? `/gate?placeId=${encodeURIComponent(
+          session.place.slug
+        )}&slot=${encodeURIComponent(session.spot.code)}`
+      : null;
 
   return (
     <main style={pageStyle}>
       <h1 style={titleStyle}>
-        {loading ? "入庫手続きを確認しています" : "入庫が完了しました"}
+        {loading
+          ? isExtend
+            ? "延長手続きを確認しています"
+            : "入庫手続きを確認しています"
+          : isExtend
+          ? "延長が完了しました"
+          : "入庫が完了しました"}
       </h1>
 
       {loading ? (
@@ -147,9 +174,15 @@ function SuccessInner() {
         </div>
       ) : null}
 
-      <a href={gateUrl} style={buttonStyle}>
-        延長・出庫はこちら
-      </a>
+      {gateUrl ? (
+        <a href={gateUrl} style={buttonStyle}>
+          延長・出庫はこちら
+        </a>
+      ) : (
+        <div style={{ ...buttonStyle, background: "#9ca3af" }}>
+          現地のQRコードから操作してください
+        </div>
+      )}
     </main>
   );
 }
