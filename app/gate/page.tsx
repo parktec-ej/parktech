@@ -171,7 +171,9 @@ function GateInner() {
     resolvedDate
   )}`;
 
-  const hourlyStartUrl = `/hourly-start?placeId=${encodeURIComponent(
+  // 事前決済フローへ遷移する。旧・後払いフロー（/hourly-start）は当面残してあり、
+  // 問題が起きた場合はこのパスを /hourly-start に戻せば復旧できる。
+  const hourlyStartUrl = `/hourly-prepaid?placeId=${encodeURIComponent(
     resolvedPlaceId
   )}&slot=${encodeURIComponent(resolvedSlot)}&date=${encodeURIComponent(
     resolvedDate
