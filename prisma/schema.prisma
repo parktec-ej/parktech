@@ -141,7 +141,10 @@ model ParkingSession {
   sessionType   SessionType
   plate         String?
   phone         String?
+  email         String?   // Stripe決済時に取得。延長URL・リマインドの送信先
   customerName  String?
+  scheduledEndAt DateTime? // 事前決済で買った終了予定時刻。延長で更新される
+  prepaidYen    Int?      // 事前決済の累計額（延長分を加算）
   checkInAt     DateTime      @default(now())
   checkOutAt    DateTime?
   totalMinutes  Int?
