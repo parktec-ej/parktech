@@ -423,6 +423,8 @@ export async function GET(req: NextRequest) {
         id: true,
         paid: true,
         checkInAt: true,
+        scheduledEndAt: true,
+        prepaidYen: true,
       },
     });
 
@@ -445,7 +447,16 @@ export async function GET(req: NextRequest) {
         dayOperationMode: dayMode?.operationMode ?? null,
         spotOperationModeOverride: spot.operationModeOverride ?? null,
         placeOperationMode: place.operationMode,
-        message: "時間貸し利用中です。精算して出庫してください。",
+        // 事前決済セッションかどうか。旧・後払いセッションは null。
+        scheduledEndAt: activeSession.scheduledEndAt?.toISOString() ?? null,
+        prepaidYen: activeSession.prepaidYen,
+        isOverstay:
+          activeSession.scheduledEndAt != null &&
+          Date.now() > activeSession.scheduledEndAt.getTime(),
+        message:
+          activeSession.prepaidYen != null
+            ? "ご利用中です。出庫される方は下のボタンからお進みください。"
+            : "時間貸し利用中です。精算して出庫してください。",
       });
     }
 

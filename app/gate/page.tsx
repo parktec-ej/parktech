@@ -44,6 +44,9 @@ type GateResponse = {
   dayOperationMode?: OperationMode | null;
   spotOperationModeOverride?: OperationMode | null;
   exitDeadlineDate?: string | null;
+  scheduledEndAt?: string | null;
+  prepaidYen?: number | null;
+  isOverstay?: boolean;
   placeOperationMode?: OperationMode | null;
 };
 
@@ -281,15 +284,65 @@ function GateInner() {
     router.push(hourlyStartUrl);
   }
 
-  function handleCheckout() {
-    if (!canUseCheckout) return;
+  const [checkoutDone, setCheckoutDone] = useState(false);
+  const [checkoutBusy, setCheckoutBusy] = useState(false);
+
+  async function handleCheckout() {
+    if (!canUseCheckout || checkoutBusy) return;
 
     if (mode === "can_checkout_hourly") {
+      // 事前決済で期限内なら、その場で出庫を確定する（追加決済なし）。
+      // 期限を過ぎている場合と、旧・後払いセッションは精算画面へ。
+      if (data?.prepaidYen != null && !data?.isOverstay && data?.sessionId) {
+        setCheckoutBusy(true);
+        try {
+          const res = await fetch("/api/hourly-prepaid/checkout", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ sessionId: data.sessionId }),
+          });
+          const json = await res.json().catch(() => null);
+
+          if (res.ok && json?.ok) {
+            setCheckoutDone(true);
+            setCheckoutBusy(false);
+            return;
+          }
+
+          // 超過していた場合は精算画面へ回す
+          setCheckoutBusy(false);
+          router.push(hourlyCheckoutUrl);
+          return;
+        } catch {
+          setCheckoutBusy(false);
+          router.push(hourlyCheckoutUrl);
+          return;
+        }
+      }
+
       router.push(hourlyCheckoutUrl);
       return;
     }
 
     router.push(checkoutUrl);
+  }
+
+  if (checkoutDone) {
+    return (
+      <main style={pageStyle}>
+        <h1 style={titleStyle}>ParkTec ゲート</h1>
+        <div style={cardStyle}>
+          <div style={{ fontSize: 24, fontWeight: 800, marginBottom: 12 }}>
+            ご利用ありがとうございました
+          </div>
+          <div style={{ fontSize: 16, lineHeight: 1.8 }}>
+            出庫を確認しました。お支払いは完了しています。
+            <br />
+            またのご利用をお待ちしております。
+          </div>
+        </div>
+      </main>
+    );
   }
 
   if (loading) {
