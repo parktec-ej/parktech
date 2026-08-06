@@ -136,14 +136,20 @@ export function calcDateChangePolicy(
 }
 
 // ===== 時間貸し超過ペナルティ =====
-// 後続予約がある区画で出庫期限（予約日の午前0時）を超過した場合の請求額。
+// 事前決済で買った出庫期限（scheduledEndAt）を過ぎた場合の請求額。
 // 利用規約 第6条の2 に対応。
+//
+// 超過は2段階。
+//   1. 買った時間の超過だけ → 超過分の時間貸し料金のみ。
+//      後続予約が無ければ誰も困らないため、対応費用は取らない。
+//   2. 後続予約日の午前0時も超過 → 予約者が停められない実害が出るため、
+//      返金相当額と対応費用5,000円を加算する。
 //
 // 純粋関数として保つため、返金相当額は呼び出し側が Reservation.refundAmount から
 // 取得して渡すこと。refundStatus が SUCCEEDED / PENDING のときのみ加算し、
 // FAILED / NONE / NOT_REQUIRED のときは 0 を渡す。
 
-// 対応費用（深夜・時間外対応の実費。規約 第6条の2 第4項）。
+// 対応費用（深夜0時の期限に対する即応体制の維持費用。規約 第6条の2）。
 export const OVERSTAY_RESPONSE_FEE = 5000;
 
 export type OverstayPenalty = {
@@ -153,19 +159,24 @@ export type OverstayPenalty = {
   refundAmount: number;
   responseFee: number;
   total: number;
+  // 後続予約日の午前0時を超えたか（対応費用の発生条件）
+  exceededReservationLimit: boolean;
 };
 
 export function calcOverstayPenalty(params: {
-  deadline: Date;
+  // 事前決済で買った出庫期限
+  scheduledEndAt: Date;
   exitAt: Date;
   hourlyYen: number;
   dailyYen: number | null;
+  // 後続予約日の午前0時。予約が無ければ null
+  reservationLimitAt?: Date | null;
   refundAmount?: number;
 }): OverstayPenalty {
-  const { deadline, exitAt, hourlyYen, dailyYen } = params;
-  const refundAmount = Math.max(0, params.refundAmount ?? 0);
+  const { scheduledEndAt, exitAt, hourlyYen, dailyYen } = params;
+  const reservationLimitAt = params.reservationLimitAt ?? null;
 
-  const diffMs = exitAt.getTime() - deadline.getTime();
+  const diffMs = exitAt.getTime() - scheduledEndAt.getTime();
 
   if (diffMs <= 0) {
     return {
@@ -175,19 +186,30 @@ export function calcOverstayPenalty(params: {
       refundAmount: 0,
       responseFee: 0,
       total: 0,
+      exceededReservationLimit: false,
     };
   }
 
   const overstayMinutes = Math.ceil(diffMs / 60000);
   const hourlyFee = calcHourlyFee(overstayMinutes, hourlyYen, dailyYen);
-  const total = hourlyFee + refundAmount + OVERSTAY_RESPONSE_FEE;
+
+  const exceededReservationLimit =
+    reservationLimitAt != null &&
+    exitAt.getTime() > reservationLimitAt.getTime();
+
+  const refundAmount = exceededReservationLimit
+    ? Math.max(0, params.refundAmount ?? 0)
+    : 0;
+
+  const responseFee = exceededReservationLimit ? OVERSTAY_RESPONSE_FEE : 0;
 
   return {
     isOverstay: true,
     overstayMinutes,
     hourlyFee,
     refundAmount,
-    responseFee: OVERSTAY_RESPONSE_FEE,
-    total,
+    responseFee,
+    total: hourlyFee + refundAmount + responseFee,
+    exceededReservationLimit,
   };
 }
