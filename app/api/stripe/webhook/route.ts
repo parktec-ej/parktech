@@ -1066,6 +1066,107 @@ export async function POST(req: Request) {
         });
       }
 
+      // ===== 時間貸し 事前決済：PENDING → IN 確定 =====
+      // hourly-prepaid/start が作った PENDING セッションを入庫成立させる。
+      // Payment レコードの作成と入庫完了メールは、精算ロジック改修時に別途対応する。
+      if (session.metadata?.flow === "hourly_prepaid") {
+        const parkingSessionId = String(
+          session.metadata.parkingSessionId ?? ""
+        ).trim();
+
+        if (!parkingSessionId) {
+          console.error("[hourly_prepaid] parkingSessionId missing");
+          return new NextResponse("parkingSessionId missing", { status: 400 });
+        }
+
+        const paymentIntentId =
+          typeof session.payment_intent === "string"
+            ? session.payment_intent
+            : null;
+        const paymentRef = paymentIntentId ?? session.id;
+
+        const current = await prisma.parkingSession.findUnique({
+          where: { id: parkingSessionId },
+          select: {
+            id: true,
+            status: true,
+            paid: true,
+          },
+        });
+
+        if (!current) {
+          // cron が既に削除している可能性がある（30分放置）。
+          // その場合は決済だけ成立しているため、返金対応が必要。
+          console.error(
+            "[hourly_prepaid] session not found (cleaned up?):",
+            parkingSessionId
+          );
+          await sendSlackNotification(
+            `🚨【要対応】事前決済は成立したが入庫セッションが存在しません\n` +
+              `parkingSessionId=${parkingSessionId}\n` +
+              `paymentRef=${paymentRef}\n` +
+              `返金または手動入庫の対応が必要です`
+          ).catch(() => {});
+          return NextResponse.json({ received: true, sessionMissing: true });
+        }
+
+        if (current.paid) {
+          return NextResponse.json({
+            received: true,
+            parkingSessionId: current.id,
+            alreadyPaid: true,
+          });
+        }
+
+        const now = new Date();
+
+        const email =
+          session.metadata.email ??
+          session.customer_details?.email ??
+          session.customer_email ??
+          null;
+
+        const metadataTotalYen = Number(session.metadata.totalYen ?? "");
+        const prepaidYen =
+          Number.isFinite(metadataTotalYen) && metadataTotalYen > 0
+            ? metadataTotalYen
+            : session.amount_total ?? 0;
+
+        // scheduledEndAt は start 側で計算済み。metadata から復元する。
+        // 決済に時間がかかった場合でも、開始時刻基準の予定を維持する。
+        const metadataEndAt = String(
+          session.metadata.scheduledEndAt ?? ""
+        ).trim();
+        const scheduledEndAt = metadataEndAt ? new Date(metadataEndAt) : null;
+
+        await prisma.parkingSession.update({
+          where: { id: parkingSessionId },
+          data: {
+            status: "IN",
+            checkInAt: now,
+            paid: true,
+            paidAt: now,
+            paymentRef,
+            prepaidYen,
+            email,
+            ...(scheduledEndAt && !Number.isNaN(scheduledEndAt.getTime())
+              ? { scheduledEndAt }
+              : {}),
+          },
+        });
+
+        await sendSlackNotification(
+          `🅿️ 時間貸し入庫（事前決済）: ${session.metadata.slot ?? ""} / ` +
+            `${prepaidYen}円 / ${session.metadata.minutes ?? "?"}分`
+        ).catch(() => {});
+
+        return NextResponse.json({
+          received: true,
+          parkingSessionId: current.id,
+          prepaidYen,
+        });
+      }
+
       if (session.metadata?.flow === "hourly_checkout") {
         const parkingSessionId = String(
           session.metadata.parkingSessionId ?? ""
