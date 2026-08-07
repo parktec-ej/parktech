@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { prisma } from "@/lib/db";
 import { stripe } from "@/lib/stripe";
-import { sendReservationPinMail, sendCheckoutThanksMail, sendMonthlyContractActivatedMail, sendOfferApplicantUnavailableMail, sendDoubleBookingRefundMail } from "@/lib/mail";
+import { sendReservationPinMail, sendCheckoutThanksMail, sendMonthlyContractActivatedMail, sendOfferApplicantUnavailableMail, sendDoubleBookingRefundMail, sendHourlyPrepaidMail } from "@/lib/mail";
 import bcrypt from "bcryptjs";
 import { calcSplitAmounts, calcTax } from "@/lib/settlement-math";
 import { buildSettlementSnapshot } from "@/lib/settlement-snapshot";
@@ -1234,6 +1234,58 @@ export async function POST(req: Request) {
             `+${addedYen}円 / +${session.metadata.minutes ?? "?"}分`
         ).catch(() => {});
 
+        // 延長完了メール。新しい出庫期限を伝える。
+        try {
+          const detail = await prisma.parkingSession.findUnique({
+            where: { id: parkingSessionId },
+            select: {
+              email: true,
+              plate: true,
+              checkInAt: true,
+              scheduledEndAt: true,
+              prepaidYen: true,
+              spot: { select: { code: true, label: true } },
+              place: { select: { slug: true, name: true } },
+            },
+          });
+
+          if (detail?.email && detail?.place?.slug && detail?.spot?.code) {
+            const appUrl = (
+              process.env.NEXT_PUBLIC_APP_URL ||
+              "https://reserve.parktec-ej.com"
+            ).trim();
+
+            const gateUrl = `${appUrl}/gate?placeId=${encodeURIComponent(
+              detail.place.slug
+            )}&slot=${encodeURIComponent(detail.spot.code)}`;
+
+            const fmt = (d: Date | null) =>
+              d
+                ? d.toLocaleString("ja-JP", {
+                    timeZone: "Asia/Tokyo",
+                    month: "numeric",
+                    day: "numeric",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })
+                : "-";
+
+            await sendHourlyPrepaidMail({
+              to: detail.email,
+              placeName: detail.place.name,
+              spotLabel: detail.spot.label ?? detail.spot.code,
+              plate: detail.plate ?? "-",
+              checkInAt: fmt(detail.checkInAt),
+              scheduledEndAt: fmt(detail.scheduledEndAt),
+              totalYen: detail.prepaidYen ?? 0,
+              gateUrl,
+              isExtend: true,
+            });
+          }
+        } catch (mailError) {
+          console.error("[hourly_extend] mail error:", mailError);
+        }
+
         return NextResponse.json({
           received: true,
           parkingSessionId: current.id,
@@ -1334,6 +1386,59 @@ export async function POST(req: Request) {
           `🅿️ 時間貸し入庫（事前決済）: ${session.metadata.slot ?? ""} / ` +
             `${prepaidYen}円 / ${session.metadata.minutes ?? "?"}分`
         ).catch(() => {});
+
+        // 入庫完了メール。ゲートURLを含めることで、現地に戻らなくても
+        // 延長・出庫の操作ができるようにする。
+        if (email) {
+          try {
+            const detail = await prisma.parkingSession.findUnique({
+              where: { id: parkingSessionId },
+              select: {
+                plate: true,
+                checkInAt: true,
+                scheduledEndAt: true,
+                prepaidYen: true,
+                spot: { select: { code: true, label: true } },
+                place: { select: { slug: true, name: true } },
+              },
+            });
+
+            if (detail?.place?.slug && detail?.spot?.code) {
+              const appUrl = (
+                process.env.NEXT_PUBLIC_APP_URL ||
+                "https://reserve.parktec-ej.com"
+              ).trim();
+
+              const gateUrl = `${appUrl}/gate?placeId=${encodeURIComponent(
+                detail.place.slug
+              )}&slot=${encodeURIComponent(detail.spot.code)}`;
+
+              const fmt = (d: Date | null) =>
+                d
+                  ? d.toLocaleString("ja-JP", {
+                      timeZone: "Asia/Tokyo",
+                      month: "numeric",
+                      day: "numeric",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })
+                  : "-";
+
+              await sendHourlyPrepaidMail({
+                to: email,
+                placeName: detail.place.name,
+                spotLabel: detail.spot.label ?? detail.spot.code,
+                plate: detail.plate ?? "-",
+                checkInAt: fmt(detail.checkInAt),
+                scheduledEndAt: fmt(detail.scheduledEndAt),
+                totalYen: detail.prepaidYen ?? prepaidYen,
+                gateUrl,
+              });
+            }
+          } catch (mailError) {
+            console.error("[hourly_prepaid] mail error:", mailError);
+          }
+        }
 
         return NextResponse.json({
           received: true,
