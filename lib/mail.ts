@@ -523,6 +523,105 @@ ParkTec
   });
 }
 
+// 時間貸し（事前決済）の入庫・延長完了メール。
+// ゲートURLは現地のQR看板と同じ内容のため、署名は不要。
+export async function sendHourlyPrepaidMail(params: {
+  to: string;
+  placeName: string;
+  spotLabel: string;
+  plate: string;
+  checkInAt: string;
+  scheduledEndAt: string;
+  totalYen: number;
+  gateUrl: string;
+  isExtend?: boolean;
+}) {
+  const {
+    to,
+    placeName,
+    spotLabel,
+    plate,
+    checkInAt,
+    scheduledEndAt,
+    totalYen,
+    gateUrl,
+    isExtend,
+  } = params;
+
+  const title = isExtend ? "駐車時間の延長を承りました" : "ご入庫を承りました";
+  const subject = isExtend
+    ? "【ParkTec】駐車時間の延長を承りました"
+    : "【ParkTec】ご入庫を承りました / 出庫期限のお知らせ";
+
+  return getResend().emails.send({
+    from: MAIL_FROM,
+    to,
+    subject,
+    html: `
+      <div style="font-family:Arial,sans-serif;line-height:1.8;color:#111">
+        <h2>${title}</h2>
+
+        <div style="padding:16px;border:1px solid #ddd;border-radius:8px;background:#fafafa">
+          <div><strong>駐車場:</strong> ${safe(placeName)}</div>
+          <div><strong>区画:</strong> ${safe(spotLabel)}</div>
+          <div><strong>車番:</strong> ${safe(plate)}</div>
+          <div><strong>入庫:</strong> ${safe(checkInAt)}</div>
+          <div><strong>お支払い済み:</strong> ${totalYen.toLocaleString()}円</div>
+        </div>
+
+        <div style="margin-top:16px;padding:16px;border:1px solid #fdba74;border-radius:8px;background:#fff7ed;color:#7c2d12">
+          <div style="font-size:18px;font-weight:bold">
+            出庫期限: ${safe(scheduledEndAt)}
+          </div>
+          <div style="margin-top:8px;font-size:14px">
+            出庫期限を過ぎますと超過料金が発生します。
+          </div>
+        </div>
+
+        <p style="margin-top:20px">
+          <a href="${gateUrl}" target="_blank" rel="noopener noreferrer"
+             style="display:inline-block;padding:14px 22px;background:#111;color:#fff;border-radius:10px;font-weight:bold;text-decoration:none">
+            延長・出庫はこちら
+          </a>
+        </p>
+
+        <p style="margin-top:16px;font-size:13px;color:#555">
+          このメールを保存しておくと、現地に戻らなくても延長のお手続きができます。
+        </p>
+
+        <p style="margin-top:8px;font-size:13px;color:#555;word-break:break-all">
+          リンクが開けない場合は下記URLをコピーしてアクセスしてください：<br />
+          ${gateUrl}
+        </p>
+
+        <hr style="margin:24px 0" />
+        <p style="font-size:13px;color:#555">
+          お問い合わせ: 050-1793-4785<br />
+          ParkTec East Japan
+        </p>
+      </div>
+    `,
+    text: `${title}
+
+駐車場: ${safe(placeName)}
+区画: ${safe(spotLabel)}
+車番: ${safe(plate)}
+入庫: ${safe(checkInAt)}
+お支払い済み: ${totalYen.toLocaleString()}円
+
+出庫期限: ${safe(scheduledEndAt)}
+出庫期限を過ぎますと超過料金が発生します。
+
+延長・出庫はこちら：
+${gateUrl}
+
+このメールを保存しておくと、現地に戻らなくても延長のお手続きができます。
+
+お問い合わせ: 050-1793-4785
+ParkTec East Japan`,
+  });
+}
+
 export async function sendGateUrlMail(params: {
   to: string;
   placeName: string;
