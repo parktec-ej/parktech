@@ -409,6 +409,44 @@ export async function GET(req: NextRequest) {
       });
     }
 
+    // 決済待機中（PENDING）のセッションがあるかを先に確認する。
+    // 区画は押さえられているため他の客は入庫できない。
+    // 30分放置されると cron が削除して区画が解放される。
+    // このチェックが無いと「今すぐ利用できます」と表示されるのに
+    // hourly-prepaid/start が409で弾く食い違いが起きる。
+    const pendingSession = await prisma.parkingSession.findFirst({
+      where: {
+        placeId: place.id,
+        spotId: spot.id,
+        status: "PENDING",
+      },
+      orderBy: { createdAt: "desc" },
+      select: { id: true, createdAt: true },
+    });
+
+    if (pendingSession) {
+      return NextResponse.json({
+        ok: true,
+        mode: "pending_payment",
+        placeId: place.id,
+        placeSlug: place.slug,
+        placeName: place.name,
+        spotId: spot.id,
+        spotLabel: spot.label ?? spot.code,
+        slot: spot.code,
+        date,
+        hourlyYen,
+        dailyYen,
+        effectiveOperationMode: effectiveMode,
+        dayOperationMode: dayMode?.operationMode ?? null,
+        spotOperationModeOverride: spot.operationModeOverride ?? null,
+        placeOperationMode: place.operationMode,
+        pendingSince: pendingSession.createdAt.toISOString(),
+        message:
+          "この区画は現在お手続き中です。しばらくお待ちいただくか、他の区画をご利用ください。",
+      });
+    }
+
     const activeSession = await prisma.parkingSession.findFirst({
       where: {
         placeId: place.id,

@@ -11,6 +11,7 @@ type GateMode =
   | "unpaid"
   | "can_start_hourly"
   | "can_checkout_hourly"
+  | "pending_payment"
   | "closed"
   | "unknown";
 
@@ -190,6 +191,8 @@ function GateInner() {
 
   const statusTitle = (() => {
     switch (mode) {
+      case "pending_payment":
+        return "お手続き中です";
       case "need_pin_checkin":
         return "この区画は予約済みです";
       case "can_checkout":
@@ -215,6 +218,8 @@ function GateInner() {
     if (error) return error;
 
     switch (mode) {
+      case "pending_payment":
+        return "この区画は別のお客様がお手続き中です。しばらくお待ちいただくか、他の区画をご利用ください。30分ほどで自動的に解除されます。";
       case "need_pin_checkin":
         return "このスロットは予約済みです。予約者はPINコードを入力してください。";
       case "can_checkout":
@@ -244,6 +249,8 @@ function GateInner() {
 
   const recommendation = (() => {
     switch (mode) {
+      case "pending_payment":
+        return "しばらくお待ちください";
       case "need_pin_checkin":
         return "予約者の方はこちらから入庫してください";
       case "can_checkout":
