@@ -22,15 +22,17 @@ export default function CommercePage() {
 
           <div className="grid gap-2 px-4 py-4 md:grid-cols-3">
             <dt className="font-semibold text-gray-900">所在地</dt>
-            <dd className="md:col-span-2">
-              請求があった場合、遅滞なく開示いたします。
-            </dd>
+            <dd className="md:col-span-2">宮城県塩竈市石堂 3-7</dd>
           </div>
 
           <div className="grid gap-2 px-4 py-4 md:grid-cols-3">
             <dt className="font-semibold text-gray-900">電話番号</dt>
             <dd className="md:col-span-2">
-              請求があった場合、遅滞なく開示いたします。
+              050-1793-4785
+              <br />
+              <span className="text-xs text-gray-500">
+                受付時間: 平日 9:00〜18:00（土日祝休業）
+              </span>
             </dd>
           </div>
 
