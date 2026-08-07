@@ -77,6 +77,141 @@ async function receiptExists(
   return !!existing;
 }
 
+// 事前決済（入庫・延長・超過）の Payment を作成する。
+// 3箇所から同じ形で呼ぶため共通化している。
+// 重複判定は paymentRef / paymentIntentId のみで行い、parkingSessionId は使わない。
+// 同一セッションに複数の Payment が並ぶのが事前決済の正常な状態のため。
+async function createPrepaidPayment(params: {
+  parkingSessionId: string;
+  paymentRef: string;
+  paymentIntentId: string | null;
+  checkoutSessionId: string;
+  grossAmount: number;
+}) {
+  const {
+    parkingSessionId,
+    paymentRef,
+    paymentIntentId,
+    checkoutSessionId,
+    grossAmount,
+  } = params;
+
+  if (!grossAmount || grossAmount <= 0) return;
+
+  try {
+    const already = await prisma.payment.findFirst({
+      where: {
+        OR: [
+          { paymentRef },
+          ...(paymentIntentId ? [{ paymentIntentId }] : []),
+        ],
+      },
+      select: { id: true },
+    });
+
+    if (already) return;
+
+    const ps = await prisma.parkingSession.findUnique({
+      where: { id: parkingSessionId },
+      select: {
+        id: true,
+        placeId: true,
+        spotId: true,
+        checkInAt: true,
+        checkOutAt: true,
+        customerName: true,
+        plate: true,
+      },
+    });
+
+    if (!ps) {
+      console.error("[createPrepaidPayment] session not found:", parkingSessionId);
+      return;
+    }
+
+    const snapshot = await buildSettlementSnapshot({
+      placeId: ps.placeId,
+      spotId: ps.spotId,
+      baseDate: ps.checkInAt,
+    });
+
+    const now = new Date();
+    const recognizedDate = now;
+    const recognizedMonth = getRecognizedMonthFromDate(recognizedDate);
+
+    const { ownerAmount, agentAmount, platformAmount } = calcSplitAmounts(
+      grossAmount,
+      snapshot.ownerRateBps,
+      snapshot.agentRateBps,
+      snapshot.platformRateBps
+    );
+
+    const feeInfo = await fetchStripeFee(paymentIntentId);
+
+    await prisma.payment.create({
+      data: {
+        id: crypto.randomUUID(),
+        updatedAt: new Date(),
+        kind: "HOURLY",
+        status: "CONFIRMED",
+        settlementLock: "UNLOCKED",
+
+        reservationId: null,
+        parkingSessionId: ps.id,
+
+        paymentRef,
+        paymentIntentId,
+        checkoutSessionId,
+        stripeChargeId: feeInfo.chargeId,
+
+        placeId: snapshot.placeId,
+        spotId: snapshot.spotId,
+        ownerId: snapshot.ownerId,
+        agentId: snapshot.agentId,
+
+        placeNameSnapshot: snapshot.placeNameSnapshot,
+        spotCodeSnapshot: snapshot.spotCodeSnapshot,
+        spotLabelSnapshot: snapshot.spotLabelSnapshot,
+
+        ownerNameSnapshot: snapshot.ownerNameSnapshot,
+        agentNameSnapshot: snapshot.agentNameSnapshot,
+
+        recognizedDate,
+        recognizedMonth,
+        serviceDate: null,
+        eventDate: null,
+        checkedOutAt: ps.checkOutAt,
+
+        customerNameSnapshot: ps.customerName ?? null,
+        plateSnapshot: ps.plate ?? "未登録",
+
+        currency: "JPY",
+        grossAmount,
+
+        ownerRateBps: snapshot.ownerRateBps,
+        agentRateBps: snapshot.agentRateBps,
+        platformRateBps: snapshot.platformRateBps,
+
+        ownerAmount,
+        agentAmount,
+        platformAmount,
+
+        stripeFeeAmount: feeInfo.fee,
+        connectFeeAmount: 0,
+        payoutFeeAmount: 0,
+      },
+    });
+  } catch (e) {
+    console.error("[createPrepaidPayment] failed:", parkingSessionId, e);
+    await sendSlackNotification(
+      `🔴【要対応】事前決済のPayment作成に失敗しました\n` +
+        `parkingSessionId=${parkingSessionId}\n` +
+        `paymentRef=${paymentRef}\n` +
+        `金額=${grossAmount}円`
+    ).catch(() => {});
+  }
+}
+
 async function paymentExists(params: {
   paymentRef?: string | null;
   paymentIntentId?: string | null;
@@ -1151,6 +1286,14 @@ export async function POST(req: Request) {
               : "")
         ).catch(() => {});
 
+        await createPrepaidPayment({
+          parkingSessionId,
+          paymentRef: paymentIntentId ?? session.id,
+          paymentIntentId,
+          checkoutSessionId: session.id,
+          grossAmount: paidYen,
+        });
+
         return NextResponse.json({
           received: true,
           parkingSessionId: current.id,
@@ -1285,6 +1428,20 @@ export async function POST(req: Request) {
         } catch (mailError) {
           console.error("[hourly_extend] mail error:", mailError);
         }
+
+        await createPrepaidPayment({
+          parkingSessionId,
+          paymentRef:
+            (typeof session.payment_intent === "string"
+              ? session.payment_intent
+              : null) ?? session.id,
+          paymentIntentId:
+            typeof session.payment_intent === "string"
+              ? session.payment_intent
+              : null,
+          checkoutSessionId: session.id,
+          grossAmount: addedYen,
+        });
 
         return NextResponse.json({
           received: true,
@@ -1439,6 +1596,18 @@ export async function POST(req: Request) {
             console.error("[hourly_prepaid] mail error:", mailError);
           }
         }
+
+        // 会計記録。事前決済は入庫・延長・超過でそれぞれ決済が走るため、
+        // 決済1件につき Payment 1件を作る（Stripe手数料が決済単位でしか取れない）。
+        // そのため重複判定に parkingSessionId は使わない。
+        // 同一セッションに複数 Payment があるのが正常な状態。
+        await createPrepaidPayment({
+          parkingSessionId,
+          paymentRef,
+          paymentIntentId,
+          checkoutSessionId: session.id,
+          grossAmount: prepaidYen,
+        });
 
         return NextResponse.json({
           received: true,
