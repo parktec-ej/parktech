@@ -662,11 +662,15 @@ function GateInner() {
         >
           <div style={actionButtonTitleStyle}>出庫する</div>
           <div style={actionButtonSubStyle}>
-            {canUseCheckout
-              ? mode === "can_checkout_hourly"
-                ? "時間貸し精算へ進む"
-                : "出庫手続きへ進む"
-              : "現在は出庫対象がありません"}
+            {!canUseCheckout
+              ? "現在は出庫対象がありません"
+              : mode !== "can_checkout_hourly"
+              ? "出庫手続きへ進む"
+              : data?.prepaidYen == null
+              ? "時間貸し精算へ進む"
+              : data?.isOverstay
+              ? "超過料金の精算へ進む"
+              : "お支払いは完了しています"}
           </div>
         </button>
       </div>
