@@ -38,7 +38,7 @@ export default function CommercePage() {
 
           <div className="grid gap-2 px-4 py-4 md:grid-cols-3">
             <dt className="font-semibold text-gray-900">メールアドレス</dt>
-            <dd className="md:col-span-2">support@parktec-ej.com</dd>
+            <dd className="md:col-span-2">info@parktec-ej.com</dd>
           </div>
 
           <div className="grid gap-2 px-4 py-4 md:grid-cols-3">
