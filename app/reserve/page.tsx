@@ -20,6 +20,7 @@ type Spot = {
     | "CLOSED"
     | "REQUIRES_APPROVAL"
     | "PENDING_APPROVAL"
+    | "APPROVED"
     | string;
 };
 
@@ -82,6 +83,8 @@ function slotStatusLabel(spot: Spot): string {
       return "要承認";
     case "PENDING_APPROVAL":
       return "承認待ち";
+    case "APPROVED":
+      return "承認済み";
     default:
       return spot.isAvailable ? "予約可能" : "予約不可";
   }
@@ -90,6 +93,7 @@ function slotStatusLabel(spot: Spot): string {
 function slotDisabledStyle(spot: Spot) {
   if (spot.status === "PENDING_EVENT") return styles.slotButtonPending;
   if (spot.status === "PENDING_APPROVAL") return styles.slotButtonApproval;
+  if (spot.status === "APPROVED") return styles.slotButtonApproved;
   if (spot.status === "NOT_OPEN") return styles.slotButtonNotOpen;
   // RESERVED / CLOSED / その他 は従来のグレー
   return styles.slotButtonDisabled;
@@ -505,6 +509,11 @@ function ReservePageInner() {
                   オレンジの「要承認」区画のみ、申請を受け付けています。
                   申請後、当社の承認をもって予約が確定します（先着1名・承認をお約束するものではありません）。
                 </div>
+              ) : spots.some((s) => s.status === "APPROVED") ? (
+                <div style={styles.soldOutBody}>
+                  承認済みの区画は、申請者の方へお送りしたメールのリンクからお手続きいただけます。
+                  お手続きがない場合、期限到来後に他のお客様へ開放されることがあります。
+                </div>
               ) : (
                 <div style={styles.soldOutBody}>
                   別の日程をお選びいただくか、キャンセルにより空きが出る場合がありますので
@@ -792,6 +801,14 @@ const styles: Record<string, React.CSSProperties> = {
     background: "#fff7ed",
     borderColor: "#f97316",
     color: "#9a3412",
+  },
+
+  slotButtonApproved: {
+    borderWidth: 1,
+    borderStyle: "solid",
+    borderColor: "#9ccc9c",
+    backgroundColor: "#f1f8f1",
+    color: "#2e6b2e",
   },
 
   slotButtonDisabled: {

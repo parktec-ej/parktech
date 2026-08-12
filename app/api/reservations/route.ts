@@ -390,7 +390,7 @@ export async function GET(req: NextRequest) {
     // availableSpots の status は代入値で 5 種に絞られるため、承認枠用に status を
     // 広げた要素型を明示（他フィールドは availableSpots と同一）。
     type ApprovalSpot = Omit<(typeof availableSpots)[number], "status"> & {
-      status: "REQUIRES_APPROVAL" | "PENDING_APPROVAL";
+      status: "REQUIRES_APPROVAL" | "PENDING_APPROVAL" | "APPROVED";
     };
     const approvalSpots: ApprovalSpot[] = [];
     const generalSoldOut =
@@ -452,20 +452,54 @@ export async function GET(req: NextRequest) {
             continue;
           }
 
-          // オファー未作成→要承認(申請可)、WAITING/RELEASED→承認待ち(選択不可)
+          // オファー未作成→要承認(申請可)
+          // WAITING / TENANT_CHARGE_PENDING→承認待ち(選択不可)
+          // RELEASED→承認済み。申請者にはメールで決済リンク送付済みのため
+          //   グリッドからは決済させない（匿名の第三者が押せてしまうため）。表示のみ変更。
           const requiresApproval = !offerStatus;
+          const offerStatusLabel: "REQUIRES_APPROVAL" | "PENDING_APPROVAL" | "APPROVED" =
+            requiresApproval
+              ? "REQUIRES_APPROVAL"
+              : offerStatus === "RELEASED"
+                ? "APPROVED"
+                : "PENDING_APPROVAL";
           approvalSpots.push({
             id: s.id,
             code: s.code,
             label: s.label,
             mode: "EVENT_ONLY",
             isAvailable: false,
-            status: requiresApproval ? "REQUIRES_APPROVAL" : "PENDING_APPROVAL",
+            status: offerStatusLabel,
             requiresApproval,
           });
         }
       }
     }
+
+    // 月極契約区画のうち、その日に確定予約があるものを「予約済み」で表示する。
+    // 一般グリッドからは契約により除外され、承認枠ブロックは
+    // generalSoldOut && offerWindowOpen の条件下でしか動かないため、
+    // ここで独立して積まないと成約済み区画がグリッドから消えてしまう。
+    const reservedMonthlySpots =
+      place.slug === MONTHLY_PLACE_SLUG
+        ? (spotsRaw as SpotRow[])
+            .filter(
+              (s) =>
+                (MONTHLY_SLOT_CODES as readonly string[]).includes(s.code) &&
+                contractSpotIds.has(s.id) &&
+                (reservedSpotIds.has(s.id) ||
+                  reservedSlots.has(normalizeSlot(s.code)))
+            )
+            .map((s) => ({
+              id: s.id,
+              code: s.code,
+              label: s.label,
+              mode: "EVENT_ONLY",
+              isAvailable: false,
+              status: "RESERVED" as const,
+              requiresApproval: false,
+            }))
+        : [];
 
     return NextResponse.json({
       ok: true,
@@ -473,7 +507,7 @@ export async function GET(req: NextRequest) {
       date,
       reservationOpen,
       eventDayActive,
-      spots: [...availableSpots, ...approvalSpots],
+      spots: [...availableSpots, ...approvalSpots, ...reservedMonthlySpots],
       reservations,
       soldOut,
     });
