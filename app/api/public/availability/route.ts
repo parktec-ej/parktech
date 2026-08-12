@@ -16,6 +16,7 @@ import {
   MONTHLY_PLACE_SLUG,
   MONTHLY_SLOT_CODES,
   OCCUPYING_STATUSES,
+  MONTHLY_EVENT_OFFER_DEADLINE_DAYS,
 } from "@/lib/monthly-config";
 
 const DEFAULT_DAYS = 90;
@@ -250,8 +251,31 @@ export async function GET(req: Request) {
         .map((c) => c.spotId as string)
     );
 
+    // EventMonthlyOffer を範囲取得（レコードの有無のみで判定・status は問わない）。
+    // 月極契約が押さえている区画が1つも無い場合はクエリを発行しない。
+    const offersRaw = contractSpotIds.size
+      ? await prisma.eventMonthlyOffer.findMany({
+          where: {
+            spotId: { in: [...contractSpotIds] },
+            date: { in: dates },
+          },
+          select: { date: true, spotId: true },
+        })
+      : [];
+    // date -> Set<spotId>（status は問わない。レコードの有無のみで判定）
+    const offerByDate = new Map<string, Set<string>>();
+    for (const o of offersRaw) {
+      let set = offerByDate.get(o.date);
+      if (!set) {
+        set = new Set<string>();
+        offerByDate.set(o.date, set);
+      }
+      set.add(o.spotId);
+    }
+
     // 7. 各日付をメモリ上で判定
     const soldOut: Record<string, boolean> = {};
+    const approvalAvailable: Record<string, boolean> = {};
     for (const ymd of dates) {
       const eventDay = eventDayByYmd.get(ymd) ?? null;
       const eventDayActive = Boolean(eventDay);
@@ -312,6 +336,31 @@ export async function GET(req: Request) {
       }
 
       soldOut[ymd] = displayed.length > 0 && allReserved;
+
+      // 満車でも「要承認枠」が申請可能な日を区別する。
+      // 判定条件は app/api/reservations/route.ts の承認枠ブロックと同一。
+      let approvalOk = false;
+      if (soldOut[ymd] && place.slug === MONTHLY_PLACE_SLUG) {
+        // 受付窓：today(JST) <= 開催日 - MONTHLY_EVENT_OFFER_DEADLINE_DAYS 日
+        const deadline = ymdToUtcDate(ymd);
+        deadline.setUTCDate(
+          deadline.getUTCDate() - MONTHLY_EVENT_OFFER_DEADLINE_DAYS
+        );
+        const offerWindowOpen = startYmd <= deadline.toISOString().slice(0, 10);
+
+        if (offerWindowOpen) {
+          const offeredSpotIds = offerByDate.get(ymd) ?? null;
+          approvalOk = spots.some(
+            (s) =>
+              (MONTHLY_SLOT_CODES as readonly string[]).includes(s.code) &&
+              contractSpotIds.has(s.id) &&
+              !(reserved?.spotIds.has(s.id) ?? false) &&
+              !(reserved?.slots.has(normalizeSlot(s.code)) ?? false) &&
+              !(offeredSpotIds?.has(s.id) ?? false)
+          );
+        }
+      }
+      approvalAvailable[ymd] = approvalOk;
     }
 
     return NextResponse.json(
@@ -320,6 +369,7 @@ export async function GET(req: Request) {
         placeSlug: place.slug,
         generatedAt: new Date().toISOString(),
         soldOut,
+        approvalAvailable,
       },
       { headers: corsHeaders(origin) }
     );
