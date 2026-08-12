@@ -48,6 +48,7 @@ type ReservationsApiResponse = {
   date?: string;
   spots?: Spot[];
   reservations?: ReservationSummary[];
+  soldOut?: boolean;
   error?: string;
   message?: string;
 };
@@ -153,6 +154,7 @@ function ReservePageInner() {
   const [date, setDate] = useState(queryDate || ymdTodayJst());
   const [place, setPlace] = useState<Place | null>(null);
   const [spots, setSpots] = useState<Spot[]>([]);
+  const [soldOut, setSoldOut] = useState(false);
   const [selectedSpotId, setSelectedSpotId] = useState("");
   const [name, setName] = useState("");
   const [plate, setPlate] = useState("");
@@ -209,6 +211,7 @@ function ReservePageInner() {
       setErr("");
       setPlace(null);
       setSpots([]);
+      setSoldOut(false);
       setSelectedSpotId("");
       return;
     }
@@ -235,6 +238,7 @@ function ReservePageInner() {
         if (!res.ok || !json?.ok) {
           setPlace(null);
           setSpots([]);
+          setSoldOut(false);
           setSelectedSpotId("");
           setErr(json?.message || json?.error || "予約情報の取得に失敗しました");
           return;
@@ -246,6 +250,7 @@ function ReservePageInner() {
 
         setPlace(fetchedPlace);
         setSpots(fetchedSpots);
+        setSoldOut(data.soldOut === true);
 
         setSelectedSpotId((prev) => {
           const prevStillUsable = fetchedSpots.some(
@@ -260,6 +265,7 @@ function ReservePageInner() {
         if (!cancelled) {
           setPlace(null);
           setSpots([]);
+          setSoldOut(false);
           setSelectedSpotId("");
           setErr("通信エラーが発生しました");
         }
@@ -491,6 +497,23 @@ function ReservePageInner() {
             </span>
           </div>
 
+          {soldOut ? (
+            <div style={styles.soldOutBanner}>
+              <div style={styles.soldOutTitle}>この日は満車です（予約受付終了）</div>
+              {spots.some((s) => s.requiresApproval === true) ? (
+                <div style={styles.soldOutBody}>
+                  オレンジの「要承認」区画のみ、申請を受け付けています。
+                  申請後、当社の承認をもって予約が確定します（先着1名・承認をお約束するものではありません）。
+                </div>
+              ) : (
+                <div style={styles.soldOutBody}>
+                  別の日程をお選びいただくか、キャンセルにより空きが出る場合がありますので
+                  時間をおいて再度ご確認ください。
+                </div>
+              )}
+            </div>
+          ) : null}
+
           <div style={styles.slotGrid}>
             {spots.map((spot) => {
               const selected = selectedSpotId === spot.id;
@@ -627,6 +650,30 @@ export default function ReservePage() {
 }
 
 const styles: Record<string, React.CSSProperties> = {
+  soldOutBanner: {
+    marginTop: 12,
+    marginBottom: 12,
+    padding: 14,
+    borderWidth: 1,
+    borderStyle: "solid",
+    borderColor: "#e5b4b4",
+    borderRadius: 10,
+    backgroundColor: "#fdf3f3",
+  },
+
+  soldOutTitle: {
+    fontSize: 15,
+    fontWeight: 700,
+    color: "#b3261e",
+    marginBottom: 6,
+  },
+
+  soldOutBody: {
+    fontSize: 13,
+    lineHeight: 1.7,
+    color: "#5c4444",
+  },
+
   page: {
     minHeight: "100vh",
     background: "#f6f6f7",

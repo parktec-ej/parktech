@@ -399,6 +399,13 @@ export async function GET(req: NextRequest) {
       availableSpots.length > 0 &&
       availableSpots.every((s) => !s.isAvailable);
 
+    // 顧客向け満車バナー用。generalSoldOut とは別物。
+    // 「表示中の全枠が RESERVED」＝純粋な満車。解放待ち(NOT_OPEN)・開催待ち(PENDING_EVENT)・
+    // 予約不可(CLOSED)は満車ではないので含めない。
+    const soldOut =
+      availableSpots.length > 0 &&
+      availableSpots.every((s) => s.status === "RESERVED");
+
     const offerDeadline = new Date(targetUtcDate);
     offerDeadline.setUTCDate(
       offerDeadline.getUTCDate() - MONTHLY_EVENT_OFFER_DEADLINE_DAYS
@@ -468,6 +475,7 @@ export async function GET(req: NextRequest) {
       eventDayActive,
       spots: [...availableSpots, ...approvalSpots],
       reservations,
+      soldOut,
     });
   } catch (error: unknown) {
     console.error(error);
