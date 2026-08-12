@@ -118,9 +118,6 @@ type ReservationRow = {
   id: string;
   slot: string;
   spotId: string | null;
-  name: string;
-  plate: string;
-  email: string | null;
   price: number;
   createdAt: Date;
   status: string;
@@ -242,9 +239,6 @@ export async function GET(req: NextRequest) {
             id: true,
             slot: true,
             spotId: true,
-            name: true,
-            plate: true,
-            email: true,
             price: true,
             createdAt: true,
             status: true,
