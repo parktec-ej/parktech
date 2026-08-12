@@ -125,7 +125,12 @@ export async function GET(req: Request) {
       );
     }
 
-    const daysRaw = Number(url.searchParams.get("days"));
+    // Number(null) と Number("") は 0 を返すため、未指定を先に弾いてから数値化する
+    const daysParam = url.searchParams.get("days");
+    const daysRaw =
+      daysParam === null || daysParam.trim() === ""
+        ? NaN
+        : Number(daysParam);
     const days = Number.isFinite(daysRaw)
       ? Math.min(MAX_DAYS, Math.max(1, Math.floor(daysRaw)))
       : DEFAULT_DAYS;
