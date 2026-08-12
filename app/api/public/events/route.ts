@@ -16,6 +16,8 @@ function corsHeaders(origin: string | null) {
     "Access-Control-Allow-Origin": allowed,
     "Access-Control-Allow-Methods": "GET, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type",
+    // オリジンごとに ACAO が変わるため、CDN キャッシュの取り違えを防ぐ
+    Vary: "Origin",
     "Cache-Control": "public, max-age=60, s-maxage=60",
   };
 }

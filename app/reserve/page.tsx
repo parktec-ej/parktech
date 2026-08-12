@@ -497,7 +497,7 @@ function ReservePageInner() {
           <div style={styles.labelRow}>
             <label style={styles.label}>区画</label>
             <span style={styles.legend}>
-              白: 空き / 橙: 要承認 / 黄: 開催待ち / 青: 予約解放待ち / グレー: 予約済み / 黒: 選択中
+              白: 空き / 橙: 要承認 / 緑: 承認済み / 黄: 開催待ち / 青: 予約解放待ち / グレー: 予約済み / 黒: 選択中
             </span>
           </div>
 

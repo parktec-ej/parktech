@@ -393,6 +393,9 @@ export async function GET(req: NextRequest) {
       status: "REQUIRES_APPROVAL" | "PENDING_APPROVAL" | "APPROVED";
     };
     const approvalSpots: ApprovalSpot[] = [];
+    // 【複製先あり】この満車判定と同一の定義が
+    // app/api/public/availability/route.ts にも存在します（HP向け公開API）。
+    // 判定条件を変更する場合は、必ず両方を同時に修正してください。
     const generalSoldOut =
       eventDayActive &&
       reservationOpen.ok &&
