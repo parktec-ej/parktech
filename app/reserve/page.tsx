@@ -50,6 +50,7 @@ type ReservationsApiResponse = {
   spots?: Spot[];
   reservations?: ReservationSummary[];
   soldOut?: boolean;
+  maintenance?: boolean;
   error?: string;
   message?: string;
 };
@@ -159,6 +160,7 @@ function ReservePageInner() {
   const [place, setPlace] = useState<Place | null>(null);
   const [spots, setSpots] = useState<Spot[]>([]);
   const [soldOut, setSoldOut] = useState(false);
+  const [maintenance, setMaintenance] = useState(false);
   const [selectedSpotId, setSelectedSpotId] = useState("");
   const [name, setName] = useState("");
   const [plate, setPlate] = useState("");
@@ -216,6 +218,7 @@ function ReservePageInner() {
       setPlace(null);
       setSpots([]);
       setSoldOut(false);
+      setMaintenance(false);
       setSelectedSpotId("");
       return;
     }
@@ -243,6 +246,7 @@ function ReservePageInner() {
           setPlace(null);
           setSpots([]);
           setSoldOut(false);
+          setMaintenance(false);
           setSelectedSpotId("");
           setErr(json?.message || json?.error || "予約情報の取得に失敗しました");
           return;
@@ -255,6 +259,7 @@ function ReservePageInner() {
         setPlace(fetchedPlace);
         setSpots(fetchedSpots);
         setSoldOut(data.soldOut === true);
+        setMaintenance(data.maintenance === true);
 
         setSelectedSpotId((prev) => {
           const prevStillUsable = fetchedSpots.some(
@@ -270,6 +275,7 @@ function ReservePageInner() {
           setPlace(null);
           setSpots([]);
           setSoldOut(false);
+          setMaintenance(false);
           setSelectedSpotId("");
           setErr("通信エラーが発生しました");
         }
@@ -501,6 +507,15 @@ function ReservePageInner() {
             </span>
           </div>
 
+          {maintenance ? (
+            <div style={styles.soldOutBanner}>
+              <div style={styles.soldOutTitle}>システムメンテナンス中</div>
+              <div style={styles.soldOutBody}>
+                ただいまシステムメンテナンスのため、新規のご予約を停止しております。ご予約済みのお客様のご入庫・ご出庫、予約内容の変更・キャンセルは通常どおりご利用いただけます。
+              </div>
+            </div>
+          ) : null}
+
           {soldOut ? (
             <div style={styles.soldOutBanner}>
               <div style={styles.soldOutTitle}>この日は満車です（予約受付終了）</div>
@@ -527,7 +542,7 @@ function ReservePageInner() {
             {spots.map((spot) => {
               const selected = selectedSpotId === spot.id;
               const approvalOpen = spot.requiresApproval === true;
-              const disabled = !spot.isAvailable && !approvalOpen;
+              const disabled = maintenance || (!spot.isAvailable && !approvalOpen);
 
               return (
                 <button
@@ -607,7 +622,7 @@ function ReservePageInner() {
           const selForRender = spots.find((s) => s.id === selectedSpotId);
           const approvalSelected = selForRender?.requiresApproval === true;
           const submitDisabled =
-            loading || submitting || !selectedSpotId || approvalDone;
+            loading || submitting || !selectedSpotId || approvalDone || maintenance;
           return (
             <>
               {approvalSelected && !approvalDone ? (

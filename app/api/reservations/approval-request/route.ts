@@ -9,6 +9,7 @@ import {
 } from "@/lib/monthly-config";
 import { signEventToken } from "@/lib/event-token";
 import { sendMonthlyOfferNoticeMail } from "@/lib/mail";
+import { isReservationMaintenance } from "@/lib/maintenance";
 
 export const dynamic = "force-dynamic";
 
@@ -60,6 +61,14 @@ export async function POST(req: NextRequest) {
       !(MONTHLY_SLOT_CODES as readonly string[]).includes(spot.code)
     ) {
       return jsonError("この区画は承認申請の対象ではありません", 400, "not_offerable");
+    }
+
+    if (isReservationMaintenance(spot.place?.slug ?? "")) {
+      return jsonError(
+        "ただいまシステムメンテナンス中のため、新規予約を停止しています。",
+        503,
+        "maintenance"
+      );
     }
 
     // 「今この区画が要承認で出ているか」は在庫判定(GET ①)を唯一の真実として再確認。

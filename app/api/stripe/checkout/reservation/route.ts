@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { stripe } from "@/lib/stripe";
 import { resolveActivePlace } from "@/lib/place-resolver";
+import { isReservationMaintenance } from "@/lib/maintenance";
 import {
   getReservationFixedPrice,
   isReservationOpen,
@@ -121,6 +122,14 @@ export async function POST(req: NextRequest) {
 
     if (!place) {
       return jsonError("place が見つかりません", 404, "place_not_found");
+    }
+
+    if (isReservationMaintenance(place.slug)) {
+      return jsonError(
+        "ただいまシステムメンテナンス中のため、新規予約を停止しています。",
+        503,
+        "maintenance"
+      );
     }
 
     const reservationOpen = await isReservationOpen(place.id, date);

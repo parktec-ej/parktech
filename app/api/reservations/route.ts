@@ -4,6 +4,7 @@ export const preferredRegion = "hnd1";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { resolveActivePlace } from "@/lib/place-resolver";
+import { isReservationMaintenance } from "@/lib/maintenance";
 import {
   getReservationFixedPrice,
   getReservationOpenAtJst,
@@ -513,6 +514,7 @@ export async function GET(req: NextRequest) {
       spots: [...availableSpots, ...approvalSpots, ...reservedMonthlySpots],
       reservations,
       soldOut,
+      maintenance: isReservationMaintenance(place.slug),
     });
   } catch (error: unknown) {
     console.error(error);
@@ -588,6 +590,14 @@ export async function POST(req: NextRequest) {
         "place が見つかりません",
         404,
         "place_not_found"
+      );
+    }
+
+    if (isReservationMaintenance(place.slug)) {
+      return jsonError(
+        "ただいまシステムメンテナンス中のため、新規予約を停止しています。",
+        503,
+        "maintenance"
       );
     }
 
