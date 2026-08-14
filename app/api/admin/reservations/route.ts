@@ -9,7 +9,8 @@ type ReservationStatus =
   | "CHECKED_OUT"
   | "CHECKED_IN"
   | "RESERVED"
-  | "UNPAID";
+  | "UNPAID"
+  | "CANCELED";
 
 type ReservationRow = {
   id: string;
@@ -106,7 +107,9 @@ function getReservationStatus(r: {
   paid: boolean;
   checkedIn: boolean;
   checkedOutAt: Date | null;
+  status: string;
 }): ReservationStatus {
+  if (r.status === "CANCELED") return "CANCELED";
   if (r.checkedOutAt) return "CHECKED_OUT";
   if (r.checkedIn) return "CHECKED_IN";
   if (r.paid) return "RESERVED";
@@ -278,7 +281,11 @@ export async function GET(req: Request) {
       );
     }
 
-    if (status !== "ALL") {
+    if (status === "ALL") {
+      // 既定ではキャンセル済みを一覧から除外する。
+      // キャンセル済みを見たいときは status=CANCELED を明示指定する。
+      items = items.filter((x: ReservationItem) => x.status !== "CANCELED");
+    } else {
       items = items.filter((x: ReservationItem) => x.status === status);
     }
 
@@ -322,6 +329,9 @@ export async function GET(req: Request) {
         ).length,
         checkedOut: items.filter(
           (x: ReservationItem) => x.status === "CHECKED_OUT"
+        ).length,
+        canceled: items.filter(
+          (x: ReservationItem) => x.status === "CANCELED"
         ).length,
       },
       reservations: items,

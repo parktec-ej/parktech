@@ -31,7 +31,7 @@ type ReservationItem = {
   createdAt: string;
   spotId: string | null;
   qrToken: string;
-  status: "UNPAID" | "RESERVED" | "CHECKED_IN" | "CHECKED_OUT";
+  status: "UNPAID" | "RESERVED" | "CHECKED_IN" | "CHECKED_OUT" | "CANCELED";
   spot: {
     id: string;
     code: string;
@@ -104,6 +104,8 @@ function statusLabel(status: ReservationItem["status"]) {
       return "入庫中";
     case "CHECKED_OUT":
       return "出庫済み";
+    case "CANCELED":
+      return "キャンセル済み";
     default:
       return status;
   }
@@ -570,6 +572,7 @@ function AdminReservationsPageInner() {
               <option value="RESERVED">予約済み</option>
               <option value="CHECKED_IN">入庫中</option>
               <option value="CHECKED_OUT">出庫済み</option>
+              <option value="CANCELED">キャンセル済み</option>
             </select>
           </div>
 
@@ -837,7 +840,8 @@ function AdminReservationsPageInner() {
                   style={{
                     padding: "8px 12px",
                     borderRadius: 999,
-                    background: "#f3f4f6",
+                    background: r.status === "CANCELED" ? "#fef2f2" : "#f3f4f6",
+                    color: r.status === "CANCELED" ? "#b91c1c" : undefined,
                     fontWeight: 800,
                     height: "fit-content",
                   }}
