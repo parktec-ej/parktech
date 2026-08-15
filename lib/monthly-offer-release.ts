@@ -1,7 +1,10 @@
 import { prisma } from "@/lib/db";
 import { stripe } from "@/lib/stripe";
 import { getReservationFixedPrice } from "@/lib/pricing-core";
-import { sendOfferApplicantPaymentMail } from "@/lib/mail";
+import {
+  sendOfferApplicantPaymentMail,
+  sendOfferApplicantResendMail,
+} from "@/lib/mail";
 import { MONTHLY_EVENT_OFFER_DEADLINE_DAYS } from "@/lib/monthly-config";
 
 const APP_URL = (process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000").trim();
@@ -37,10 +40,12 @@ export type ReleaseOfferResult =
  *
  * @param offerId    対象 EventMonthlyOffer の id
  * @param releasedBy リリースの実行主体（例: "ADMIN"）。offer.releasedBy に保存する。
+ * @param isResend   true の場合は再送用文面（sendOfferApplicantResendMail）で送信する。
  */
 export async function releaseOfferToApplicant(
   offerId: string,
-  releasedBy: string
+  releasedBy: string,
+  isResend = false
 ): Promise<ReleaseOfferResult> {
   const offer = await prisma.eventMonthlyOffer.findUnique({
     where: { id: offerId },
@@ -163,7 +168,10 @@ export async function releaseOfferToApplicant(
   });
 
   try {
-    await sendOfferApplicantPaymentMail({
+    const sendMail = isResend
+      ? sendOfferApplicantResendMail
+      : sendOfferApplicantPaymentMail;
+    await sendMail({
       to: offer.applicantEmail,
       name: offer.applicantName ?? "",
       placeName: place.name,
@@ -171,6 +179,7 @@ export async function releaseOfferToApplicant(
       date: offer.date,
       priceYen: price,
       checkoutUrl: checkout.url,
+      expiresAt: new Date(expiresMs),
     });
   } catch (e) {
     console.error("[monthly-offer-release] applicant payment mail failed:", e);

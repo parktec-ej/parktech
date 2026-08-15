@@ -60,7 +60,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "already_applied" }, { status: 409 });
     }
 
-    const result = await releaseOfferToApplicant(offerId, "ADMIN");
+    const result = await releaseOfferToApplicant(offerId, "ADMIN", true);
     if (!result.ok) {
       return NextResponse.json(
         { ok: false, error: result.error },

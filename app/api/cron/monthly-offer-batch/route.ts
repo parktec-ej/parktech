@@ -143,6 +143,8 @@ export async function GET(req: Request) {
             date: offer.date,
             priceYen: price,
             checkoutUrl: checkout.url,
+            // Checkout に expires_at 未指定＝Stripe デフォルトの 24 時間後が失効時刻。
+            expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
           });
         }
         summary.released++;

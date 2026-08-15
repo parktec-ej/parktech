@@ -940,24 +940,44 @@ ${safe(deadlineNote)}にご回答ください。ご回答がない場合は希�
   });
 }
 
-export async function sendOfferApplicantPaymentMail(params: {
-  to: string;
+// 有効期限を JST で「8月16日(日) 5:42」形式に整形する。
+function formatDeadlineJst(d: Date) {
+  const parts = new Intl.DateTimeFormat("ja-JP", {
+    timeZone: "Asia/Tokyo",
+    month: "numeric",
+    day: "numeric",
+    weekday: "short",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(d);
+  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "";
+  return `${get("month")}月${get("day")}日(${get("weekday")}) ${get("hour")}:${get("minute")}`;
+}
+
+// 申請者向け決済案内メールの本文（HTML / text）を組み立てる共通処理。
+// intro を渡すと冒頭に一文を差し込む（再送用文面などに使用）。
+function buildOfferApplicantPaymentBody(params: {
   name: string;
   placeName: string;
   spotLabel: string;
   date: string;
   priceYen: number;
   checkoutUrl: string;
+  expiresAt: Date;
+  intro?: string;
 }) {
-  const { to, name, placeName, spotLabel, date, priceYen, checkoutUrl } = params;
-  return getResend().emails.send({
-    from: MAIL_FROM,
-    to,
-    subject: `【ParkTec】ご予約が承認されました。お支払いのご案内（${safe(date)}）`,
-    html: `
+  const { name, placeName, spotLabel, date, priceYen, checkoutUrl, expiresAt, intro } =
+    params;
+  const deadlineText = formatDeadlineJst(expiresAt);
+  const introHtml = intro ? `<p>${safe(intro)}</p>` : "";
+  const introText = intro ? `${intro}\n\n` : "";
+
+  const html = `
       <div style="font-family:Arial,sans-serif;line-height:1.8;color:#111">
         <h2>ご予約が承認されました</h2>
         <p>${safe(name)} 様</p>
+        ${introHtml}
         <p>お申し込みいただいた区画のご利用が承認されました。下記ボタンよりお支払いをお願いします。<br />
         <strong>お支払いの完了をもってご予約確定</strong>となります。</p>
         <div style="padding:16px;border:1px solid #ddd;border-radius:8px;background:#fafafa">
@@ -970,25 +990,79 @@ export async function sendOfferApplicantPaymentMail(params: {
           <a href="${checkoutUrl}" target="_blank" rel="noopener noreferrer"
              style="display:inline-block;padding:14px 28px;background:#111;color:#fff;text-decoration:none;border-radius:8px;font-weight:600">お支払いへ進む</a>
         </p>
+        <div style="margin-top:16px;padding:12px 16px;border:2px solid #dc2626;border-radius:8px;background:#fef2f2;color:#b91c1c">
+          <div style="font-weight:700">お支払い期限：${safe(deadlineText)}</div>
+          <div>期限を過ぎるとこのリンクは無効になります。</div>
+        </div>
         <p style="font-size:12px;color:#666">ボタンが開けない場合はこちらのURLを貼り付けてください:<br />${checkoutUrl}</p>
-        <p style="font-size:13px;color:#555">※お支払いは開催日の3日前までにお願いします。期限を過ぎるとご予約は無効となります。</p>
         <hr style="margin:24px 0" />
         <p>パークテックイーストジャパン</p>
       </div>
-    `,
-    text: `ご予約が承認されました。
+    `;
+
+  const text = `ご予約が承認されました。
 ${safe(name)} 様
 
-お支払いの完了をもってご予約確定となります。
+${introText}お支払いの完了をもってご予約確定となります。
 駐車場: ${safe(placeName)}
 区画: ${safe(spotLabel)}
 利用日: ${safe(date)}
 料金: ${safe(priceYen)} 円（税込）
 
 お支払い: ${checkoutUrl}
-※開催日の3日前までにお支払いください。
 
-パークテックイーストジャパン`.trim(),
+お支払い期限：${safe(deadlineText)}
+期限を過ぎるとこのリンクは無効になります。
+
+パークテックイーストジャパン`.trim();
+
+  return { html, text };
+}
+
+export async function sendOfferApplicantPaymentMail(params: {
+  to: string;
+  name: string;
+  placeName: string;
+  spotLabel: string;
+  date: string;
+  priceYen: number;
+  checkoutUrl: string;
+  expiresAt: Date;
+}) {
+  const { to, date } = params;
+  const { html, text } = buildOfferApplicantPaymentBody(params);
+  return getResend().emails.send({
+    from: MAIL_FROM,
+    to,
+    subject: `【ParkTec】ご予約が承認されました。お支払いのご案内（${safe(date)}）`,
+    html,
+    text,
+  });
+}
+
+// 再送専用。件名を変え、冒頭に旧リンク失効のお詫び＋案内を差し込む。
+export async function sendOfferApplicantResendMail(params: {
+  to: string;
+  name: string;
+  placeName: string;
+  spotLabel: string;
+  date: string;
+  priceYen: number;
+  checkoutUrl: string;
+  expiresAt: Date;
+}) {
+  const { to, date } = params;
+  const { html, text } = buildOfferApplicantPaymentBody({
+    ...params,
+    intro:
+      "先にお送りしたお支払いリンクの有効期限が切れましたため、新しいリンクをお送りいたします。以前のメールに記載のリンクは無効となりますので、本メールのリンクをご利用ください。",
+  });
+  return getResend().emails.send({
+    from: MAIL_FROM,
+    to,
+    subject: `【ParkTec】お支払いリンク再送のご案内（${safe(date)}）`,
+    html,
+    text,
   });
 }
 
