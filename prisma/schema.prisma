@@ -1036,6 +1036,9 @@ model EventMonthlyOffer {
   createdAt                    DateTime @default(now())
   updatedAt                    DateTime @updatedAt
   expiresAt                    DateTime?
+  resendCount                  Int      @default(0)
+  lastResendAt                 DateTime?
+  releasedBy                   String?
 
   @@unique([spotId, date])   // 1区画×1日=1オファー（先着1人固定・次に回さない）
   @@index([placeId, date])
