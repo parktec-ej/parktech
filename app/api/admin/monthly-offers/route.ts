@@ -84,6 +84,7 @@ export async function GET(req: Request) {
         applicantCheckoutSession: true,
         applicantReservationId: true,
         linkExpiresAt: true,
+        resendCount: true,
         createdAt: true,
         updatedAt: true,
       },
@@ -205,6 +206,7 @@ export async function GET(req: Request) {
         linkExpiresAtIsEstimate,
         linkExpired,
         needsAction,
+        resendCount: o.resendCount,
         createdAt: o.createdAt,
         updatedAt: o.updatedAt,
       };

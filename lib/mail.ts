@@ -1173,6 +1173,39 @@ ${safe(date)} の ${safe(placeName)}（${safe(spotLabel)}）は、当日その�
   });
 }
 
+// 管理者による代理リリース時、月極契約者へ「回答が無かったため一般の方へお譲りした」旨を通知。
+export async function sendMonthlyProxyReleasedMail(params: {
+  to: string;
+  tenantName: string;
+  placeName: string;
+  spotLabel: string;
+  date: string;
+}) {
+  const { to, tenantName, placeName, spotLabel, date } = params;
+  return getResend().emails.send({
+    from: MAIL_FROM,
+    to,
+    subject: `【ParkTec】${safe(date)} のイベント枠を一般の方へお譲りしました`,
+    html: `
+      <div style="font-family:Arial,sans-serif;line-height:1.8;color:#111">
+        <h2>イベント枠のご案内</h2>
+        <p>${safe(tenantName)} 様</p>
+        <p>${safe(date)} のイベント開催日について、${safe(placeName)} のご利用区画（${safe(spotLabel)}）は、
+        期日までに「利用する／利用しない」のご回答が確認できなかったため、<strong>一般の利用希望者へお譲りしました</strong>。</p>
+        <p>そのため、当日は当該区画をご利用いただけません。あらかじめご了承ください。</p>
+        <hr style="margin:24px 0" /><p>パークテックイーストジャパン</p>
+      </div>
+    `,
+    text: `イベント枠のご案内。
+${safe(tenantName)} 様
+
+${safe(date)} の ${safe(placeName)}（${safe(spotLabel)}）は、期日までにご回答が確認できなかったため、一般の利用希望者へお譲りしました。
+当日は当該区画をご利用いただけません。あらかじめご了承ください。
+
+パークテックイーストジャパン`.trim(),
+  });
+}
+
 export async function sendUnexitNoticeMail(params: {
   to: string;
   placeName: string;

@@ -57,6 +57,7 @@ type OfferItem = {
   linkExpiresAtIsEstimate: boolean;
   linkExpired: boolean;
   needsAction: boolean;
+  resendCount: number;
   createdAt: string;
   updatedAt: string;
 };
@@ -112,10 +113,33 @@ const RESPONSE_LABEL: Record<string, string> = {
   EXPIRED: "期限切れ",
 };
 
-const RESEND_ERROR_LABEL: Record<string, string> = {
-  already_reserved: "既に予約が入っているため再送できません",
-  past_deadline: "締切を過ぎているため再送できません",
+const ACTION_ERROR_LABEL: Record<string, string> = {
+  already_reserved: "既に予約が入っているため実行できません",
+  past_deadline: "締切を過ぎているため実行できません",
   no_valid_window: "有効な期限を設定できません",
+};
+
+type ActionKind = "resend" | "release" | "expire";
+
+const ACTION_CONFIG: Record<
+  ActionKind,
+  { endpoint: string; label: string; success: string }
+> = {
+  resend: {
+    endpoint: "/api/admin/monthly-offers/resend",
+    label: "決済リンクを再送します",
+    success: "決済リンクを再送しました。",
+  },
+  release: {
+    endpoint: "/api/admin/monthly-offers/release",
+    label: "月極を承認し、申請者へ決済リンクを送信します",
+    success: "承認し、申請者へ決済リンクを送信しました。",
+  },
+  expire: {
+    endpoint: "/api/admin/monthly-offers/expire",
+    label: "この申請を無効化して予約を開放します",
+    success: "予約を開放しました。",
+  },
 };
 
 function SummaryCard({ title, value }: { title: string; value: number }) {
@@ -147,6 +171,70 @@ function SessionIdCell({ value }: { value: string | null }) {
         }}
       >
         {copied ? "済" : "コピー"}
+      </button>
+    </span>
+  );
+}
+
+// 行の状態に応じて操作ボタンを出し分ける。
+//  - RELEASED かつ未予約 → 「決済リンク再送」「予約開放」
+//  - WAITING / TENANT_CHARGE_PENDING（未予約） → 「月極承認」「予約開放」
+function RowActions({
+  o,
+  busy,
+  run,
+}: {
+  o: OfferItem;
+  busy: boolean;
+  run: (o: OfferItem, kind: ActionKind) => void;
+}) {
+  const unreserved = o.reservation == null;
+  const releasedUnreserved = o.status === "RELEASED" && unreserved;
+  const waitingLike =
+    (o.status === "WAITING" || o.status === "TENANT_CHARGE_PENDING") && unreserved;
+
+  if (!releasedUnreserved && !waitingLike) {
+    return <span style={{ color: "#9ca3af" }}>-</span>;
+  }
+
+  const primaryStyle = {
+    ...styles.actionBtn,
+    ...(busy ? styles.actionBtnDisabled : null),
+  };
+  const expireStyle = {
+    ...styles.expireBtn,
+    ...(busy ? styles.actionBtnDisabled : null),
+  };
+
+  return (
+    <span style={{ display: "inline-flex", gap: 6, flexWrap: "wrap" }}>
+      {releasedUnreserved ? (
+        <button
+          type="button"
+          style={primaryStyle}
+          disabled={busy}
+          onClick={() => run(o, "resend")}
+        >
+          {busy ? "処理中…" : "決済リンク再送"}
+        </button>
+      ) : null}
+      {waitingLike ? (
+        <button
+          type="button"
+          style={primaryStyle}
+          disabled={busy}
+          onClick={() => run(o, "release")}
+        >
+          {busy ? "処理中…" : "月極承認"}
+        </button>
+      ) : null}
+      <button
+        type="button"
+        style={expireStyle}
+        disabled={busy}
+        onClick={() => run(o, "expire")}
+      >
+        {busy ? "処理中…" : "予約開放"}
       </button>
     </span>
   );
@@ -195,22 +283,23 @@ function MonthlyOffersInner() {
     }
   }, [placeId, from, to, status]);
 
-  const [resendingId, setResendingId] = useState<string | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
 
-  const handleResend = useCallback(
-    async (o: OfferItem) => {
+  const runAction = useCallback(
+    async (o: OfferItem, kind: ActionKind) => {
+      const cfg = ACTION_CONFIG[kind];
       const spotLabel = o.spot?.label ?? o.spot?.code ?? "-";
       const ok = window.confirm(
-        `以下の申請者へ決済リンクを再送します。よろしいですか？\n\n` +
+        `${cfg.label}。よろしいですか？\n\n` +
           `申請者: ${o.applicantName ?? "-"}\n` +
           `メール: ${o.applicantEmail ?? "-"}\n` +
           `区画: ${spotLabel}\n` +
           `日付: ${o.date}`
       );
       if (!ok) return;
-      setResendingId(o.id);
+      setBusyId(o.id);
       try {
-        const res = await fetch("/api/admin/monthly-offers/resend", {
+        const res = await fetch(cfg.endpoint, {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ offerId: o.id }),
@@ -221,17 +310,17 @@ function MonthlyOffersInner() {
         if (!res.ok || !json?.ok) {
           const code = json?.error ?? "";
           const msg =
-            RESEND_ERROR_LABEL[code] ??
+            ACTION_ERROR_LABEL[code] ??
             json?.message ??
-            `再送に失敗しました (${code || res.status})`;
+            `実行に失敗しました (${code || res.status})`;
           window.alert(msg);
         } else {
-          window.alert("決済リンクを再送しました。");
+          window.alert(cfg.success);
         }
       } catch (e: unknown) {
         window.alert(e instanceof Error ? e.message : String(e));
       } finally {
-        setResendingId(null);
+        setBusyId(null);
         // 最新状態（already_reserved 等の反映含む）を再取得
         await load();
       }
@@ -332,6 +421,7 @@ function MonthlyOffersInner() {
                     "リンク期限",
                     "予約",
                     "セッションID",
+                    "再送回数",
                     "操作",
                   ].map((h) => (
                     <th key={h} style={styles.th}>
@@ -343,7 +433,7 @@ function MonthlyOffersInner() {
               <tbody>
                 {rows.length === 0 ? (
                   <tr>
-                    <td style={styles.td} colSpan={12}>
+                    <td style={styles.td} colSpan={13}>
                       {loading ? "読み込み中..." : "該当するオファーはありません。"}
                     </td>
                   </tr>
@@ -406,24 +496,11 @@ function MonthlyOffersInner() {
                         <td style={styles.td}>
                           <SessionIdCell value={o.applicantCheckoutSession} />
                         </td>
+                        <td style={{ ...styles.td, textAlign: "center" }}>
+                          {o.resendCount}
+                        </td>
                         <td style={styles.td}>
-                          {o.needsAction ? (
-                            <button
-                              type="button"
-                              style={{
-                                ...styles.resendBtn,
-                                ...(resendingId === o.id
-                                  ? styles.resendBtnDisabled
-                                  : null),
-                              }}
-                              disabled={resendingId === o.id}
-                              onClick={() => handleResend(o)}
-                            >
-                              {resendingId === o.id ? "送信中…" : "決済リンク再送"}
-                            </button>
-                          ) : (
-                            "-"
-                          )}
+                          <RowActions o={o} busy={busyId === o.id} run={runAction} />
                         </td>
                       </tr>
                     );
@@ -558,7 +635,7 @@ const styles: Record<string, React.CSSProperties> = {
     padding: "2px 6px",
     cursor: "pointer",
   },
-  resendBtn: {
+  actionBtn: {
     fontSize: 12,
     fontWeight: 700,
     border: "1px solid #b45309",
@@ -569,7 +646,18 @@ const styles: Record<string, React.CSSProperties> = {
     cursor: "pointer",
     whiteSpace: "nowrap",
   },
-  resendBtnDisabled: {
+  expireBtn: {
+    fontSize: 12,
+    fontWeight: 700,
+    border: "1px solid #b91c1c",
+    background: "#fff",
+    color: "#b91c1c",
+    borderRadius: 8,
+    padding: "6px 10px",
+    cursor: "pointer",
+    whiteSpace: "nowrap",
+  },
+  actionBtnDisabled: {
     background: "#e5e7eb",
     borderColor: "#d1d5db",
     color: "#9ca3af",

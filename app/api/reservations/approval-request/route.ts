@@ -114,7 +114,10 @@ export async function POST(req: NextRequest) {
     });
     const expiresAt = new Date(`${deadlineYmd}T23:59:59+09:00`);
 
-    // 先着ロック：@@unique([spotId,date]) 違反(P2002)なら「他の方が申請中」
+    // 先着ロック：@@unique([spotId,date]) 違反(P2002)なら「他の方が申請中」。
+    // ただし既存が EXPIRED（管理者が予約開放した等・未予約）なら、その行を
+    // 新しい申請者で上書きして再受付する。
+    let offerId: string;
     try {
       const offer = await prisma.eventMonthlyOffer.create({
         data: {
@@ -131,49 +134,85 @@ export async function POST(req: NextRequest) {
         },
         select: { id: true },
       });
-
-      // ③-2 月極利用者へ「利用する／利用しない」通知メール（送信失敗しても申請は成立）
-      try {
-        const info = await prisma.monthlyContract.findUnique({
-          where: { id: contract.id },
-          select: {
-            tenant: { select: { email: true, name: true } },
-            place: { select: { name: true } },
-          },
-        });
-        if (info?.tenant?.email) {
-          const useUrl = `${appUrl}/api/tenant/event-response/offer-use?token=${encodeURIComponent(
-            signEventToken({ c: contract.id, d: date, a: "offer_use" })
-          )}`;
-          const declineUrl = `${appUrl}/api/tenant/event-response/offer-decline?token=${encodeURIComponent(
-            signEventToken({ c: contract.id, d: date, a: "offer_decline" })
-          )}`;
-          await sendMonthlyOfferNoticeMail({
-            to: info.tenant.email,
-            tenantName: info.tenant.name ?? "",
-            placeName: info.place?.name ?? "",
-            spotLabel: spot.code,
-            date,
-            useUrl,
-            declineUrl,
-            dashboardUrl: `${appUrl}/tenant/dashboard`,
-            deadlineNote: `${deadlineYmd}（開催${MONTHLY_EVENT_OFFER_DEADLINE_DAYS}日前）まで`,
-          });
-        }
-      } catch (e) {
-        console.error("offer notice mail failed:", e);
-      }
-
-      return NextResponse.json({ ok: true, offerId: offer.id });
+      offerId = offer.id;
     } catch (e) {
       if (
-        e instanceof Prisma.PrismaClientKnownRequestError &&
-        e.code === "P2002"
+        !(e instanceof Prisma.PrismaClientKnownRequestError) ||
+        e.code !== "P2002"
+      ) {
+        throw e;
+      }
+      const existing = await prisma.eventMonthlyOffer.findUnique({
+        where: { spotId_date: { spotId, date } },
+        select: { id: true, status: true, applicantReservationId: true },
+      });
+      if (
+        !existing ||
+        existing.status !== "EXPIRED" ||
+        existing.applicantReservationId != null
       ) {
         return jsonError("この区画は他の方が申請中です", 409, "already_requested");
       }
-      throw e;
+      // EXPIRED の行のみを狙って原子的に再受付（前回のリリース情報はリセット）
+      const reclaimed = await prisma.eventMonthlyOffer.updateMany({
+        where: {
+          id: existing.id,
+          status: "EXPIRED",
+          applicantReservationId: null,
+        },
+        data: {
+          applicantName: name,
+          applicantEmail: email,
+          applicantPhone: phone || null,
+          applicantPlate: plate,
+          status: "WAITING",
+          expiresAt,
+          applicantCheckoutSession: null,
+          linkExpiresAt: null,
+          releasedBy: null,
+          resendCount: 0,
+          lastResendAt: null,
+        },
+      });
+      if (reclaimed.count !== 1) {
+        return jsonError("この区画は他の方が申請中です", 409, "already_requested");
+      }
+      offerId = existing.id;
     }
+
+    // ③-2 月極利用者へ「利用する／利用しない」通知メール（送信失敗しても申請は成立）
+    try {
+      const info = await prisma.monthlyContract.findUnique({
+        where: { id: contract.id },
+        select: {
+          tenant: { select: { email: true, name: true } },
+          place: { select: { name: true } },
+        },
+      });
+      if (info?.tenant?.email) {
+        const useUrl = `${appUrl}/api/tenant/event-response/offer-use?token=${encodeURIComponent(
+          signEventToken({ c: contract.id, d: date, a: "offer_use" })
+        )}`;
+        const declineUrl = `${appUrl}/api/tenant/event-response/offer-decline?token=${encodeURIComponent(
+          signEventToken({ c: contract.id, d: date, a: "offer_decline" })
+        )}`;
+        await sendMonthlyOfferNoticeMail({
+          to: info.tenant.email,
+          tenantName: info.tenant.name ?? "",
+          placeName: info.place?.name ?? "",
+          spotLabel: spot.code,
+          date,
+          useUrl,
+          declineUrl,
+          dashboardUrl: `${appUrl}/tenant/dashboard`,
+          deadlineNote: `${deadlineYmd}（開催${MONTHLY_EVENT_OFFER_DEADLINE_DAYS}日前）まで`,
+        });
+      }
+    } catch (e) {
+      console.error("offer notice mail failed:", e);
+    }
+
+    return NextResponse.json({ ok: true, offerId });
   } catch (error) {
     console.error("approval-request error:", error);
     return jsonError("申請処理に失敗しました", 500, "server_error");
