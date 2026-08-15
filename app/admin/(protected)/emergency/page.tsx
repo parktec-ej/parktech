@@ -344,7 +344,7 @@ function EmergencyPageInner() {
                     <div style={{ fontWeight: 800 }}>{r.name}</div>
                     <div style={pillStyle(r.status === "CANCELED" ? "#dc2626" : r.checkedIn ? "#0369a1" : "#16a34a")}>
                       {r.status === "CANCELED"
-                        ? "キャンセル"
+                        ? "キャンセル済み"
                         : r.checkedOutAt
                         ? "出庫済"
                         : r.checkedIn

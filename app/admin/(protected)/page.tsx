@@ -201,6 +201,7 @@ export default async function AdminHomePage({
         checkedOutAt: true,
         createdAt: true,
         spotId: true,
+        status: true,
       },
     }),
 
@@ -310,12 +311,19 @@ export default async function AdminHomePage({
     }),
   ]);
 
-  const paidReservations = reservationsTargetDay.filter((r) => r.paid);
-  const unpaidReservations = reservationsTargetDay.filter((r) => !r.paid);
+  const paidReservations = reservationsTargetDay.filter(
+    (r) => r.status !== "CANCELED" && r.paid
+  );
+  const unpaidReservations = reservationsTargetDay.filter(
+    (r) => r.status !== "CANCELED" && !r.paid
+  );
   const reservedWaiting = reservationsTargetDay.filter(
-    (r) => r.paid && !r.checkedIn && !r.checkedOutAt
+    (r) => r.status !== "CANCELED" && r.paid && !r.checkedIn && !r.checkedOutAt
   );
   const checkedOutReservations = reservationsTargetDay.filter((r) => !!r.checkedOutAt);
+  const canceledReservations = reservationsTargetDay.filter(
+    (r) => r.status === "CANCELED"
+  );
 
   const hourlyPaidTargetDay = hourlyOutSessions.filter((s) => {
     if (!s.paidAt) return false;
@@ -584,7 +592,7 @@ export default async function AdminHomePage({
         <SummaryCard
           title="予約件数"
           value={`${reservationsTargetDay.length} 件`}
-          sub={`決済済 ${paidReservations.length} / 未決済 ${unpaidReservations.length}`}
+          sub={`決済済 ${paidReservations.length} / 未決済 ${unpaidReservations.length} / キャンセル ${canceledReservations.length}`}
         />
         <SummaryCard
           title="長時間アラート"

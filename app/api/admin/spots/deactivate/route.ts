@@ -64,6 +64,7 @@ export async function POST(req: Request) {
     const futureReservationCount = await prisma.reservation.count({
       where: {
         spotId,
+        status: "CONFIRMED",
         checkedOutAt: null,
         date: {
           gte: today,
