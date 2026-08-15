@@ -70,7 +70,15 @@ function AdminTabs() {
       <NavLink
         href="/admin/monthly"
         label="🏠 月極契約"
-        current={pathname.startsWith("/admin/monthly")}
+        current={
+          pathname.startsWith("/admin/monthly") &&
+          !pathname.startsWith("/admin/monthly-offers")
+        }
+      />
+      <NavLink
+        href={withCurrentPlace("/admin/monthly-offers", searchParams)}
+        label="🗓️ 月極イベント枠"
+        current={pathname.startsWith("/admin/monthly-offers")}
       />
       <NavLink
         href={withCurrentPlace("/admin/pricing", searchParams)}
