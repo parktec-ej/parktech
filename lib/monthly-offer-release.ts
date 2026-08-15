@@ -32,7 +32,7 @@ export type ReleaseOfferResult =
  * オファーを申請者へリリース（＝決済リンクを発行）する共通処理。
  *
  * 事前検証 → 旧 Checkout Session の失効 → 価格再計算 → 新 Checkout Session 作成
- * → offer 更新（applicantCheckoutSession / expiresAt / status="RELEASED" / releasedBy）
+ * → offer 更新（applicantCheckoutSession / linkExpiresAt / status="RELEASED" / releasedBy）
  * → 申請者への決済案内メール送信、までを担う。
  *
  * Slack 通知は呼び出し側（再送・代理リリース・cron で文面が変わる）の責務とし、
@@ -161,7 +161,8 @@ export async function releaseOfferToApplicant(
     where: { id: offer.id },
     data: {
       applicantCheckoutSession: checkout.id,
-      expiresAt: new Date(expiresMs),
+      // 決済リンクの失効時刻は linkExpiresAt に書く。expiresAt（申請の受付締切）は触らない。
+      linkExpiresAt: new Date(expiresMs),
       status: "RELEASED",
       releasedBy,
     },

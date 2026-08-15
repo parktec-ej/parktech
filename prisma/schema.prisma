@@ -1035,7 +1035,11 @@ model EventMonthlyOffer {
   applicantReservationId       String?
   createdAt                    DateTime @default(now())
   updatedAt                    DateTime @updatedAt
+  // 申請の受付締切（開催 MONTHLY_EVENT_OFFER_DEADLINE_DAYS 日前の 23:59:59 JST）。
+  // approval-request（申請時）が設定する。決済リンクの失効時刻ではない点に注意。
   expiresAt                    DateTime?
+  // 申請者向け決済リンク（Stripe Checkout）の失効時刻。release / resend 時に設定する。
+  linkExpiresAt                DateTime?
   resendCount                  Int      @default(0)
   lastResendAt                 DateTime?
   releasedBy                   String?

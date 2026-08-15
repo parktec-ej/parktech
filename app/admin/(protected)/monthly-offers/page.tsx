@@ -54,6 +54,7 @@ type OfferItem = {
   applicantCheckoutSession: string | null;
   reservation: { id: string; slot: string; paid: boolean; status: string } | null;
   linkExpiresAt: string | null;
+  linkExpiresAtIsEstimate: boolean;
   linkExpired: boolean;
   needsAction: boolean;
   createdAt: string;
@@ -387,6 +388,9 @@ function MonthlyOffersInner() {
                             >
                               {fmtDateTime(o.linkExpiresAt)}
                               {o.linkExpired ? "（失効）" : ""}
+                              {o.linkExpiresAtIsEstimate ? (
+                                <span style={styles.estimateNote}>(推定)</span>
+                              ) : null}
                             </span>
                           ) : (
                             "-"
@@ -570,5 +574,10 @@ const styles: Record<string, React.CSSProperties> = {
     borderColor: "#d1d5db",
     color: "#9ca3af",
     cursor: "not-allowed",
+  },
+  estimateNote: {
+    marginLeft: 4,
+    fontSize: 11,
+    color: "#9ca3af",
   },
 };

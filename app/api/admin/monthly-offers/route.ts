@@ -83,7 +83,7 @@ export async function GET(req: Request) {
         applicantPlate: true,
         applicantCheckoutSession: true,
         applicantReservationId: true,
-        expiresAt: true,
+        linkExpiresAt: true,
         createdAt: true,
         updatedAt: true,
       },
@@ -150,16 +150,20 @@ export async function GET(req: Request) {
       const deadline = ymdPlusDays(o.date, -MONTHLY_EVENT_OFFER_DEADLINE_DAYS);
 
       // RELEASED かつ Checkout セッションがあるときのみ、リンク失効を判定する。
-      // 明示保存された expiresAt があればそれを優先し、無い場合のみ
-      // updatedAt + 24h の推定（Stripe デフォルト有効期限）にフォールバックする。
+      // linkExpiresAt（release/resend が設定する決済リンクの失効時刻）があればそれを使い、
+      // 無い場合のみ updatedAt + 24h の推定（Stripe デフォルト有効期限）にフォールバックする。
+      // 申請の受付締切（expiresAt）や deadline はここには一切関与させない。
       let linkExpiresAt: string | null = null;
       let linkExpired = false;
+      let linkExpiresAtIsEstimate = false;
       if (o.status === "RELEASED" && o.applicantCheckoutSession) {
-        const exp = o.expiresAt
-          ? new Date(o.expiresAt).getTime()
+        const isEstimate = o.linkExpiresAt == null;
+        const exp = o.linkExpiresAt
+          ? new Date(o.linkExpiresAt).getTime()
           : new Date(o.updatedAt).getTime() + LINK_TTL_MS;
         linkExpiresAt = new Date(exp).toISOString();
         linkExpired = now > exp;
+        linkExpiresAtIsEstimate = isEstimate;
       }
 
       const needsAction =
@@ -198,6 +202,7 @@ export async function GET(req: Request) {
             }
           : null,
         linkExpiresAt,
+        linkExpiresAtIsEstimate,
         linkExpired,
         needsAction,
         createdAt: o.createdAt,
