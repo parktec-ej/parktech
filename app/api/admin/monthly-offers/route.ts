@@ -83,6 +83,7 @@ export async function GET(req: Request) {
         applicantPlate: true,
         applicantCheckoutSession: true,
         applicantReservationId: true,
+        expiresAt: true,
         createdAt: true,
         updatedAt: true,
       },
@@ -148,11 +149,15 @@ export async function GET(req: Request) {
 
       const deadline = ymdPlusDays(o.date, -MONTHLY_EVENT_OFFER_DEADLINE_DAYS);
 
-      // RELEASED かつ Checkout セッションがあるときのみ、リンク失効を推定する。
+      // RELEASED かつ Checkout セッションがあるときのみ、リンク失効を判定する。
+      // 明示保存された expiresAt があればそれを優先し、無い場合のみ
+      // updatedAt + 24h の推定（Stripe デフォルト有効期限）にフォールバックする。
       let linkExpiresAt: string | null = null;
       let linkExpired = false;
       if (o.status === "RELEASED" && o.applicantCheckoutSession) {
-        const exp = new Date(o.updatedAt).getTime() + LINK_TTL_MS;
+        const exp = o.expiresAt
+          ? new Date(o.expiresAt).getTime()
+          : new Date(o.updatedAt).getTime() + LINK_TTL_MS;
         linkExpiresAt = new Date(exp).toISOString();
         linkExpired = now > exp;
       }

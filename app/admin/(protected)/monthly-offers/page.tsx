@@ -111,6 +111,12 @@ const RESPONSE_LABEL: Record<string, string> = {
   EXPIRED: "期限切れ",
 };
 
+const RESEND_ERROR_LABEL: Record<string, string> = {
+  already_reserved: "既に予約が入っているため再送できません",
+  past_deadline: "締切を過ぎているため再送できません",
+  no_valid_window: "有効な期限を設定できません",
+};
+
 function SummaryCard({ title, value }: { title: string; value: number }) {
   return (
     <div style={styles.summaryCard}>
@@ -188,6 +194,50 @@ function MonthlyOffersInner() {
     }
   }, [placeId, from, to, status]);
 
+  const [resendingId, setResendingId] = useState<string | null>(null);
+
+  const handleResend = useCallback(
+    async (o: OfferItem) => {
+      const spotLabel = o.spot?.label ?? o.spot?.code ?? "-";
+      const ok = window.confirm(
+        `以下の申請者へ決済リンクを再送します。よろしいですか？\n\n` +
+          `申請者: ${o.applicantName ?? "-"}\n` +
+          `メール: ${o.applicantEmail ?? "-"}\n` +
+          `区画: ${spotLabel}\n` +
+          `日付: ${o.date}`
+      );
+      if (!ok) return;
+      setResendingId(o.id);
+      try {
+        const res = await fetch("/api/admin/monthly-offers/resend", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ offerId: o.id }),
+        });
+        const json = (await res.json().catch(() => null)) as
+          | { ok?: boolean; error?: string; message?: string }
+          | null;
+        if (!res.ok || !json?.ok) {
+          const code = json?.error ?? "";
+          const msg =
+            RESEND_ERROR_LABEL[code] ??
+            json?.message ??
+            `再送に失敗しました (${code || res.status})`;
+          window.alert(msg);
+        } else {
+          window.alert("決済リンクを再送しました。");
+        }
+      } catch (e: unknown) {
+        window.alert(e instanceof Error ? e.message : String(e));
+      } finally {
+        setResendingId(null);
+        // 最新状態（already_reserved 等の反映含む）を再取得
+        await load();
+      }
+    },
+    [load]
+  );
+
   useEffect(() => {
     load();
   }, [load]);
@@ -205,7 +255,7 @@ function MonthlyOffersInner() {
     <main style={styles.page}>
       <h1 style={styles.h1}>月極イベント枠 承認状況</h1>
       <p style={styles.note}>
-        参照専用です。状態の書き換えや決済リンクの再送はこの画面では行いません。
+        原則参照専用です。要対応（決済待ちで未申請）の行のみ、決済リンクの再送が行えます。
       </p>
 
       {!placeId ? (
@@ -281,6 +331,7 @@ function MonthlyOffersInner() {
                     "リンク期限",
                     "予約",
                     "セッションID",
+                    "操作",
                   ].map((h) => (
                     <th key={h} style={styles.th}>
                       {h}
@@ -291,7 +342,7 @@ function MonthlyOffersInner() {
               <tbody>
                 {rows.length === 0 ? (
                   <tr>
-                    <td style={styles.td} colSpan={11}>
+                    <td style={styles.td} colSpan={12}>
                       {loading ? "読み込み中..." : "該当するオファーはありません。"}
                     </td>
                   </tr>
@@ -350,6 +401,25 @@ function MonthlyOffersInner() {
                         </td>
                         <td style={styles.td}>
                           <SessionIdCell value={o.applicantCheckoutSession} />
+                        </td>
+                        <td style={styles.td}>
+                          {o.needsAction ? (
+                            <button
+                              type="button"
+                              style={{
+                                ...styles.resendBtn,
+                                ...(resendingId === o.id
+                                  ? styles.resendBtnDisabled
+                                  : null),
+                              }}
+                              disabled={resendingId === o.id}
+                              onClick={() => handleResend(o)}
+                            >
+                              {resendingId === o.id ? "送信中…" : "決済リンク再送"}
+                            </button>
+                          ) : (
+                            "-"
+                          )}
                         </td>
                       </tr>
                     );
@@ -483,5 +553,22 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 6,
     padding: "2px 6px",
     cursor: "pointer",
+  },
+  resendBtn: {
+    fontSize: 12,
+    fontWeight: 700,
+    border: "1px solid #b45309",
+    background: "#f59e0b",
+    color: "#111827",
+    borderRadius: 8,
+    padding: "6px 10px",
+    cursor: "pointer",
+    whiteSpace: "nowrap",
+  },
+  resendBtnDisabled: {
+    background: "#e5e7eb",
+    borderColor: "#d1d5db",
+    color: "#9ca3af",
+    cursor: "not-allowed",
   },
 };
