@@ -17,9 +17,9 @@ import {
   MONTHLY_SLOT_CODES,
   OCCUPYING_STATUSES,
   MONTHLY_EVENT_OFFER_DEADLINE_DAYS,
-  MONTHLY_EVENT_RESPONSE_DEADLINE_DAYS,
   MONTHLY_EVENT_PRE_RESPONSE_START_YMD,
 } from "@/lib/monthly-config";
+import { isMonthlySpotReleasedForEvent } from "@/lib/monthly-event-release";
 
 const DEFAULT_DAYS = 90;
 const MAX_DAYS = 180;
@@ -252,33 +252,6 @@ export async function GET(req: Request) {
         .filter((c) => Boolean(c.spotId))
         .map((c) => c.spotId as string)
     );
-    // 事前回答方式で使う spotId -> contractId。回答は必ず contractId 経由で引く
-    // （spotId 経由だと解約済み契約が混ざるため）。
-    const contractBySpot = new Map<string, string>(
-      occupyingContracts
-        .filter((c) => Boolean(c.spotId))
-        .map((c) => [c.spotId as string, c.id])
-    );
-
-    // 事前回答方式の対象日（切替日以降）についてのみ MonthlyEventResponse を範囲取得。
-    // key = `${contractId}|${date}` -> status。レコード無し＝未回答。
-    const preResponseDates = dates.filter(
-      (d) => d >= MONTHLY_EVENT_PRE_RESPONSE_START_YMD
-    );
-    const allContractIds = [...new Set(occupyingContracts.map((c) => c.id))];
-    const responsesRaw =
-      allContractIds.length && preResponseDates.length
-        ? await prisma.monthlyEventResponse.findMany({
-            where: {
-              contractId: { in: allContractIds },
-              date: { in: preResponseDates },
-            },
-            select: { contractId: true, date: true, status: true },
-          })
-        : [];
-    const responseByKey = new Map<string, string>(
-      responsesRaw.map((r) => [`${r.contractId}|${r.date}`, r.status])
-    );
 
     // EventMonthlyOffer を範囲取得（レコードの有無のみで判定・status は問わない）。
     // 月極契約が押さえている区画が1つも無い場合はクエリを発行しない。
@@ -372,34 +345,21 @@ export async function GET(req: Request) {
       if (soldOut[ymd] && place.slug === MONTHLY_PLACE_SLUG) {
         if (ymd >= MONTHLY_EVENT_PRE_RESPONSE_START_YMD) {
           // ===== 事前回答方式（2026-09-01 以降）=====
-          // held 月極区画（当日 CONFIRMED 予約無し）が1つでも「開放」条件を満たせば true。
-          const responseDeadline = ymdToUtcDate(ymd);
-          responseDeadline.setUTCDate(
-            responseDeadline.getUTCDate() - MONTHLY_EVENT_RESPONSE_DEADLINE_DAYS
+          // 契約保持かつ当日 CONFIRMED 予約無しの月極区画が1つでも共通関数で
+          // 「開放」と判定されれば true（reservations GET と完全に同一判定）。
+          const candidates = spots.filter(
+            (s) =>
+              (MONTHLY_SLOT_CODES as readonly string[]).includes(s.code) &&
+              contractSpotIds.has(s.id) &&
+              !(reserved?.spotIds.has(s.id) ?? false) &&
+              !(reserved?.slots.has(normalizeSlot(s.code)) ?? false)
           );
-          const pastResponseDeadline =
-            startYmd > responseDeadline.toISOString().slice(0, 10);
-
-          approvalOk = spots.some((s) => {
-            if (!(MONTHLY_SLOT_CODES as readonly string[]).includes(s.code)) {
-              return false;
+          for (const s of candidates) {
+            if (await isMonthlySpotReleasedForEvent(s.id, ymd)) {
+              approvalOk = true;
+              break;
             }
-            const contractId = contractBySpot.get(s.id);
-            if (!contractId) return false; // 契約が押さえていない区画は対象外
-            // 当日 CONFIRMED 予約がある区画は対象外（決済済＝確定枠）
-            if (
-              (reserved?.spotIds.has(s.id) ?? false) ||
-              (reserved?.slots.has(normalizeSlot(s.code)) ?? false)
-            ) {
-              return false;
-            }
-            const resp = responseByKey.get(`${contractId}|${ymd}`); // undefined＝未回答
-            if (resp === "DECLINED" || resp === "EXPIRED" || resp === "RESERVED") {
-              return true;
-            }
-            // 未回答（レコード無し）または NOTIFIED → 締切後のみ開放
-            return pastResponseDeadline;
-          });
+          }
         } else {
           // ===== 既存の承認フロー方式（2026-09-01 未満・従来どおり）=====
           // 受付窓：today(JST) <= 開催日 - MONTHLY_EVENT_OFFER_DEADLINE_DAYS 日

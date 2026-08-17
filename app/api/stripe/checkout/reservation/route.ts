@@ -13,6 +13,7 @@ import {
   MONTHLY_SLOT_CODES,
   OCCUPYING_STATUSES,
 } from "@/lib/monthly-config";
+import { isMonthlySpotReleasedForEvent } from "@/lib/monthly-event-release";
 
 export const runtime = "nodejs";
 export const preferredRegion = "hnd1";
@@ -166,7 +167,9 @@ export async function POST(req: NextRequest) {
         where: { spotId: spot.id, status: { in: [...OCCUPYING_STATUSES] } },
         select: { id: true },
       });
-      if (occupying) {
+      // 契約保持中でも、事前回答方式でそのイベント日に開放されていれば通過させる
+      // （GET と完全に同一判定）。直後の EVENT_ONLY モード判定でイベント日以外は弾かれる。
+      if (occupying && !(await isMonthlySpotReleasedForEvent(spot.id, date))) {
         return jsonError(
           "この区画は月極契約者専有のため予約できません",
           409,
