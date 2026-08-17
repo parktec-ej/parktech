@@ -22,6 +22,17 @@ export const MONTHLY_EVENT_DEADLINE_DAYS = 14;
 // 「満車時点〜開催◯日前まで」承認待ちを受け付け、月極の回答期限も同じ。
 export const MONTHLY_EVENT_OFFER_DEADLINE_DAYS = 3;
 
+// 事前回答方式：未回答（レコード無し）／NOTIFIED の月極区画を「保留」する締切。
+// 開催 MONTHLY_EVENT_RESPONSE_DEADLINE_DAYS 日前までは保留（選択不可）、
+// これを過ぎたら一般在庫として開放する。MONTHLY_EVENT_OFFER_DEADLINE_DAYS とは別概念。
+export const MONTHLY_EVENT_RESPONSE_DEADLINE_DAYS = 14;
+
+// イベント日の月極区画を「承認フロー方式」から「事前回答方式」へ切り替える起点日（JST・YYYY-MM-DD）。
+// この日以降のイベント日のみ MonthlyEventResponse による即時判定を使う。
+// これ未満は既存の EventMonthlyOffer 方式を完全に維持する（8月分の旧フロー保護）。
+// reservations GET と public/availability の両方で同一の値を参照し判定を一致させる。
+export const MONTHLY_EVENT_PRE_RESPONSE_START_YMD = "2026-09-01";
+
 // 拠点別の月極ポリシー。料金とイベント二次流通の有無は区画モードでは表せないため拠点configで持つ。
 export type MonthlyPlacePolicy = { feeYen: number; hasEventOffer: boolean };
 export const MONTHLY_PLACE_POLICIES: Record<string, MonthlyPlacePolicy> = {

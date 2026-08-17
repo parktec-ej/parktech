@@ -16,6 +16,8 @@ import {
   MONTHLY_SLOT_CODES,
   OCCUPYING_STATUSES,
   MONTHLY_EVENT_OFFER_DEADLINE_DAYS,
+  MONTHLY_EVENT_RESPONSE_DEADLINE_DAYS,
+  MONTHLY_EVENT_PRE_RESPONSE_START_YMD,
 } from "@/lib/monthly-config";
 
 type EventDayLite = {
@@ -417,12 +419,16 @@ export async function GET(req: NextRequest) {
     const offerDeadlineYmd = offerDeadline.toISOString().slice(0, 10);
     const offerWindowOpen = ymdTodayJst() <= offerDeadlineYmd;
 
-    if (
-      place.slug === MONTHLY_PLACE_SLUG &&
-      generalSoldOut &&
-      offerWindowOpen
-    ) {
+    // 事前回答方式（date >= 切替日）で一般開放/保留した月極区画を積む先。
+    // 保留は選択不可の "PENDING_APPROVAL" を用いるため status を広げて明示する。
+    type PreResponseSpot = Omit<(typeof availableSpots)[number], "status"> & {
+      status: "AVAILABLE" | "PENDING_APPROVAL";
+    };
+    const preResponseSpots: PreResponseSpot[] = [];
+
+    if (place.slug === MONTHLY_PLACE_SLUG && generalSoldOut) {
       // 契約が押さえている月極区画（当日予約無し）。契約有無は上で判定済み。
+      // ※CONFIRMED 予約のある月極区画はここに含まれず reservedMonthlySpots へ回る。
       const heldMonthlySpots = (spotsRaw as SpotRow[]).filter(
         (s) =>
           (MONTHLY_SLOT_CODES as readonly string[]).includes(s.code) &&
@@ -431,51 +437,116 @@ export async function GET(req: NextRequest) {
           !reservedSlots.has(normalizeSlot(s.code))
       );
 
-      if (heldMonthlySpots.length > 0) {
-        const heldSpotIds = heldMonthlySpots.map((s) => s.id);
-        // 契約(contractBySpot)は GET 冒頭で取得済み。ここではオファーのみ取得。
-        const offers = await prisma.eventMonthlyOffer.findMany({
-          where: { spotId: { in: heldSpotIds }, date },
-          select: { spotId: true, status: true },
-        });
+      // 切替日以降のイベント日のみ事前回答方式。未満は既存の承認フロー方式を完全維持。
+      const usePreResponse = date >= MONTHLY_EVENT_PRE_RESPONSE_START_YMD;
 
-        const offerBySpot = new Map(offers.map((o) => [o.spotId, o.status]));
+      if (usePreResponse) {
+        // ===== 事前回答方式（2026-09-01 以降）=====
+        // 月極契約者が事前に回答した MonthlyEventResponse で即時判定する。
+        // EventMonthlyOffer は参照も書き込みも一切行わない。
+        if (heldMonthlySpots.length > 0) {
+          // 未回答/NOTIFIED を保留する締切（開催 N 日前）。これを過ぎたら開放。
+          const responseDeadline = new Date(targetUtcDate);
+          responseDeadline.setUTCDate(
+            responseDeadline.getUTCDate() - MONTHLY_EVENT_RESPONSE_DEADLINE_DAYS
+          );
+          const responseDeadlineYmd = responseDeadline
+            .toISOString()
+            .slice(0, 10);
+          const pastResponseDeadline = ymdTodayJst() > responseDeadlineYmd;
 
-        for (const s of heldMonthlySpots) {
-          // 月極契約が押さえている区画のみ対象（契約の無い空き区画は対象外）
-          if (!contractBySpot.has(s.id)) continue;
+          // 回答は必ず contractId 経由で引く（spotId だと解約済み契約が混ざる）。
+          const heldContractIds = heldMonthlySpots
+            .map((s) => contractBySpot.get(s.id))
+            .filter((x): x is string => Boolean(x));
+          const responses = heldContractIds.length
+            ? await prisma.monthlyEventResponse.findMany({
+                where: { contractId: { in: heldContractIds }, date },
+                select: { contractId: true, status: true },
+              })
+            : [];
+          const responseByContract = new Map(
+            responses.map((r) => [r.contractId, r.status])
+          );
 
-          const offerStatus = offerBySpot.get(s.id);
-          // 既に決着済み（月極が使う/決済済/期限切れ/取消）は再提供しない＝1枠1人固定
-          if (
-            offerStatus === "TENANT_TOOK" ||
-            offerStatus === "PAID" ||
-            offerStatus === "EXPIRED" ||
-            offerStatus === "CANCELED"
-          ) {
-            continue;
+          for (const s of heldMonthlySpots) {
+            const contractId = contractBySpot.get(s.id);
+            if (!contractId) continue;
+            const resp = responseByContract.get(contractId); // undefined＝レコード無し
+
+            // heldMonthlySpots は当日 CONFIRMED 予約が無い区画のみ。よって RESERVED
+            // 回答でも当該区画は未決済＝先着で一般開放（決済済は上流で除外済み）。
+            let open: boolean;
+            if (
+              resp === "DECLINED" ||
+              resp === "EXPIRED" ||
+              resp === "RESERVED"
+            ) {
+              open = true;
+            } else {
+              // 未回答（レコード無し）または NOTIFIED → 締切前は保留、締切後は開放。
+              open = pastResponseDeadline;
+            }
+
+            preResponseSpots.push({
+              id: s.id,
+              code: s.code,
+              label: s.label,
+              mode: "EVENT_ONLY",
+              isAvailable: open,
+              status: open ? "AVAILABLE" : "PENDING_APPROVAL",
+              requiresApproval: false,
+            });
           }
-
-          // オファー未作成→要承認(申請可)
-          // WAITING / TENANT_CHARGE_PENDING→承認待ち(選択不可)
-          // RELEASED→承認済み。申請者にはメールで決済リンク送付済みのため
-          //   グリッドからは決済させない（匿名の第三者が押せてしまうため）。表示のみ変更。
-          const requiresApproval = !offerStatus;
-          const offerStatusLabel: "REQUIRES_APPROVAL" | "PENDING_APPROVAL" | "APPROVED" =
-            requiresApproval
-              ? "REQUIRES_APPROVAL"
-              : offerStatus === "RELEASED"
-                ? "APPROVED"
-                : "PENDING_APPROVAL";
-          approvalSpots.push({
-            id: s.id,
-            code: s.code,
-            label: s.label,
-            mode: "EVENT_ONLY",
-            isAvailable: false,
-            status: offerStatusLabel,
-            requiresApproval,
+        }
+      } else if (offerWindowOpen) {
+        // ===== 既存の承認フロー方式（2026-09-01 未満・従来どおり）=====
+        if (heldMonthlySpots.length > 0) {
+          const heldSpotIds = heldMonthlySpots.map((s) => s.id);
+          // 契約(contractBySpot)は GET 冒頭で取得済み。ここではオファーのみ取得。
+          const offers = await prisma.eventMonthlyOffer.findMany({
+            where: { spotId: { in: heldSpotIds }, date },
+            select: { spotId: true, status: true },
           });
+
+          const offerBySpot = new Map(offers.map((o) => [o.spotId, o.status]));
+
+          for (const s of heldMonthlySpots) {
+            // 月極契約が押さえている区画のみ対象（契約の無い空き区画は対象外）
+            if (!contractBySpot.has(s.id)) continue;
+
+            const offerStatus = offerBySpot.get(s.id);
+            // 既に決着済み（月極が使う/決済済/期限切れ/取消）は再提供しない＝1枠1人固定
+            if (
+              offerStatus === "TENANT_TOOK" ||
+              offerStatus === "PAID" ||
+              offerStatus === "EXPIRED" ||
+              offerStatus === "CANCELED"
+            ) {
+              continue;
+            }
+
+            // オファー未作成→要承認(申請可)
+            // WAITING / TENANT_CHARGE_PENDING→承認待ち(選択不可)
+            // RELEASED→承認済み。申請者にはメールで決済リンク送付済みのため
+            //   グリッドからは決済させない（匿名の第三者が押せてしまうため）。表示のみ変更。
+            const requiresApproval = !offerStatus;
+            const offerStatusLabel: "REQUIRES_APPROVAL" | "PENDING_APPROVAL" | "APPROVED" =
+              requiresApproval
+                ? "REQUIRES_APPROVAL"
+                : offerStatus === "RELEASED"
+                  ? "APPROVED"
+                  : "PENDING_APPROVAL";
+            approvalSpots.push({
+              id: s.id,
+              code: s.code,
+              label: s.label,
+              mode: "EVENT_ONLY",
+              isAvailable: false,
+              status: offerStatusLabel,
+              requiresApproval,
+            });
+          }
         }
       }
     }
@@ -511,7 +582,12 @@ export async function GET(req: NextRequest) {
       date,
       reservationOpen,
       eventDayActive,
-      spots: [...availableSpots, ...approvalSpots, ...reservedMonthlySpots],
+      spots: [
+        ...availableSpots,
+        ...approvalSpots,
+        ...preResponseSpots,
+        ...reservedMonthlySpots,
+      ],
       reservations,
       soldOut,
       maintenance: isReservationMaintenance(place.slug),

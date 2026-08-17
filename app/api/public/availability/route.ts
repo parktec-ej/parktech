@@ -17,6 +17,8 @@ import {
   MONTHLY_SLOT_CODES,
   OCCUPYING_STATUSES,
   MONTHLY_EVENT_OFFER_DEADLINE_DAYS,
+  MONTHLY_EVENT_RESPONSE_DEADLINE_DAYS,
+  MONTHLY_EVENT_PRE_RESPONSE_START_YMD,
 } from "@/lib/monthly-config";
 
 const DEFAULT_DAYS = 90;
@@ -250,6 +252,33 @@ export async function GET(req: Request) {
         .filter((c) => Boolean(c.spotId))
         .map((c) => c.spotId as string)
     );
+    // 事前回答方式で使う spotId -> contractId。回答は必ず contractId 経由で引く
+    // （spotId 経由だと解約済み契約が混ざるため）。
+    const contractBySpot = new Map<string, string>(
+      occupyingContracts
+        .filter((c) => Boolean(c.spotId))
+        .map((c) => [c.spotId as string, c.id])
+    );
+
+    // 事前回答方式の対象日（切替日以降）についてのみ MonthlyEventResponse を範囲取得。
+    // key = `${contractId}|${date}` -> status。レコード無し＝未回答。
+    const preResponseDates = dates.filter(
+      (d) => d >= MONTHLY_EVENT_PRE_RESPONSE_START_YMD
+    );
+    const allContractIds = [...new Set(occupyingContracts.map((c) => c.id))];
+    const responsesRaw =
+      allContractIds.length && preResponseDates.length
+        ? await prisma.monthlyEventResponse.findMany({
+            where: {
+              contractId: { in: allContractIds },
+              date: { in: preResponseDates },
+            },
+            select: { contractId: true, date: true, status: true },
+          })
+        : [];
+    const responseByKey = new Map<string, string>(
+      responsesRaw.map((r) => [`${r.contractId}|${r.date}`, r.status])
+    );
 
     // EventMonthlyOffer を範囲取得（レコードの有無のみで判定・status は問わない）。
     // 月極契約が押さえている区画が1つも無い場合はクエリを発行しない。
@@ -337,27 +366,61 @@ export async function GET(req: Request) {
 
       soldOut[ymd] = displayed.length > 0 && allReserved;
 
-      // 満車でも「要承認枠」が申請可能な日を区別する。
-      // 判定条件は app/api/reservations/route.ts の承認枠ブロックと同一。
+      // 満車でも月極区画が公開される日を区別する。
+      // 判定条件は app/api/reservations/route.ts の月極区画ブロックと同一に保つ。
       let approvalOk = false;
       if (soldOut[ymd] && place.slug === MONTHLY_PLACE_SLUG) {
-        // 受付窓：today(JST) <= 開催日 - MONTHLY_EVENT_OFFER_DEADLINE_DAYS 日
-        const deadline = ymdToUtcDate(ymd);
-        deadline.setUTCDate(
-          deadline.getUTCDate() - MONTHLY_EVENT_OFFER_DEADLINE_DAYS
-        );
-        const offerWindowOpen = startYmd <= deadline.toISOString().slice(0, 10);
-
-        if (offerWindowOpen) {
-          const offeredSpotIds = offerByDate.get(ymd) ?? null;
-          approvalOk = spots.some(
-            (s) =>
-              (MONTHLY_SLOT_CODES as readonly string[]).includes(s.code) &&
-              contractSpotIds.has(s.id) &&
-              !(reserved?.spotIds.has(s.id) ?? false) &&
-              !(reserved?.slots.has(normalizeSlot(s.code)) ?? false) &&
-              !(offeredSpotIds?.has(s.id) ?? false)
+        if (ymd >= MONTHLY_EVENT_PRE_RESPONSE_START_YMD) {
+          // ===== 事前回答方式（2026-09-01 以降）=====
+          // held 月極区画（当日 CONFIRMED 予約無し）が1つでも「開放」条件を満たせば true。
+          const responseDeadline = ymdToUtcDate(ymd);
+          responseDeadline.setUTCDate(
+            responseDeadline.getUTCDate() - MONTHLY_EVENT_RESPONSE_DEADLINE_DAYS
           );
+          const pastResponseDeadline =
+            startYmd > responseDeadline.toISOString().slice(0, 10);
+
+          approvalOk = spots.some((s) => {
+            if (!(MONTHLY_SLOT_CODES as readonly string[]).includes(s.code)) {
+              return false;
+            }
+            const contractId = contractBySpot.get(s.id);
+            if (!contractId) return false; // 契約が押さえていない区画は対象外
+            // 当日 CONFIRMED 予約がある区画は対象外（決済済＝確定枠）
+            if (
+              (reserved?.spotIds.has(s.id) ?? false) ||
+              (reserved?.slots.has(normalizeSlot(s.code)) ?? false)
+            ) {
+              return false;
+            }
+            const resp = responseByKey.get(`${contractId}|${ymd}`); // undefined＝未回答
+            if (resp === "DECLINED" || resp === "EXPIRED" || resp === "RESERVED") {
+              return true;
+            }
+            // 未回答（レコード無し）または NOTIFIED → 締切後のみ開放
+            return pastResponseDeadline;
+          });
+        } else {
+          // ===== 既存の承認フロー方式（2026-09-01 未満・従来どおり）=====
+          // 受付窓：today(JST) <= 開催日 - MONTHLY_EVENT_OFFER_DEADLINE_DAYS 日
+          const deadline = ymdToUtcDate(ymd);
+          deadline.setUTCDate(
+            deadline.getUTCDate() - MONTHLY_EVENT_OFFER_DEADLINE_DAYS
+          );
+          const offerWindowOpen =
+            startYmd <= deadline.toISOString().slice(0, 10);
+
+          if (offerWindowOpen) {
+            const offeredSpotIds = offerByDate.get(ymd) ?? null;
+            approvalOk = spots.some(
+              (s) =>
+                (MONTHLY_SLOT_CODES as readonly string[]).includes(s.code) &&
+                contractSpotIds.has(s.id) &&
+                !(reserved?.spotIds.has(s.id) ?? false) &&
+                !(reserved?.slots.has(normalizeSlot(s.code)) ?? false) &&
+                !(offeredSpotIds?.has(s.id) ?? false)
+            );
+          }
         }
       }
       approvalAvailable[ymd] = approvalOk;
