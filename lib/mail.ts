@@ -1173,6 +1173,97 @@ ${safe(date)} の ${safe(placeName)}（${safe(spotLabel)}）は、当日その�
   });
 }
 
+// 事前回答方式：回答期限（開催14日前）が近づいた契約者へのリマインド。
+export async function sendMonthlyEventResponseReminderMail(params: {
+  to: string;
+  tenantName: string;
+  placeName: string;
+  spotLabel: string;
+  date: string;
+  deadlineDate: string; // 回答期限（開催14日前）YYYY-MM-DD
+  dashboardUrl: string;
+}) {
+  const { to, tenantName, placeName, spotLabel, date, deadlineDate, dashboardUrl } =
+    params;
+  return getResend().emails.send({
+    from: MAIL_FROM,
+    to,
+    subject: `【ParkTec】${safe(date)} のイベント日ご利用について（ご回答のお願い）`,
+    html: `
+      <div style="font-family:Arial,sans-serif;line-height:1.8;color:#111">
+        <h2>イベント日ご利用のご回答をお願いします</h2>
+        <p>${safe(tenantName)} 様</p>
+        <p>${safe(date)} のイベント開催日について、${safe(placeName)} のご利用区画（${safe(spotLabel)}）を
+        「利用する／利用しない」のご回答がまだ確認できておりません。</p>
+        <div style="padding:16px;border:1px solid #ddd;border-radius:8px;background:#fafafa">
+          <div><strong>イベント日:</strong> ${safe(date)}</div>
+          <div><strong>区画:</strong> ${safe(spotLabel)}</div>
+          <div><strong>ご回答期限:</strong> ${safe(deadlineDate)}</div>
+        </div>
+        <p style="margin-top:24px;text-align:center">
+          <a href="${dashboardUrl}" target="_blank" rel="noopener noreferrer"
+             style="display:inline-block;padding:14px 28px;background:#111;color:#fff;text-decoration:none;border-radius:8px;font-weight:600">回答する（テナントページ）</a>
+        </p>
+        <div style="margin-top:16px;padding:12px 16px;border:2px solid #dc2626;border-radius:8px;background:#fef2f2;color:#b91c1c">
+          <strong>${safe(deadlineDate)} までにご回答が無い場合、当該区画は一般のお客様へ開放され、当日はご利用いただけません。</strong>
+        </div>
+        <hr style="margin:24px 0" /><p>パークテックイーストジャパン</p>
+      </div>
+    `,
+    text: `イベント日ご利用のご回答をお願いします。
+${safe(tenantName)} 様
+
+${safe(date)} の ${safe(placeName)}（${safe(spotLabel)}）について、ご回答がまだ確認できておりません。
+ご回答期限: ${safe(deadlineDate)}
+
+回答する（テナントページ）: ${dashboardUrl}
+
+${safe(deadlineDate)} までにご回答が無い場合、当該区画は一般のお客様へ開放され、当日はご利用いただけません。
+
+パークテックイーストジャパン`.trim(),
+  });
+}
+
+// 事前回答方式：回答期限を過ぎ、一般開放された契約者への事後通知。
+// reason="no_response"（未回答）／"unpaid"（RESERVED だが未決済）で文面を出し分ける。
+export async function sendMonthlyEventReleasedMail(params: {
+  to: string;
+  tenantName: string;
+  placeName: string;
+  spotLabel: string;
+  date: string;
+  reason: "no_response" | "unpaid";
+}) {
+  const { to, tenantName, placeName, spotLabel, date, reason } = params;
+  const reasonHtml =
+    reason === "unpaid"
+      ? "期日までにお支払いが確認できなかったため"
+      : "期日までにご回答が確認できなかったため";
+  const reasonText = reasonHtml;
+  return getResend().emails.send({
+    from: MAIL_FROM,
+    to,
+    subject: `【ParkTec】${safe(date)} のイベント枠を一般のお客様へ開放しました`,
+    html: `
+      <div style="font-family:Arial,sans-serif;line-height:1.8;color:#111">
+        <h2>イベント枠開放のお知らせ</h2>
+        <p>${safe(tenantName)} 様</p>
+        <p>${safe(date)} のイベント開催日について、${safe(placeName)} のご利用区画（${safe(spotLabel)}）は、
+        ${reasonHtml}、<strong>一般のお客様へ開放しました</strong>。</p>
+        <p>そのため、当日は当該区画をご利用いただけません。あらかじめご了承ください。</p>
+        <hr style="margin:24px 0" /><p>パークテックイーストジャパン</p>
+      </div>
+    `,
+    text: `イベント枠開放のお知らせ。
+${safe(tenantName)} 様
+
+${safe(date)} の ${safe(placeName)}（${safe(spotLabel)}）は、${reasonText}、一般のお客様へ開放しました。
+当日は当該区画をご利用いただけません。あらかじめご了承ください。
+
+パークテックイーストジャパン`.trim(),
+  });
+}
+
 // 管理者による代理リリース時、月極契約者へ「回答が無かったため一般の方へお譲りした」旨を通知。
 export async function sendMonthlyProxyReleasedMail(params: {
   to: string;

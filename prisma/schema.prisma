@@ -741,6 +741,8 @@ model MonthlyEventResponse {
   status      MonthlyEventResponseStatus @default(NOTIFIED)
   notifiedAt  DateTime                   @default(now())
   respondedAt DateTime?
+  // 事前回答方式のリマインド送信済み時刻。null の間だけリマインドを送る（重複送信防止）。
+  reminderSentAt DateTime?
   createdAt   DateTime                   @default(now())
   updatedAt   DateTime                   @updatedAt
 

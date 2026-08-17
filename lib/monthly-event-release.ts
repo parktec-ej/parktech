@@ -7,7 +7,7 @@ import {
 } from "@/lib/monthly-config";
 
 // YMD を UTC 基準で days 日戻した YMD を返す（TZ非依存）。
-function ymdMinusDaysUtc(ymd: string, days: number): string {
+export function ymdMinusDaysUtc(ymd: string, days: number): string {
   const [y, m, d] = ymd.split("-").map(Number);
   const dt = new Date(Date.UTC(y, m - 1, d));
   dt.setUTCDate(dt.getUTCDate() - days);
