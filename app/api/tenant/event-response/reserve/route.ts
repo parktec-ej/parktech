@@ -36,7 +36,7 @@ export async function GET(req: NextRequest) {
       !contract.spotId ||
       !contract.place
     ) {
-      return htmlMessage("ご予約いただけません", "有効なプラン2契約が見つかりませんでした。");
+      return htmlMessage("ご予約いただけません", "有効な月極契約が見つかりませんでした。");
     }
     const place = contract.place;
     const date = payload.d;
