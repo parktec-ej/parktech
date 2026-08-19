@@ -142,7 +142,7 @@ export default function MonthlyApplyPage() {
     if (!address.trim()) return setErr("住所を入力してください");
     if (!vehicleType.trim()) return setErr("車種を入力してください");
     if (!plate.trim()) return setErr("車のナンバーを入力してください");
-    if (!agreed) return setErr("重要事項にご同意ください");
+    if (!agreed) return setErr("利用規約・月極駐車場利用規約にご同意ください");
 
     setSubmitting(true);
     try {
@@ -340,7 +340,10 @@ export default function MonthlyApplyPage() {
               onChange={(e) => setAgreed(e.target.checked)}
             />
             <span>
-              重要事項説明・利用規約に同意します（契約は当社の承認をもって成立します）。
+              <a href="/terms" target="_blank" rel="noopener noreferrer" style={agreeLinkStyle}>利用規約</a>
+              および
+              <a href="/monthly-terms" target="_blank" rel="noopener noreferrer" style={agreeLinkStyle}>月極駐車場 利用規約</a>
+              に同意します（契約は当社の承認をもって成立します）。
             </span>
           </label>
 
@@ -448,6 +451,10 @@ const agreeRowStyle: React.CSSProperties = {
   fontWeight: 600,
   color: "#374151",
   lineHeight: 1.6,
+};
+const agreeLinkStyle: React.CSSProperties = {
+  color: "#2563eb",
+  textDecoration: "underline",
 };
 const errorBoxStyle: React.CSSProperties = {
   border: "1px solid #fecaca",
