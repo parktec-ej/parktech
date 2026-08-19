@@ -65,6 +65,8 @@ type DayRow = {
   reservationCount: number;
   hourlyCount: number;
   adjustmentCount: number;
+  activeReservationCount: number;
+  serviceDateNet: number;
   ownerAmount: number;
   ownerDeltaAmount: number;
   ownerNetAmount: number;
@@ -221,6 +223,9 @@ export default async function AdminMonthlySalesPage({
           paymentRef: true,
           customerNameSnapshot: true,
           plateSnapshot: true,
+          kind: true,
+          serviceDate: true,
+          recognizedDate: true,
         },
       },
     },
@@ -280,6 +285,8 @@ export default async function AdminMonthlySalesPage({
         reservationCount: 0,
         hourlyCount: 0,
         adjustmentCount: 0,
+        activeReservationCount: 0,
+        serviceDateNet: 0,
         ownerAmount: 0,
         ownerDeltaAmount: 0,
         ownerNetAmount: 0,
@@ -305,12 +312,14 @@ export default async function AdminMonthlySalesPage({
     if (p.kind === "RESERVATION") {
       row.reservationSales += p.grossAmount;
       row.reservationCount += 1;
+      if (!p.refunded) row.activeReservationCount += 1;
     } else {
       row.hourlySales += p.grossAmount;
       row.hourlyCount += 1;
     }
 
     row.grossSales += p.grossAmount;
+    row.serviceDateNet += p.grossAmount;
     row.ownerAmount += p.ownerAmount;
     row.agentAmount += p.agentAmount;
     row.platformAmount += p.platformAmount;
@@ -325,6 +334,13 @@ export default async function AdminMonthlySalesPage({
     row.ownerDeltaAmount += a.ownerDeltaAmount;
     row.agentDeltaAmount += a.agentDeltaAmount;
     row.platformDeltaAmount += a.platformDeltaAmount;
+
+    const svcDate =
+      a.Payment.kind === "RESERVATION" && a.Payment.serviceDate
+        ? a.Payment.serviceDate
+        : fmtJstDate(a.Payment.recognizedDate);
+    const svcRow = ensure(svcDate);
+    svcRow.serviceDateNet += a.grossDeltaAmount;
   }
 
   for (const row of map.values()) {
@@ -571,6 +587,8 @@ export default async function AdminMonthlySalesPage({
                   <th style={thStyle}>予約件数</th>
                   <th style={thStyle}>時間貸し件数</th>
                   <th style={thStyle}>調整件数</th>
+                  <th style={thStyle}>有効件数</th>
+                  <th style={thStyle}>駐車日純額</th>
                 </tr>
               </thead>
               <tbody>
@@ -587,6 +605,8 @@ export default async function AdminMonthlySalesPage({
                     <td style={tdStyle}>{row.reservationCount}</td>
                     <td style={tdStyle}>{row.hourlyCount}</td>
                     <td style={tdStyle}>{row.adjustmentCount}</td>
+                    <td style={tdStyle}>{row.activeReservationCount}</td>
+                    <td style={tdStyle}>{fmtYen(row.serviceDateNet)}</td>
                   </tr>
                 ))}
               </tbody>
