@@ -232,6 +232,24 @@ export default async function AdminMonthlySalesPage({
     orderBy: [{ recognizedDate: "asc" }, { createdAt: "asc" }],
   });
 
+  // 駐車日純額（serviceDateNet）専用：Adjustment 自身の recognizedMonth ではなく、
+  // 紐づく Payment の recognizedMonth で絞る（前月に取消された当月駐車分の返金も拾う）。
+  const serviceDateAdjustments = await prisma.adjustment.findMany({
+    where: {
+      status: { in: ["CONFIRMED", "SETTLED"] },
+      Payment: {
+        placeId: place.id,
+        recognizedMonth: month,
+      },
+    },
+    select: {
+      grossDeltaAmount: true,
+      Payment: {
+        select: { kind: true, serviceDate: true, recognizedDate: true },
+      },
+    },
+  });
+
   const ownerMonthPayments = place.ownerId
     ? await prisma.payment.findMany({
         where: {
@@ -334,7 +352,9 @@ export default async function AdminMonthlySalesPage({
     row.ownerDeltaAmount += a.ownerDeltaAmount;
     row.agentDeltaAmount += a.agentDeltaAmount;
     row.platformDeltaAmount += a.platformDeltaAmount;
+  }
 
+  for (const a of serviceDateAdjustments) {
     const svcDate =
       a.Payment.kind === "RESERVATION" && a.Payment.serviceDate
         ? a.Payment.serviceDate
