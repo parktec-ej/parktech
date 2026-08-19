@@ -51,6 +51,10 @@ export default function RootLayout({
                   利用規約
                 </Link>
 
+                <Link href="/monthly-terms" className="hover:underline">
+                  月極規約
+                </Link>
+
                 <Link href="/privacy" className="hover:underline">
                   プライバシーポリシー
                 </Link>

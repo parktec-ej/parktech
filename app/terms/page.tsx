@@ -28,9 +28,17 @@ export default function TermsPage() {
           <ul className="mt-3 list-disc space-y-2 pl-6">
             <li>駐車場予約サービス</li>
             <li>時間貸し駐車サービス</li>
+            <li>月極駐車場サービス</li>
             <li>QRコード等を利用した入出庫管理</li>
             <li>オンライン決済</li>
           </ul>
+          <p className="mt-3">
+            月極駐車場サービスについては、本規約のほか
+            <a href="/monthly-terms" className="text-blue-600 underline">
+              「月極駐車場 利用規約」
+            </a>
+            の定めが適用されます。
+          </p>
         </section>
 
         <section>
