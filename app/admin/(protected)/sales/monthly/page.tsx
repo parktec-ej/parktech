@@ -577,6 +577,8 @@ export default async function AdminMonthlySalesPage({
               <thead>
                 <tr>
                   <th style={thStyle}>日付</th>
+                  <th style={thStyle}>有効件数</th>
+                  <th style={thStyle}>駐車日純額</th>
                   <th style={thStyle}>予約売上</th>
                   <th style={thStyle}>時間貸し売上</th>
                   <th style={thStyle}>返金</th>
@@ -587,14 +589,14 @@ export default async function AdminMonthlySalesPage({
                   <th style={thStyle}>予約件数</th>
                   <th style={thStyle}>時間貸し件数</th>
                   <th style={thStyle}>調整件数</th>
-                  <th style={thStyle}>有効件数</th>
-                  <th style={thStyle}>駐車日純額</th>
                 </tr>
               </thead>
               <tbody>
                 {rows.map((row) => (
                   <tr key={row.date}>
                     <td style={tdStyle}>{row.date}</td>
+                    <td style={tdStyle}>{row.activeReservationCount}</td>
+                    <td style={tdStyle}>{fmtYen(row.serviceDateNet)}</td>
                     <td style={tdStyle}>{fmtYen(row.reservationSales)}</td>
                     <td style={tdStyle}>{fmtYen(row.hourlySales)}</td>
                     <td style={tdStyle}>{fmtYen(row.refundAmount)}</td>
@@ -605,8 +607,6 @@ export default async function AdminMonthlySalesPage({
                     <td style={tdStyle}>{row.reservationCount}</td>
                     <td style={tdStyle}>{row.hourlyCount}</td>
                     <td style={tdStyle}>{row.adjustmentCount}</td>
-                    <td style={tdStyle}>{row.activeReservationCount}</td>
-                    <td style={tdStyle}>{fmtYen(row.serviceDateNet)}</td>
                   </tr>
                 ))}
               </tbody>
