@@ -36,7 +36,7 @@ export default function MonthlyTermsPage() {
         <section>
           <h2 className="text-xl font-semibold">第3条（利用料金および支払方法）</h2>
           <ol className="mt-3 list-decimal space-y-2 pl-6">
-            <li>利用料金は月額［3,300］円（税込）とします。</li>
+            <li>利用料金は月額3,300円（税込）とします。</li>
             <li>支払方法はクレジットカードによる自動決済とし、毎月自動更新されます。</li>
             <li>日割計算は行いません。</li>
           </ol>
@@ -148,7 +148,7 @@ export default function MonthlyTermsPage() {
           <h2 className="text-xl font-semibold">第13条（本規約の変更）</h2>
           <ol className="mt-3 list-decimal space-y-2 pl-6">
             <li>当社は、本規約を変更することがあります。</li>
-            <li>契約者に不利益となる変更を行う場合、当社は、変更後の内容および効力発生日を、効力発生日の［　1か月　］前までに電子メールにより通知します。</li>
+            <li>契約者に不利益となる変更を行う場合、当社は、変更後の内容および効力発生日を、効力発生日の1か月前までに電子メールにより通知します。</li>
             <li>契約者は、前項の変更に同意しない場合、効力発生日までに解約を申し込むことができます。</li>
           </ol>
         </section>
@@ -161,7 +161,7 @@ export default function MonthlyTermsPage() {
         </section>
 
         <p className="mt-3">
-          制定日：［　　年　　月　　日　］
+          制定日：2026年8月31日
           <br />
           パークテックイーストジャパン
         </p>
