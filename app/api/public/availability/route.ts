@@ -277,6 +277,7 @@ export async function GET(req: Request) {
 
     // 7. 各日付をメモリ上で判定
     const soldOut: Record<string, boolean> = {};
+    const remaining: Record<string, number> = {};
     const approvalAvailable: Record<string, boolean> = {};
     for (const ymd of dates) {
       const eventDay = eventDayByYmd.get(ymd) ?? null;
@@ -302,6 +303,7 @@ export async function GET(req: Request) {
       });
 
       let allReserved = displayed.length > 0;
+      let availableCount = 0;
       for (const s of displayed) {
         const effectiveMode =
           dayModeMap?.get(s.id) ??
@@ -331,13 +333,16 @@ export async function GET(req: Request) {
           status = "AVAILABLE";
         }
 
+        if (status === "AVAILABLE") {
+          availableCount += 1;
+        }
         if (status !== "RESERVED") {
           allReserved = false;
-          break;
         }
       }
 
       soldOut[ymd] = displayed.length > 0 && allReserved;
+      remaining[ymd] = availableCount;
 
       // 満車でも月極区画が公開される日を区別する。
       // 判定条件は app/api/reservations/route.ts の月極区画ブロックと同一に保つ。
@@ -392,6 +397,7 @@ export async function GET(req: Request) {
         placeSlug: place.slug,
         generatedAt: new Date().toISOString(),
         soldOut,
+        remaining,
         approvalAvailable,
       },
       { headers: corsHeaders(origin) }
