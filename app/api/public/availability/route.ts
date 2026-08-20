@@ -253,7 +253,7 @@ export async function GET(req: Request) {
         .map((c) => c.spotId as string)
     );
 
-    // EventMonthlyOffer を範囲取得（レコードの有無のみで判定・status は問わない）。
+    // EventMonthlyOffer を範囲取得。申請枠を塞いでいる行だけを後段で採用する。
     // 月極契約が押さえている区画が1つも無い場合はクエリを発行しない。
     const offersRaw = contractSpotIds.size
       ? await prisma.eventMonthlyOffer.findMany({
@@ -261,12 +261,22 @@ export async function GET(req: Request) {
             spotId: { in: [...contractSpotIds] },
             date: { in: dates },
           },
-          select: { date: true, spotId: true },
+          select: {
+            date: true,
+            spotId: true,
+            status: true,
+            applicantReservationId: true,
+          },
         })
       : [];
-    // date -> Set<spotId>（status は問わない。レコードの有無のみで判定）
+    // date -> Set<spotId>（申請枠を「塞いでいる」オファーのみ登録する）。
+    // EXPIRED かつ未予約は approval-request が P2002→reclaim で再受付できるため
+    // 塞がない。app/api/reservations/route.ts の reclaimable と同一条件。
     const offerByDate = new Map<string, Set<string>>();
     for (const o of offersRaw) {
+      const reclaimable =
+        o.status === "EXPIRED" && o.applicantReservationId == null;
+      if (reclaimable) continue;
       let set = offerByDate.get(o.date);
       if (!set) {
         set = new Set<string>();
