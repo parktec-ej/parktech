@@ -464,22 +464,29 @@ export async function GET(req: NextRequest) {
           // 契約(contractBySpot)は GET 冒頭で取得済み。ここではオファーのみ取得。
           const offers = await prisma.eventMonthlyOffer.findMany({
             where: { spotId: { in: heldSpotIds }, date },
-            select: { spotId: true, status: true },
+            select: { spotId: true, status: true, applicantReservationId: true },
           });
 
-          const offerBySpot = new Map(offers.map((o) => [o.spotId, o.status]));
+          const offerBySpot = new Map(offers.map((o) => [o.spotId, o]));
 
           for (const s of heldMonthlySpots) {
             // 月極契約が押さえている区画のみ対象（契約の無い空き区画は対象外）
             if (!contractBySpot.has(s.id)) continue;
 
-            const offerStatus = offerBySpot.get(s.id);
-            // 既に決着済み（月極が使う/決済済/期限切れ/取消）は再提供しない＝1枠1人固定
+            const offer = offerBySpot.get(s.id);
+            const offerStatus = offer?.status;
+
+            // EXPIRED かつ未予約は approval-request が再受付できる行。
+            // 受付側と表示側を一致させるため「要承認(申請可)」で再表示する。
+            const reclaimable =
+              offerStatus === "EXPIRED" && offer?.applicantReservationId == null;
+
+            // 既に決着済み（月極が使う/決済済/取消/予約済みEXPIRED）は再提供しない
             if (
               offerStatus === "TENANT_TOOK" ||
               offerStatus === "PAID" ||
-              offerStatus === "EXPIRED" ||
-              offerStatus === "CANCELED"
+              offerStatus === "CANCELED" ||
+              (offerStatus === "EXPIRED" && !reclaimable)
             ) {
               continue;
             }
@@ -488,7 +495,7 @@ export async function GET(req: NextRequest) {
             // WAITING / TENANT_CHARGE_PENDING→承認待ち(選択不可)
             // RELEASED→承認済み。申請者にはメールで決済リンク送付済みのため
             //   グリッドからは決済させない（匿名の第三者が押せてしまうため）。表示のみ変更。
-            const requiresApproval = !offerStatus;
+            const requiresApproval = !offerStatus || reclaimable;
             const offerStatusLabel: "REQUIRES_APPROVAL" | "PENDING_APPROVAL" | "APPROVED" =
               requiresApproval
                 ? "REQUIRES_APPROVAL"
