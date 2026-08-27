@@ -1446,3 +1446,87 @@ ParkTec（パークテックイーストジャパン）
     `.trim(),
   });
 }
+
+export async function sendManageLinkResendMail(params: {
+  to: string;
+  items: Array<{
+    placeName: string;
+    spotLabel: string;
+    date: string;
+    manageUrl: string;
+  }>;
+}) {
+  const { to, items } = params;
+
+  const sorted = [...items].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+
+  return getResend().emails.send({
+    from: MAIL_FROM,
+    to,
+    subject: "【ParkTec】予約内容の確認・変更リンクのご案内",
+    html: `
+      <div style="font-family:Arial,sans-serif;line-height:1.8;color:#111">
+        <h2>ParkTecをご利用いただきありがとうございます。</h2>
+        <p>ご予約の確認・日付変更・キャンセルは、下記のリンクから行えます。</p>
+
+        ${sorted
+          .map(
+            (item) => `
+          <div style="margin-top:12px;background:#eff6ff;border-radius:12px;padding:14px 16px">
+            <div><strong>利用日:</strong> ${safe(item.date)}</div>
+            <div><strong>駐車場:</strong> ${safe(item.placeName)}</div>
+            <div><strong>区画:</strong> ${safe(item.spotLabel)}</div>
+            <div style="margin-top:8px">
+              <a href="${item.manageUrl}" target="_blank" rel="noopener noreferrer" style="color:#1d4ed8">${item.manageUrl}</a>
+            </div>
+          </div>
+        `
+          )
+          .join("")}
+
+        <p style="margin-top:20px;font-size:13px;color:#555">
+          ご利用日の24時間前まで変更できます。
+        </p>
+
+        <p style="font-size:13px;color:#555">
+          心当たりのない場合は、このメールを破棄してください。
+        </p>
+
+        <hr style="margin:24px 0" />
+        <div style="font-size:13px;color:#555;line-height:1.8">
+          <strong>お困りのときは</strong><br />
+          サポート・よくある質問：<a href="https://parktec-ej.com/help" target="_blank" rel="noopener noreferrer" style="color:#2563eb">https://parktec-ej.com/help</a><br />
+          お急ぎの場合はお電話ください。<br />
+          TEL: 050-1793-4785（1番を押してください）
+        </div>
+        <p style="margin-top:16px">ParkTec</p>
+      </div>
+    `,
+    text: `
+ParkTecをご利用いただきありがとうございます。
+
+ご予約の確認・日付変更・キャンセルは、下記のリンクから行えます。
+
+${sorted
+  .map(
+    (item) =>
+      `利用日: ${safe(item.date)}
+駐車場: ${safe(item.placeName)}
+区画: ${safe(item.spotLabel)}
+確認・変更リンク: ${item.manageUrl}`
+  )
+  .join("\n\n")}
+
+ご利用日の24時間前まで変更できます。
+
+心当たりのない場合は、このメールを破棄してください。
+
+お困りのときは
+サポート・よくある質問: https://parktec-ej.com/help
+お急ぎの場合はお電話ください。
+TEL: 050-1793-4785（1番を押してください）
+
+ParkTec
+    `.trim(),
+  });
+}
