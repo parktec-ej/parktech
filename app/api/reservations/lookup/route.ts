@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
 import { prisma } from "@/lib/db";
-import { sendManageLinkResendMail } from "@/lib/mail";
+import {
+  sendManageLinkResendMail,
+  sendNoReservationFoundMail,
+} from "@/lib/mail";
 
 export const runtime = "nodejs";
 export const preferredRegion = "hnd1";
@@ -97,6 +100,8 @@ export async function POST(req: NextRequest) {
         to: email,
         items,
       });
+    } else {
+      await sendNoReservationFoundMail({ to: email });
     }
 
     // 件数・存在有無は返さない（レスポンスの差から登録有無を判定されないようにするため）

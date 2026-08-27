@@ -1530,3 +1530,70 @@ ParkTec
     `.trim(),
   });
 }
+
+export async function sendNoReservationFoundMail(params: { to: string }) {
+  const { to } = params;
+
+  const reserveUrl = "https://reserve.parktec-ej.com";
+
+  return getResend().emails.send({
+    from: MAIL_FROM,
+    to,
+    subject: "【ParkTec】ご予約が見つかりませんでした",
+    html: `
+      <div style="font-family:Arial,sans-serif;line-height:1.8;color:#111">
+        <h2>ParkTecをご利用いただきありがとうございます。</h2>
+        <p>
+          お問い合わせいただいたメールアドレスでは、
+          現在ご利用予定のご予約が見つかりませんでした。
+        </p>
+
+        <div style="margin-top:12px;background:#eff6ff;border-radius:12px;padding:14px 16px">
+          <div><strong>次のような場合がございます</strong></div>
+          <div style="margin-top:8px">・別のメールアドレスでご予約されている</div>
+          <div>・ご利用日をすでに過ぎている</div>
+          <div>・すでにキャンセルされている</div>
+        </div>
+
+        <p style="margin-top:20px">
+          <strong>ご予約はこちらから</strong><br />
+          <a href="${reserveUrl}" target="_blank" rel="noopener noreferrer" style="color:#1d4ed8">${reserveUrl}</a>
+        </p>
+
+        <p style="font-size:13px;color:#555">
+          お心当たりのない場合は、このメールを破棄してください。
+        </p>
+
+        <hr style="margin:24px 0" />
+        <div style="font-size:13px;color:#555;line-height:1.8">
+          <strong>お困りのときは</strong><br />
+          サポート・よくある質問：<a href="https://parktec-ej.com/help" target="_blank" rel="noopener noreferrer" style="color:#2563eb">https://parktec-ej.com/help</a><br />
+          お急ぎの場合はお電話ください。<br />
+          TEL: 050-1793-4785（1番を押してください）
+        </div>
+        <p style="margin-top:16px">ParkTec</p>
+      </div>
+    `,
+    text: `
+ParkTecをご利用いただきありがとうございます。
+
+お問い合わせいただいたメールアドレスでは、現在ご利用予定のご予約が見つかりませんでした。
+
+次のような場合がございます
+・別のメールアドレスでご予約されている
+・ご利用日をすでに過ぎている
+・すでにキャンセルされている
+
+ご予約はこちらから: ${reserveUrl}
+
+お心当たりのない場合は、このメールを破棄してください。
+
+お困りのときは
+サポート・よくある質問: https://parktec-ej.com/help
+お急ぎの場合はお電話ください。
+TEL: 050-1793-4785（1番を押してください）
+
+ParkTec
+    `.trim(),
+  });
+}
