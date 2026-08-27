@@ -1542,7 +1542,7 @@ export async function sendNoReservationFoundMail(params: { to: string }) {
     subject: "【ParkTec】ご予約が見つかりませんでした",
     html: `
       <div style="font-family:Arial,sans-serif;line-height:1.8;color:#111">
-        <h2>ParkTecをご利用いただきありがとうございます。</h2>
+        <h2>ご予約の確認結果のお知らせ</h2>
         <p>
           お問い合わせいただいたメールアドレスでは、
           現在ご利用予定のご予約が見つかりませんでした。
@@ -1575,7 +1575,7 @@ export async function sendNoReservationFoundMail(params: { to: string }) {
       </div>
     `,
     text: `
-ParkTecをご利用いただきありがとうございます。
+ご予約の確認結果のお知らせ
 
 お問い合わせいただいたメールアドレスでは、現在ご利用予定のご予約が見つかりませんでした。
 
