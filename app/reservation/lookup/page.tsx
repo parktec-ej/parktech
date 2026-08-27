@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 
 const COLORS = {
@@ -74,6 +75,40 @@ const noteStyle: React.CSSProperties = {
   color: COLORS.ink3,
   margin: 0,
 };
+
+const backLinkStyle: React.CSSProperties = {
+  display: "block",
+  width: "100%",
+  marginTop: 16,
+  padding: 13,
+  textAlign: "center",
+  borderRadius: 999,
+  border: `1px solid ${COLORS.blue300}`,
+  background: "#fff",
+  color: COLORS.blue700,
+  fontWeight: 700,
+  fontSize: 15,
+  textDecoration: "none",
+  boxSizing: "border-box",
+};
+
+function BackToTopLink() {
+  const [hovered, setHovered] = useState(false);
+
+  return (
+    <Link
+      href="/"
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        ...backLinkStyle,
+        background: hovered ? COLORS.blue50 : "#fff",
+      }}
+    >
+      トップページに戻る
+    </Link>
+  );
+}
 
 export default function ReservationLookupPage() {
   const [email, setEmail] = useState("");
@@ -212,6 +247,8 @@ export default function ReservationLookupPage() {
               </a>{" "}
               までお電話ください。
             </p>
+
+            <BackToTopLink />
           </div>
         ) : (
           <div style={{ ...cardStyle, textAlign: "center" }}>
@@ -259,6 +296,8 @@ export default function ReservationLookupPage() {
               </a>{" "}
               までお問い合わせください。
             </p>
+
+            <BackToTopLink />
           </div>
         )}
       </div>
