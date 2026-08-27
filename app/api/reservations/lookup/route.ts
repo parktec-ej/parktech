@@ -101,7 +101,21 @@ export async function POST(req: NextRequest) {
         items,
       });
     } else {
-      await sendNoReservationFoundMail({ to: email });
+      // 踏み台対策: Reservation に一度も登場しないアドレスには何も送らない
+      // （日付・ステータスの条件は付けず、過去やキャンセル済みも含めて存在確認する）
+      const known = await prisma.reservation.findFirst({
+        where: {
+          email: {
+            equals: email,
+            mode: "insensitive",
+          },
+        },
+        select: { id: true },
+      });
+
+      if (known) {
+        await sendNoReservationFoundMail({ to: email });
+      }
     }
 
     // 件数・存在有無は返さない（レスポンスの差から登録有無を判定されないようにするため）
