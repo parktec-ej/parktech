@@ -6,6 +6,10 @@ import { sendManageLinkResendMail } from "@/lib/mail";
 export const runtime = "nodejs";
 export const preferredRegion = "hnd1";
 
+const APP_URL = (
+  process.env.NEXT_PUBLIC_APP_URL || "https://reserve.parktec-ej.com"
+).trim().replace(/\/$/, "");
+
 const RESPONSE_MESSAGE =
   "ご入力のメールアドレス宛に、予約内容の確認・変更リンクをお送りしました。";
 
@@ -59,8 +63,6 @@ export async function POST(req: NextRequest) {
       take: 20,
     });
 
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL;
-
     const items: Array<{
       placeName: string;
       spotLabel: string;
@@ -85,9 +87,8 @@ export async function POST(req: NextRequest) {
         spotLabel:
           reservation.spot?.label ?? reservation.spot?.code ?? reservation.slot,
         date: reservation.date,
-        manageUrl: `${appUrl}/reservation/manage?token=${encodeURIComponent(
-          token
-        )}`,
+        manageUrl:
+          `${APP_URL}/reservation/manage?token=` + encodeURIComponent(token),
       });
     }
 
