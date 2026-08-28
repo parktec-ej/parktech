@@ -33,7 +33,7 @@ async function loadFont(): Promise<ArrayBuffer | null> {
 
 const VENUE_LABEL: Record<string, string> = {
   sekisui_arena: "セキスイハイムスーパーアリーナ",
-  qanda_stadium: "QアンドAスタジアムみやぎ",
+  qanda_stadium: "キューアンドエースタジアムみやぎ",
 };
 
 const RESERVE_URL_DISPLAY = "reserve.parktec-ej.com/places/rifu-main";

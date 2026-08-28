@@ -4,7 +4,7 @@ import Link from "next/link";
 export const metadata: Metadata = {
   title: "ParkTec East Japan — 駐車場のご予約",
   description:
-    "セキスイハイムスーパーアリーナ・QアンドAスタジアム隣接。コンサート・イベント当日の駐車場を事前予約で確保できます。",
+    "セキスイハイムスーパーアリーナ・キューアンドエースタジアムみやぎ隣接。コンサート・イベント当日の駐車場を事前予約で確保できます。",
 };
 
 const COLORS = {
@@ -163,7 +163,7 @@ export default function Home() {
           </h1>
 
           <p style={subStyle}>
-            セキスイハイムスーパーアリーナ・QアンドAスタジアム隣接。
+            セキスイハイムスーパーアリーナ・キューアンドエースタジアムみやぎ隣接。
             <br />
             コンサート・イベント当日の駐車場を事前予約で確保。
           </p>
