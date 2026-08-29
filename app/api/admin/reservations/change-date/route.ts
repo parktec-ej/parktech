@@ -7,6 +7,7 @@ import { prisma } from "@/lib/db";
 import { getAdminSession } from "@/lib/admin-auth";
 import { sendReservationDateChangedMail } from "@/lib/mail";
 import { sendSlackNotification } from "@/lib/slack";
+import { syncPaymentAfterDateChange } from "@/lib/reservation-date-change";
 
 export async function POST(req: Request) {
   const admin = await getAdminSession();
@@ -176,25 +177,35 @@ export async function POST(req: Request) {
       }
     }
 
-    await prisma.$transaction([
-      prisma.reservation.update({
-        where: { id: reservation.id },
-        data: {
-          date: newDate,
-          ...(finalSpotId !== reservation.spotId ? { spotId: finalSpotId } : {}),
-        },
-      }),
-      prisma.reservationChangeLog.create({
-        data: {
-          id: crypto.randomUUID(),
-          reservationId: reservation.id,
-          oldDate: reservation.date,
-          newDate,
-          changedBy: "admin",
-          reason,
-        },
-      }),
-    ]);
+    await prisma.reservation.update({
+      where: { id: reservation.id },
+      data: {
+        date: newDate,
+        ...(finalSpotId !== reservation.spotId ? { spotId: finalSpotId } : {}),
+      },
+    });
+
+    await prisma.reservationChangeLog.create({
+      data: {
+        id: crypto.randomUUID(),
+        reservationId: reservation.id,
+        oldDate: reservation.date,
+        newDate,
+        changedBy: "admin",
+        reason,
+      },
+    });
+
+    try {
+      await syncPaymentAfterDateChange({
+        reservationId: reservation.id,
+        oldDate: reservation.date,
+        newDate,
+        newSpotId: finalSpotId,
+      });
+    } catch (e) {
+      console.error("Payment sync after date change failed:", e);
+    }
 
     if (reservation.email) {
       try {

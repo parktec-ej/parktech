@@ -7,6 +7,7 @@ import {
 } from "@/lib/settlement-math";
 import { sendReservationDateChangedMail } from "@/lib/mail";
 import { sendSlackNotification } from "@/lib/slack";
+import { syncPaymentAfterDateChange } from "@/lib/reservation-date-change";
 
 export const runtime = "nodejs";
 export const preferredRegion = "hnd1";
@@ -195,21 +196,20 @@ export async function POST(req: NextRequest) {
       }
       // 元が BUS_LANE（spotId=null）→ nextSpotId=null のまま date だけ更新
 
-      await prisma.$transaction([
-        prisma.reservation.update({
-          where: { id: reservation.id },
-          data: { date: newDate, spotId: nextSpotId, slot: nextSlot },
-        }),
-        prisma.reservationChangeLog.create({
-          data: {
-            id: crypto.randomUUID(),
-            reservationId: reservation.id,
-            oldDate: reservation.date,
-            newDate,
-            changedBy: "customer",
-          },
-        }),
-      ]);
+      await prisma.reservation.update({
+        where: { id: reservation.id },
+        data: { date: newDate, spotId: nextSpotId, slot: nextSlot },
+      });
+
+      await prisma.reservationChangeLog.create({
+        data: {
+          id: crypto.randomUUID(),
+          reservationId: reservation.id,
+          oldDate: reservation.date,
+          newDate,
+          changedBy: "customer",
+        },
+      });
 
       const busLabel = nextSlot === "BUS_LANE" ? "バス専用レーン" : nextSlot;
 
@@ -331,24 +331,34 @@ export async function POST(req: NextRequest) {
           );
         }
 
-        await prisma.$transaction([
-          prisma.reservation.update({
-            where: { id: reservation.id },
-            data: {
-              date: newDate,
-              spotId: availableSpot.id,
-            },
-          }),
-          prisma.reservationChangeLog.create({
-            data: {
-              id: crypto.randomUUID(),
-              reservationId: reservation.id,
-              oldDate: reservation.date,
-              newDate,
-              changedBy: "customer",
-            },
-          }),
-        ]);
+        await prisma.reservation.update({
+          where: { id: reservation.id },
+          data: {
+            date: newDate,
+            spotId: availableSpot.id,
+          },
+        });
+
+        await prisma.reservationChangeLog.create({
+          data: {
+            id: crypto.randomUUID(),
+            reservationId: reservation.id,
+            oldDate: reservation.date,
+            newDate,
+            changedBy: "customer",
+          },
+        });
+
+        try {
+          await syncPaymentAfterDateChange({
+            reservationId: reservation.id,
+            oldDate: reservation.date,
+            newDate,
+            newSpotId: availableSpot.id,
+          });
+        } catch (e) {
+          console.error("Payment sync after date change failed:", e);
+        }
 
         await notifyDateChange(
           reservation,
@@ -365,21 +375,30 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    await prisma.$transaction([
-      prisma.reservation.update({
-        where: { id: reservation.id },
-        data: { date: newDate },
-      }),
-      prisma.reservationChangeLog.create({
-        data: {
-          id: crypto.randomUUID(),
-          reservationId: reservation.id,
-          oldDate: reservation.date,
-          newDate,
-          changedBy: "customer",
-        },
-      }),
-    ]);
+    await prisma.reservation.update({
+      where: { id: reservation.id },
+      data: { date: newDate },
+    });
+
+    await prisma.reservationChangeLog.create({
+      data: {
+        id: crypto.randomUUID(),
+        reservationId: reservation.id,
+        oldDate: reservation.date,
+        newDate,
+        changedBy: "customer",
+      },
+    });
+
+    try {
+      await syncPaymentAfterDateChange({
+        reservationId: reservation.id,
+        oldDate: reservation.date,
+        newDate,
+      });
+    } catch (e) {
+      console.error("Payment sync after date change failed:", e);
+    }
 
     const spotLabel =
       reservation.spot?.label ?? reservation.spot?.code ?? reservation.slot;
