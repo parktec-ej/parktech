@@ -6,7 +6,7 @@ import crypto from "crypto";
 import { prisma } from "@/lib/db";
 import { getAdminSession } from "@/lib/admin-auth";
 import { sendReservationDateChangedMail } from "@/lib/mail";
-import { sendSlackNotification } from "@/lib/slack";
+import { sendSlackAlert, sendSlackNotification } from "@/lib/slack";
 import { syncPaymentAfterDateChange } from "@/lib/reservation-date-change";
 
 export async function POST(req: Request) {
@@ -185,16 +185,32 @@ export async function POST(req: Request) {
       },
     });
 
-    await prisma.reservationChangeLog.create({
-      data: {
-        id: crypto.randomUUID(),
-        reservationId: reservation.id,
-        oldDate: reservation.date,
-        newDate,
-        changedBy: "admin",
-        reason,
-      },
-    });
+    // ログが欠けると「日付変更は1回まで」の判定（changeLogs.length）を
+    // すり抜けられるため、失敗しても処理は続けつつ検知できるようにする。
+    try {
+      await prisma.reservationChangeLog.create({
+        data: {
+          id: crypto.randomUUID(),
+          reservationId: reservation.id,
+          oldDate: reservation.date,
+          newDate,
+          changedBy: "admin",
+          reason,
+        },
+      });
+    } catch (e) {
+      console.error("Reservation change log failed:", e);
+
+      await sendSlackAlert(
+        [
+          "⚠️ 日付変更ログの記録に失敗（変更回数制限がすり抜ける可能性）",
+          `予約ID：${reservation.id}`,
+          `旧日付：${reservation.date}`,
+          `新日付：${newDate}`,
+          "操作者：管理者",
+        ].join("\n")
+      );
+    }
 
     try {
       await syncPaymentAfterDateChange({
