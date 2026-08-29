@@ -6,11 +6,41 @@ import {
   calcDateChangePolicy,
 } from "@/lib/settlement-math";
 import { sendReservationDateChangedMail } from "@/lib/mail";
-import { sendSlackNotification } from "@/lib/slack";
+import { sendSlackAlert, sendSlackNotification } from "@/lib/slack";
 import { syncPaymentAfterDateChange } from "@/lib/reservation-date-change";
 
 export const runtime = "nodejs";
 export const preferredRegion = "hnd1";
+
+/**
+ * 変更ログの記録に失敗しても日付変更自体は成立させる。
+ * ただし「日付変更は1回まで」の判定は changeLogs.length に依存しているため、
+ * ログが欠けると回数制限をすり抜けられる。検知できるようアラートを飛ばす。
+ */
+async function createChangeLog(reservation: { id: string; date: string }, newDate: string) {
+  try {
+    await prisma.reservationChangeLog.create({
+      data: {
+        id: crypto.randomUUID(),
+        reservationId: reservation.id,
+        oldDate: reservation.date,
+        newDate,
+        changedBy: "customer",
+      },
+    });
+  } catch (e) {
+    console.error("Reservation change log failed:", e);
+
+    await sendSlackAlert(
+      [
+        "⚠️ 日付変更ログの記録に失敗（変更回数制限がすり抜ける可能性）",
+        `予約ID：${reservation.id}`,
+        `旧日付：${reservation.date}`,
+        `新日付：${newDate}`,
+      ].join("\n")
+    );
+  }
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -201,15 +231,18 @@ export async function POST(req: NextRequest) {
         data: { date: newDate, spotId: nextSpotId, slot: nextSlot },
       });
 
-      await prisma.reservationChangeLog.create({
-        data: {
-          id: crypto.randomUUID(),
+      await createChangeLog(reservation, newDate);
+
+      try {
+        await syncPaymentAfterDateChange({
           reservationId: reservation.id,
           oldDate: reservation.date,
           newDate,
-          changedBy: "customer",
-        },
-      });
+          newSpotId: nextSpotId,
+        });
+      } catch (e) {
+        console.error("Payment sync after date change failed:", e);
+      }
 
       const busLabel = nextSlot === "BUS_LANE" ? "バス専用レーン" : nextSlot;
 
@@ -339,15 +372,7 @@ export async function POST(req: NextRequest) {
           },
         });
 
-        await prisma.reservationChangeLog.create({
-          data: {
-            id: crypto.randomUUID(),
-            reservationId: reservation.id,
-            oldDate: reservation.date,
-            newDate,
-            changedBy: "customer",
-          },
-        });
+        await createChangeLog(reservation, newDate);
 
         try {
           await syncPaymentAfterDateChange({
@@ -380,15 +405,7 @@ export async function POST(req: NextRequest) {
       data: { date: newDate },
     });
 
-    await prisma.reservationChangeLog.create({
-      data: {
-        id: crypto.randomUUID(),
-        reservationId: reservation.id,
-        oldDate: reservation.date,
-        newDate,
-        changedBy: "customer",
-      },
-    });
+    await createChangeLog(reservation, newDate);
 
     try {
       await syncPaymentAfterDateChange({

@@ -74,7 +74,11 @@ export async function syncPaymentAfterDateChange(
     updatedAt: new Date(),
   };
 
-  if (newSpotId && newSpotId !== payment.spotId) {
+  // バス分岐では BUS_LANE 予約の nextSpotId が null になり得る。
+  // 非空の文字列のときだけ区画を触る（null/空文字なら日付関連のみ更新）。
+  const hasNewSpotId = typeof newSpotId === "string" && newSpotId.length > 0;
+
+  if (hasNewSpotId && newSpotId !== payment.spotId) {
     data.spotId = newSpotId;
 
     const spot = await prisma.spot.findUnique({
