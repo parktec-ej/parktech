@@ -360,8 +360,10 @@ export async function GET(req: Request) {
       if (soldOut[ymd] && place.slug === MONTHLY_PLACE_SLUG) {
         if (ymd >= MONTHLY_EVENT_PRE_RESPONSE_START_YMD) {
           // ===== 事前回答方式（2026-09-01 以降）=====
-          // 契約保持かつ当日 CONFIRMED 予約無しの月極区画が1つでも共通関数で
-          // 「開放」と判定されれば true（reservations GET と完全に同一判定）。
+          // 契約保持かつ当日 CONFIRMED 予約無しの月極区画のうち、共通関数で
+          // 「開放」と判定されたものを数える（reservations GET と完全に同一判定）。
+          // 事前回答方式では承認手続きが不要でそのまま予約できるため、
+          // 開放枠は「要承認」ではなく通常の空きとして残数に加算し、満車を解除する。
           const candidates = spots.filter(
             (s) =>
               (MONTHLY_SLOT_CODES as readonly string[]).includes(s.code) &&
@@ -369,11 +371,15 @@ export async function GET(req: Request) {
               !(reserved?.spotIds.has(s.id) ?? false) &&
               !(reserved?.slots.has(normalizeSlot(s.code)) ?? false)
           );
+          let releasedCount = 0;
           for (const s of candidates) {
             if (await isMonthlySpotReleasedForEvent(s.id, ymd)) {
-              approvalOk = true;
-              break;
+              releasedCount += 1;
             }
+          }
+          if (releasedCount > 0) {
+            remaining[ymd] += releasedCount;
+            soldOut[ymd] = false;
           }
         } else {
           // ===== 既存の承認フロー方式（2026-09-01 未満・従来どおり）=====

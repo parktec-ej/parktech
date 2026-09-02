@@ -50,6 +50,8 @@ type ReservationsApiResponse = {
   spots?: Spot[];
   reservations?: ReservationSummary[];
   soldOut?: boolean;
+  generalFullMonthlyOpen?: boolean;
+  monthlyOpenCount?: number;
   maintenance?: boolean;
   error?: string;
   message?: string;
@@ -160,6 +162,8 @@ function ReservePageInner() {
   const [place, setPlace] = useState<Place | null>(null);
   const [spots, setSpots] = useState<Spot[]>([]);
   const [soldOut, setSoldOut] = useState(false);
+  const [generalFullMonthlyOpen, setGeneralFullMonthlyOpen] = useState(false);
+  const [monthlyOpenCount, setMonthlyOpenCount] = useState(0);
   const [maintenance, setMaintenance] = useState(false);
   const [selectedSpotId, setSelectedSpotId] = useState("");
   const [name, setName] = useState("");
@@ -218,6 +222,8 @@ function ReservePageInner() {
       setPlace(null);
       setSpots([]);
       setSoldOut(false);
+      setGeneralFullMonthlyOpen(false);
+      setMonthlyOpenCount(0);
       setMaintenance(false);
       setSelectedSpotId("");
       return;
@@ -246,6 +252,8 @@ function ReservePageInner() {
           setPlace(null);
           setSpots([]);
           setSoldOut(false);
+          setGeneralFullMonthlyOpen(false);
+          setMonthlyOpenCount(0);
           setMaintenance(false);
           setSelectedSpotId("");
           setErr(json?.message || json?.error || "予約情報の取得に失敗しました");
@@ -259,6 +267,10 @@ function ReservePageInner() {
         setPlace(fetchedPlace);
         setSpots(fetchedSpots);
         setSoldOut(data.soldOut === true);
+        setGeneralFullMonthlyOpen(data.generalFullMonthlyOpen === true);
+        setMonthlyOpenCount(
+          typeof data.monthlyOpenCount === "number" ? data.monthlyOpenCount : 0
+        );
         setMaintenance(data.maintenance === true);
 
         setSelectedSpotId((prev) => {
@@ -275,6 +287,8 @@ function ReservePageInner() {
           setPlace(null);
           setSpots([]);
           setSoldOut(false);
+          setGeneralFullMonthlyOpen(false);
+          setMonthlyOpenCount(0);
           setMaintenance(false);
           setSelectedSpotId("");
           setErr("通信エラーが発生しました");
@@ -516,6 +530,18 @@ function ReservePageInner() {
             </div>
           ) : null}
 
+          {!soldOut && generalFullMonthlyOpen ? (
+            <div style={styles.limitedBanner}>
+              <div style={styles.limitedTitle}>
+                残りわずかです（残り{monthlyOpenCount}台）
+              </div>
+              <div style={styles.limitedBody}>
+                通常区画は満車ですが、月極契約区画の空き（白）をそのままご予約いただけます。
+                承認手続きは不要です。画面下部の白い区画をお選びください。
+              </div>
+            </div>
+          ) : null}
+
           {soldOut ? (
             <div style={styles.soldOutBanner}>
               <div style={styles.soldOutTitle}>この日は満車です（予約受付終了）</div>
@@ -674,6 +700,30 @@ export default function ReservePage() {
 }
 
 const styles: Record<string, React.CSSProperties> = {
+  limitedBanner: {
+    marginTop: 12,
+    marginBottom: 12,
+    padding: 14,
+    borderWidth: 1,
+    borderStyle: "solid",
+    borderColor: "#bcd7c4",
+    borderRadius: 10,
+    backgroundColor: "#f2f9f4",
+  },
+
+  limitedTitle: {
+    fontSize: 15,
+    fontWeight: 700,
+    color: "#1e6b3a",
+    marginBottom: 6,
+  },
+
+  limitedBody: {
+    fontSize: 13,
+    lineHeight: 1.7,
+    color: "#3f5a48",
+  },
+
   soldOutBanner: {
     marginTop: 12,
     marginBottom: 12,

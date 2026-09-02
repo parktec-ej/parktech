@@ -405,10 +405,12 @@ export async function GET(req: NextRequest) {
       availableSpots.length > 0 &&
       availableSpots.every((s) => !s.isAvailable);
 
-    // 顧客向け満車バナー用。generalSoldOut とは別物。
+    // 顧客向け満車バナー用の一次判定。generalSoldOut とは別物。
     // 「表示中の全枠が RESERVED」＝純粋な満車。解放待ち(NOT_OPEN)・開催待ち(PENDING_EVENT)・
     // 予約不可(CLOSED)は満車ではないので含めない。
-    const soldOut =
+    // ※事前回答方式で開放された月極区画を考慮した最終判定は preResponseSpots
+    //   確定後（下部の soldOut）で行う。
+    const generalAllReserved =
       availableSpots.length > 0 &&
       availableSpots.every((s) => s.status === "RESERVED");
 
@@ -516,6 +518,14 @@ export async function GET(req: NextRequest) {
       }
     }
 
+    // 顧客向け満車バナーの最終判定。
+    // 事前回答方式（2026-09-01以降）で開放された月極区画は「承認不要」でそのまま
+    // 予約できるため、1枠でも空きがあればその日は満車ではない。
+    const monthlyOpenCount = preResponseSpots.filter((s) => s.isAvailable).length;
+    const soldOut = generalAllReserved && monthlyOpenCount === 0;
+    // 一般枠のみ満席で月極開放枠に空きがある状態（画面の案内文言用）。
+    const generalFullMonthlyOpen = generalAllReserved && monthlyOpenCount > 0;
+
     // 月極契約区画のうち、その日に確定予約があるものを「予約済み」で表示する。
     // 一般グリッドからは契約により除外され、承認枠ブロックは
     // generalSoldOut && offerWindowOpen の条件下でしか動かないため、
@@ -555,6 +565,8 @@ export async function GET(req: NextRequest) {
       ],
       reservations,
       soldOut,
+      generalFullMonthlyOpen,
+      monthlyOpenCount,
       maintenance: isReservationMaintenance(place.slug),
     });
   } catch (error: unknown) {
