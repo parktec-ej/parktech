@@ -7,7 +7,18 @@ import {
   sendReservationPinMail,
 } from "@/lib/mail";
 import { sendSlackAlert, sendSlackNotification } from "@/lib/slack";
-import { isPlaceholderPlate, normalizePlate } from "@/lib/reservation-verify";
+import {
+  isPlaceholderPlate,
+  matchCandidates,
+  normalizePhone,
+  normalizePlate,
+} from "@/lib/reservation-verify";
+import {
+  checkVerificationRateLimit,
+  getClientIp,
+  hashIp,
+  recordVerificationAttempt,
+} from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 export const preferredRegion = "hnd1";
@@ -19,6 +30,13 @@ function isValidEmail(value: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 }
 
+const SUPPORT_TEL = "050-1793-4785";
+
+// 照合失敗の文言は入口（/api/reservations/verify）と揃える。
+// どの項目が違ったかを返さない。
+const MISMATCH_MESSAGE =
+  "ご入力内容が確認できませんでした。お手数ですが内容をご確認ください。";
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json().catch(() => null);
@@ -26,6 +44,10 @@ export async function POST(req: NextRequest) {
     const token = String(body?.token ?? "").trim();
     const field = String(body?.field ?? "").trim() as EditableField;
     const value = String(body?.value ?? "").trim();
+    // メール変更時の再照合に使う電話番号（登録済みの番号との突き合わせ）
+    const phone = String(body?.phone ?? "").trim();
+    // 電話番号が未登録の予約で、今後の手続き用に登録してもらう番号
+    const newPhone = String(body?.newPhone ?? "").trim();
 
     if (!token) {
       return NextResponse.json(
@@ -130,9 +152,115 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // メールアドレスの変更だけは、QRと領収書の宛先ごと予約の支配権が移る操作なので
+    // 再照合を求める。manage 画面は予約日・PIN・ナンバーを表示しているため、
+    // 画面に出ていない電話番号だけが実効性のある確認材料になる。
+    const registeredPhone = normalizePhone(reservation.phone);
+    let phoneRegistered = false;
+
+    if (field === "email") {
+      const ipHash = hashIp(getClientIp(req), "selfupdate");
+
+      if (registeredPhone) {
+        const limit = await checkVerificationRateLimit(ipHash);
+
+        if (!limit.allowed) {
+          const minutes = Math.ceil(limit.retryAfterSeconds / 60);
+
+          await sendSlackAlert(
+            [
+              "⚠️ メールアドレス変更の再照合がロックされました",
+              `予約ID：${reservation.id}`,
+              `駐車場：${reservation.place?.name ?? "-"}`,
+              `利用日：${reservation.date}`,
+              `お客様：${reservation.name}`,
+            ].join("\n")
+          );
+
+          return NextResponse.json(
+            {
+              ok: false,
+              error: "rate_limited",
+              message:
+                `ご入力の確認が続けて取れなかったため、${minutes}分ほどお待ちいただく必要があります。` +
+                `お急ぎの場合は ${SUPPORT_TEL} までお電話ください。`,
+            },
+            {
+              status: 429,
+              headers: { "Retry-After": String(limit.retryAfterSeconds) },
+            }
+          );
+        }
+
+        // 予約1件だけを候補にして照合する。
+        // 入口の verify を流用すると全予約から検索してしまい、
+        // 別の予約に一致した場合にその予約のトークンを返しかねない。
+        const outcome = matchCandidates(
+          [
+            {
+              id: reservation.id,
+              date: reservation.date,
+              plate: reservation.plate,
+              phone: reservation.phone,
+              cancelToken: reservation.cancelToken,
+            },
+          ],
+          {
+            date: reservation.date,
+            pin: reservation.pin,
+            plate: reservation.plate,
+            phone,
+          }
+        );
+
+        if (!outcome.ok) {
+          await recordVerificationAttempt(ipHash, false);
+
+          // 残り試行回数は返さない（総当たりの手がかりになるため）
+          return NextResponse.json(
+            { ok: false, error: "verification_failed", message: MISMATCH_MESSAGE },
+            { status: 403 }
+          );
+        }
+
+        await recordVerificationAttempt(ipHash, true);
+      } else {
+        // 電話番号が未登録の予約は、照合材料が画面上の情報しか無いため確認できない。
+        // 変更は通したうえで、今後の手続きのために電話番号を登録してもらう。
+        if (!newPhone) {
+          return NextResponse.json(
+            {
+              ok: false,
+              error: "phone_registration_required",
+              message: "お電話番号をご登録ください",
+            },
+            { status: 400 }
+          );
+        }
+
+        if (!/^[0-9\-\s\+\(\)]+$/.test(newPhone) || normalizePhone(newPhone).length < 10) {
+          return NextResponse.json(
+            {
+              ok: false,
+              error: "invalid_phone",
+              message: "電話番号の形式が正しくありません",
+            },
+            { status: 400 }
+          );
+        }
+
+        phoneRegistered = true;
+      }
+    }
+
     await prisma.reservation.update({
       where: { id: reservation.id },
-      data: field === "email" ? { email: value } : { plate: value },
+      data:
+        field === "email"
+          ? phoneRegistered
+            ? { email: value, phone: newPhone }
+            : { email: value }
+          : { plate: value },
     });
 
     // ログが欠けても変更自体は成立させる（検知できるようアラートは出す）
@@ -243,6 +371,20 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    if (field === "email" && phoneRegistered) {
+      await sendSlackAlert(
+        [
+          "⚠️ 再照合なしでメールアドレスが変更されました",
+          "※ 電話番号が未登録の予約のため、本人確認ができませんでした",
+          `予約ID：${reservation.id}`,
+          `駐車場：${placeName}`,
+          `利用日：${reservation.date}`,
+          `お客様：${reservation.name}`,
+          `今回ご登録の電話番号：${newPhone}`,
+        ].join("\n")
+      );
+    }
+
     await sendSlackNotification(
       [
         field === "email"
@@ -269,6 +411,7 @@ export async function POST(req: NextRequest) {
       field,
       newValue: value,
       mailSent,
+      phoneRegistered,
     });
   } catch (error) {
     console.error("[reservations/self-update] error:", error);

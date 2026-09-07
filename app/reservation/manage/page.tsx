@@ -10,6 +10,7 @@ type ReservationView = {
   name: string;
   plate: string;
   email: string | null;
+  hasPhone?: boolean;
   price: number;
   status: string;
   pin?: string | null;
@@ -102,6 +103,10 @@ function ReservationManagePageInner() {
   const [editValue, setEditValue] = useState("");
   const [editErr, setEditErr] = useState("");
   const [editSaving, setEditSaving] = useState(false);
+  // メール変更時の再照合（登録済みの電話番号との突き合わせ）
+  const [editPhone, setEditPhone] = useState("");
+  // 電話番号が未登録の予約で、今後の手続き用に登録してもらう番号
+  const [editNewPhone, setEditNewPhone] = useState("");
 
   async function loadReservation() {
     if (!token) {
@@ -246,7 +251,13 @@ function ReservationManagePageInner() {
       const res = await fetch("/api/reservations/self-update", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token, field: editField, value: next }),
+        body: JSON.stringify({
+          token,
+          field: editField,
+          value: next,
+          phone: editPhone.trim(),
+          newPhone: editNewPhone.trim(),
+        }),
       });
 
       const json = await res.json().catch(() => null);
@@ -264,6 +275,8 @@ function ReservationManagePageInner() {
 
       setEditField(null);
       setEditValue("");
+      setEditPhone("");
+      setEditNewPhone("");
       await loadReservation();
     } catch (e) {
       setEditErr(e instanceof Error ? e.message : String(e));
@@ -525,6 +538,8 @@ function ReservationManagePageInner() {
                           setEditField("plate");
                           setEditValue(reservation.plate);
                           setEditErr("");
+                          setEditPhone("");
+                          setEditNewPhone("");
                         }}
                         style={selfEditBtnStyle}
                       >
@@ -555,6 +570,8 @@ function ReservationManagePageInner() {
                         setEditField("email");
                         setEditValue(reservation.email ?? "");
                         setEditErr("");
+                        setEditPhone("");
+                        setEditNewPhone("");
                       }}
                       style={selfEditBtnStyle}
                     >
@@ -605,10 +622,71 @@ function ReservationManagePageInner() {
                   />
 
                   {editField === "email" && (
-                    <p style={{ margin: "8px 0 0", fontSize: 12, color: "#6b7280", lineHeight: 1.7 }}>
-                      新しいアドレスに、PINコードを含むご予約内容をお送りします。
-                      変更前のアドレスにも変更のお知らせが届きます。
-                    </p>
+                    <>
+                      <p style={{ margin: "8px 0 0", fontSize: 12, color: "#6b7280", lineHeight: 1.7 }}>
+                        新しいアドレスに、PINコードを含むご予約内容をお送りします。
+                        変更前のアドレスにも変更のお知らせが届きます。
+                      </p>
+
+                      {reservation.hasPhone ? (
+                        <div style={{ marginTop: 14 }}>
+                          <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 6 }}>
+                            ご登録の電話番号
+                          </div>
+                          <input
+                            type="tel"
+                            inputMode="tel"
+                            autoComplete="tel"
+                            value={editPhone}
+                            onChange={(e) => {
+                              setEditPhone(e.target.value);
+                              setEditErr("");
+                            }}
+                            placeholder="例: 090-1234-5678"
+                            style={{
+                              width: "100%",
+                              boxSizing: "border-box",
+                              padding: 10,
+                              borderRadius: 8,
+                              border: "1px solid #d1d5db",
+                              fontSize: 16,
+                            }}
+                          />
+                          <p style={{ margin: "6px 0 0", fontSize: 12, color: "#6b7280", lineHeight: 1.7 }}>
+                            ご本人確認のため、ご予約時にご登録いただいた電話番号をご入力ください。
+                          </p>
+                        </div>
+                      ) : (
+                        <div style={{ marginTop: 14 }}>
+                          <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 6 }}>
+                            お電話番号のご登録
+                          </div>
+                          <input
+                            type="tel"
+                            inputMode="tel"
+                            autoComplete="tel"
+                            value={editNewPhone}
+                            onChange={(e) => {
+                              setEditNewPhone(e.target.value);
+                              setEditErr("");
+                            }}
+                            placeholder="例: 090-1234-5678"
+                            style={{
+                              width: "100%",
+                              boxSizing: "border-box",
+                              padding: 10,
+                              borderRadius: 8,
+                              border: "1px solid #d1d5db",
+                              fontSize: 16,
+                            }}
+                          />
+                          <p style={{ margin: "6px 0 0", fontSize: 12, color: "#6b7280", lineHeight: 1.7 }}>
+                            今後のお手続きのため、お電話番号をご登録ください。
+                            次回以降のご照会でご入力いただくことがあります。
+                          </p>
+                        </div>
+                      )}
+                    </>
                   )}
 
                   {editErr && (
@@ -621,19 +699,38 @@ function ReservationManagePageInner() {
                     <button
                       type="button"
                       onClick={handleSelfUpdate}
-                      disabled={editSaving || !editValue.trim()}
+                      disabled={
+                        editSaving ||
+                        !editValue.trim() ||
+                        (editField === "email" &&
+                          (reservation.hasPhone
+                            ? !editPhone.trim()
+                            : !editNewPhone.trim()))
+                      }
                       style={{
                         flex: 1,
                         padding: "10px 14px",
                         borderRadius: 8,
                         border: "none",
                         background:
-                          editSaving || !editValue.trim() ? "#d1d5db" : "#1d4ed8",
+                          editSaving ||
+                          !editValue.trim() ||
+                          (editField === "email" &&
+                            (reservation.hasPhone
+                              ? !editPhone.trim()
+                              : !editNewPhone.trim()))
+                            ? "#d1d5db"
+                            : "#1d4ed8",
                         color: "#fff",
                         fontWeight: 700,
                         fontSize: 14,
                         cursor:
-                          editSaving || !editValue.trim()
+                          editSaving ||
+                          !editValue.trim() ||
+                          (editField === "email" &&
+                            (reservation.hasPhone
+                              ? !editPhone.trim()
+                              : !editNewPhone.trim()))
                             ? "not-allowed"
                             : "pointer",
                       }}
@@ -646,6 +743,8 @@ function ReservationManagePageInner() {
                         setEditField(null);
                         setEditValue("");
                         setEditErr("");
+                        setEditPhone("");
+                        setEditNewPhone("");
                       }}
                       style={{
                         padding: "10px 14px",

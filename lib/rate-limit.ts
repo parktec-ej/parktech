@@ -14,9 +14,13 @@ const WINDOW_MINUTES = 15;
 /** 試行記録の保持期間（日）。cron で掃除する。 */
 export const ATTEMPT_RETENTION_DAYS = 30;
 
-/** 生IPは保存しない */
-export function hashIp(ip: string) {
-  return crypto.createHash("sha256").update(ip).digest("hex");
+/**
+ * 生IPは保存しない。
+ * scope を変えると別カウンタになる。入口の照会（verify）で失敗が続いた人が、
+ * manage 内の操作（selfupdate）まで巻き添えでロックされるのを避けるため。
+ */
+export function hashIp(ip: string, scope: "verify" | "selfupdate" = "verify") {
+  return crypto.createHash("sha256").update(`${scope}:${ip}`).digest("hex");
 }
 
 export function getClientIp(req: Request) {

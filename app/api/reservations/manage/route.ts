@@ -100,6 +100,9 @@ export async function GET(req: NextRequest) {
         name: reservation.name,
         plate: reservation.plate,
         email: reservation.email,
+        // 電話番号自体は返さない（再照合の答えを画面に出さないため）。
+        // 入力欄の出し分けに必要な「登録されているか」だけを返す。
+        hasPhone: Boolean(String(reservation.phone ?? "").trim()),
         price: reservation.price,
         status: reservation.status,
         pin: reservation.pin ?? null,

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { findVerifiedReservation } from "@/lib/reservation-verify";
+import { sendSlackAlert } from "@/lib/slack";
 import {
   checkVerificationRateLimit,
   getClientIp,
@@ -27,6 +28,15 @@ export async function POST(req: NextRequest) {
 
     if (!limit.allowed) {
       const minutes = Math.ceil(limit.retryAfterSeconds / 60);
+
+      // 入口の照会では予約を特定できていないため、予約IDは出せない。
+      await sendSlackAlert(
+        [
+          "⚠️ 予約照会（入口）がレート制限でロックされました",
+          "※ 照合が成立していないため予約は特定できません",
+          `解除まで：約${minutes}分`,
+        ].join("\n")
+      );
 
       return NextResponse.json(
         {
