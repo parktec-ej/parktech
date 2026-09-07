@@ -248,6 +248,15 @@ export default function ReservationLookupPage() {
               までお電話ください。
             </p>
 
+            <p style={{ ...noteStyle, marginTop: 12 }}>
+              <Link
+                href="/reservation/verify"
+                style={{ color: COLORS.blue700, fontWeight: 700 }}
+              >
+                メールアドレスが分からない・届かない方はこちら
+              </Link>
+            </p>
+
             <BackToTopLink />
           </div>
         ) : (
