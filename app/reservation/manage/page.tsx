@@ -1116,6 +1116,16 @@ function ReservationManagePageInner() {
           {msg}
         </div>
       )}
+
+      {/* 別ドメインだが「戻る」操作なので同一タブで遷移させる */}
+      <div style={{ marginTop: 24, textAlign: "center" }}>
+        <a
+          href="https://parktec-ej.com"
+          style={{ color: "#666", fontSize: 13, textDecoration: "underline" }}
+        >
+          ParkTec公式サイトへ
+        </a>
+      </div>
     </main>
   );
 }

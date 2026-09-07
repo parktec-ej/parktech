@@ -554,6 +554,16 @@ export default function ReservationLookupPage() {
           </p>
 
           <BackToTopLink />
+
+          {/* 別ドメインだが「戻る」操作なので同一タブで遷移させる */}
+          <p style={{ ...noteStyle, marginTop: 14, textAlign: "center" }}>
+            <a
+              href="https://parktec-ej.com"
+              style={{ color: COLORS.ink3, textDecoration: "underline" }}
+            >
+              ParkTec公式サイトへ
+            </a>
+          </p>
         </div>
       </div>
     </div>

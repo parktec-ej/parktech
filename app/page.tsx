@@ -183,6 +183,20 @@ export default function Home() {
             <Link href="/reservation/lookup" style={secondaryButtonStyle}>
               予約内容の確認・変更
             </Link>
+
+            {/* 別ドメインだが「戻る」操作なので同一タブで遷移させる */}
+            <a
+              href="https://parktec-ej.com"
+              style={{
+                marginTop: 4,
+                textAlign: "center",
+                color: COLORS.blue300,
+                fontSize: 13,
+                textDecoration: "underline",
+              }}
+            >
+              ParkTec公式サイトへ
+            </a>
           </div>
 
           <div style={statsRowStyle}>

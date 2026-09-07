@@ -189,7 +189,7 @@ export default function MonthlyApplyPage() {
     <main style={pageStyle}>
       <div style={containerStyle}>
         <a href="https://parktec-ej.com/monthly" style={backLinkStyle}>
-          ← HPに戻る
+          ParkTec公式サイトへ
         </a>
         <h1 style={titleStyle}>月極駐車場 お申し込み</h1>
         <p style={descStyle}>
