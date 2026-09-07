@@ -64,6 +64,16 @@ type PlacesApiResponse = {
   message?: string;
 };
 
+// 「未定」等が入ると、この予約の持ち主は照会導線（/reservation/verify）を使えなくなる。
+// 予約自体は取りこぼしたくないので弾かず、入力を促す案内だけ出す。
+const VAGUE_PLATES = ["未定", "未登録", "なし", "不明"];
+
+function isVaguePlate(value: string) {
+  const normalized = value.replace(/[\s　]/g, "");
+  if (!normalized) return false;
+  return VAGUE_PLATES.some((v) => normalized === v);
+}
+
 function ymdTodayJst() {
   return new Date().toLocaleDateString("sv-SE", {
     timeZone: "Asia/Tokyo",
@@ -338,7 +348,12 @@ function ReservePageInner() {
       return;
     }
 
-    if (phone.trim() && !/^[0-9\-\s]+$/.test(phone.trim())) {
+    if (!phone.trim()) {
+      setErr("電話番号を入力してください");
+      return;
+    }
+
+    if (!/^[0-9\-\s]+$/.test(phone.trim())) {
       setErr("電話番号は数字とハイフンのみで入力してください");
       return;
     }
@@ -611,6 +626,22 @@ function ReservePageInner() {
             placeholder="例: 宮城300 あ 1234"
             style={styles.input}
           />
+          {isVaguePlate(plate) && (
+            <p
+              style={{
+                margin: "8px 0 0",
+                padding: "10px 12px",
+                borderRadius: 8,
+                background: "#fef3c7",
+                color: "#92400e",
+                fontSize: 13,
+                lineHeight: 1.8,
+              }}
+            >
+              車両ナンバーが未定の場合も、後から変更できます。
+              現時点で分かる範囲でご入力ください。
+            </p>
+          )}
         </section>
 
         <section style={styles.section}>
@@ -633,7 +664,7 @@ function ReservePageInner() {
         </section>
 
         <section style={styles.section}>
-          <label style={styles.label}>電話番号（任意）</label>
+          <label style={styles.label}>電話番号</label>
           <input
             type="tel"
             inputMode="tel"

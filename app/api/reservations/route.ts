@@ -3,6 +3,7 @@ export const preferredRegion = "hnd1";
 
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { sendSlackNotification } from "@/lib/slack";
 import { resolveActivePlace } from "@/lib/place-resolver";
 import { isReservationMaintenance } from "@/lib/maintenance";
 import {
@@ -582,6 +583,15 @@ export async function GET(req: NextRequest) {
   }
 }
 
+// 「未定」等のナンバーで予約されると、その方は照会導線を使えない。
+// 予約は成立させたうえで運用側が把握できるよう通知する。
+const VAGUE_PLATES = ["未定", "未登録", "なし", "不明"];
+
+function isVaguePlate(value: string) {
+  const normalized = value.replace(/[\s　]/g, "");
+  return normalized !== "" && VAGUE_PLATES.includes(normalized);
+}
+
 export async function POST(req: NextRequest) {
   const startedAt = Date.now();
   console.log("[reservations] start POST");
@@ -601,7 +611,15 @@ export async function POST(req: NextRequest) {
     const email = String(body.email ?? "").trim();
     const phone = String(body.phone ?? "").trim();
 
-    if (phone && !/^[0-9\-\s\+\(\)]+$/.test(phone)) {
+    if (!phone) {
+      return jsonError(
+        "電話番号が必要です",
+        400,
+        "missing_phone"
+      );
+    }
+
+    if (!/^[0-9\-\s\+\(\)]+$/.test(phone)) {
       return jsonError(
         "電話番号の形式が正しくありません",
         400,
@@ -825,6 +843,21 @@ export async function POST(req: NextRequest) {
           refundStatus: "NONE",
         },
       });
+
+    if (isVaguePlate(plate)) {
+      await sendSlackNotification(
+        [
+          "⚠️ 車両ナンバーが未定のまま予約されました",
+          "※ この予約はWeb照会（/reservation/verify）を利用できません",
+          `予約ID：${created.id}`,
+          `駐車場：${place.name}`,
+          `利用日：${date}`,
+          `お客様：${name}`,
+          `ナンバー：${plate}`,
+          `電話：${phone}`,
+        ].join("\n")
+      );
+    }
 
     return NextResponse.json({
       ok: true,

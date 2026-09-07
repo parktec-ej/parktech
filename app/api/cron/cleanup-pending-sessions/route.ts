@@ -4,6 +4,7 @@ export const preferredRegion = "hnd1";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { sendSlackNotification } from "@/lib/slack";
+import { cleanupVerificationAttempts } from "@/lib/rate-limit";
 
 // 事前決済の待機（PENDING）を放置とみなすまでの時間。
 // 現地でQRを読んで時間を選んで決済するのに30分もかからない想定。
@@ -22,6 +23,15 @@ export async function GET(req: Request) {
   }
 
   try {
+    // 予約照会のレート制限記録も30日で掃除する。
+    // 下の PENDING が0件でも実行されるよう、早期 return より前に置くこと。
+    let attemptsDeleted = 0;
+    try {
+      attemptsDeleted = await cleanupVerificationAttempts();
+    } catch (e) {
+      console.error("[cron/cleanup-pending-sessions] attempts cleanup failed:", e);
+    }
+
     const cutoff = new Date(
       Date.now() - PENDING_TIMEOUT_MINUTES * 60 * 1000
     );
@@ -42,7 +52,7 @@ export async function GET(req: Request) {
     });
 
     if (stale.length === 0) {
-      return NextResponse.json({ ok: true, deleted: 0 });
+      return NextResponse.json({ ok: true, deleted: 0, attemptsDeleted });
     }
 
     const deleted = await prisma.parkingSession.deleteMany({
@@ -55,7 +65,7 @@ export async function GET(req: Request) {
       `【未決済セッション削除】${deleted.count}件を削除し区画を解放しました`
     ).catch(() => {});
 
-    return NextResponse.json({ ok: true, deleted: deleted.count });
+    return NextResponse.json({ ok: true, deleted: deleted.count, attemptsDeleted });
   } catch (error) {
     console.error("[cron/cleanup-pending-sessions] error:", error);
     return NextResponse.json(
