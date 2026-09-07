@@ -39,7 +39,9 @@ export async function GET(req: NextRequest) {
             label: true,
           },
         },
+        // 日付変更の回数制限に使うので、日付以外の変更ログ（email/plate）は数えない
         changeLogs: {
+          where: { field: "date" },
           select: { id: true },
         },
       },

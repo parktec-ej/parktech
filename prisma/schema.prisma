@@ -608,12 +608,17 @@ model ReservationChangeLog {
   reservationId String
   oldDate       String
   newDate       String
+  // 変更対象の項目。既存レコードはすべて日付変更なので default("date") で互換を保つ。
+  field         String      @default("date")
+  oldValue      String?
+  newValue      String?
   changedAt     DateTime    @default(now())
   changedBy     String      @default("customer")
   reason        String?
   reservation   Reservation @relation(fields: [reservationId], references: [id])
 
   @@index([reservationId])
+  @@index([reservationId, field])
 }
 
 enum SessionType {

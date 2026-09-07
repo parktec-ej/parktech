@@ -71,7 +71,8 @@ export async function POST(req: NextRequest) {
       include: {
         place: { select: { id: true, name: true, operationMode: true } },
         spot: { select: { id: true, code: true, label: true } },
-        changeLogs: { select: { id: true } },
+        // 日付変更の回数制限に使うので、日付以外の変更ログ（email/plate）は数えない
+        changeLogs: { where: { field: "date" }, select: { id: true } },
       },
     });
 
