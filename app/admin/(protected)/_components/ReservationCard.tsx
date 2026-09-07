@@ -111,6 +111,8 @@ type Props = {
   busy?: boolean;
   onCancel?: (id: string) => void;
   onForceCheckout?: (id: string) => void;
+  onEditEmail?: (item: ReservationCardItem) => void;
+  onEditPlate?: (item: ReservationCardItem) => void;
   dateChange?: DateChangeControls;
   /** 緊急対応固有のボタン（PIN再送 / GATE URL送信 / 強制出庫）を差し込む */
   extraActions?: ReactNode;
@@ -121,9 +123,21 @@ export default function ReservationCard({
   busy = false,
   onCancel,
   onForceCheckout,
+  onEditEmail,
+  onEditPlate,
   dateChange,
   extraActions,
 }: Props) {
+  const editBtnStyle: React.CSSProperties = {
+    padding: "10px 14px",
+    borderRadius: 10,
+    border: "1px solid #6b7280",
+    background: "#fff",
+    color: "#374151",
+    fontWeight: 800,
+    cursor: "pointer",
+  };
+
   return (
     <div
       style={{
@@ -336,6 +350,18 @@ export default function ReservationCard({
               )}
             </>
           )}
+
+        {onEditEmail && r.status !== "CANCELED" && (
+          <button onClick={() => onEditEmail(r)} style={editBtnStyle}>
+            ✉️ メール編集
+          </button>
+        )}
+
+        {onEditPlate && r.status !== "CANCELED" && (
+          <button onClick={() => onEditPlate(r)} style={editBtnStyle}>
+            🚗 ナンバー変更
+          </button>
+        )}
 
         {extraActions}
       </div>

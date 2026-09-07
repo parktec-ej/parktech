@@ -2,7 +2,11 @@
 
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import ReservationCard, { unexitBadge } from "../_components/ReservationCard";
+import ReservationCard, {
+  unexitBadge,
+  type ReservationCardItem,
+} from "../_components/ReservationCard";
+import EditReservationFieldModal from "../_components/EditReservationFieldModal";
 
 function ymdTodayJst() {
   const now = new Date();
@@ -147,6 +151,10 @@ function AdminReservationsPageInner() {
   const [changeDateId, setChangeDateId] = useState<string | null>(null);
   const [changeDateValue, setChangeDateValue] = useState("");
   const [changeDateReason, setChangeDateReason] = useState("");
+  const [editTarget, setEditTarget] = useState<{
+    field: "email" | "plate";
+    item: ReservationCardItem;
+  } | null>(null);
 
   const currentSearchParams = useMemo(
     () => new URLSearchParams(searchParams.toString()),
@@ -778,6 +786,8 @@ function AdminReservationsPageInner() {
               busy={actionBusyId === r.id}
               onCancel={doCancel}
               onForceCheckout={doForceCheckout}
+              onEditEmail={(item) => setEditTarget({ field: "email", item })}
+              onEditPlate={(item) => setEditTarget({ field: "plate", item })}
               dateChange={{
                 openId: changeDateId,
                 value: changeDateValue,
@@ -799,6 +809,24 @@ function AdminReservationsPageInner() {
             />
           ))}
         </div>
+      )}
+
+      {editTarget && (
+        <EditReservationFieldModal
+          field={editTarget.field}
+          reservationId={editTarget.item.id}
+          currentValue={
+            editTarget.field === "email"
+              ? editTarget.item.email
+              : editTarget.item.plate
+          }
+          onClose={() => setEditTarget(null)}
+          onUpdated={async (message) => {
+            setMsg(message);
+            setErr("");
+            await loadReservations({ placeId, date, status, sort, q: qApplied });
+          }}
+        />
       )}
     </main>
   );
