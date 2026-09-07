@@ -81,7 +81,10 @@ async function journalCsv(month: string): Promise<Response> {
   const payments = await prisma.payment.findMany({
     where: {
       recognizedMonth: month,
-      status: { in: ["CONFIRMED", "SETTLED"] },
+      // REFUNDED を含める。返金は Adjustment 側で反転仕訳を出すので、
+      // ここで元の売上計上を落とすと返金行だけが残り売上高がマイナスに振れる。
+      // 管理画面の集計（sales/monthly, settlements）とも条件を揃えている。
+      status: { in: ["CONFIRMED", "SETTLED", "REFUNDED"] },
     },
     select: {
       id: true,
