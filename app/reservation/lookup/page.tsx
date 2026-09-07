@@ -254,8 +254,16 @@ export default function ReservationLookupPage() {
         <h1 style={{ margin: 0, fontSize: 25, fontWeight: 700, color: "#fff" }}>
           予約内容の確認・変更
         </h1>
-        <p style={{ margin: "8px 0 0", fontSize: 14, color: COLORS.blue300 }}>
-          日付の変更・キャンセルはこちらから
+        <p
+          style={{
+            margin: "8px auto 0",
+            maxWidth: 360,
+            fontSize: 14,
+            lineHeight: 1.7,
+            color: COLORS.blue300,
+          }}
+        >
+          車両ナンバー・メールアドレス・ご利用日の変更、キャンセルはこちらから
         </p>
       </div>
 
