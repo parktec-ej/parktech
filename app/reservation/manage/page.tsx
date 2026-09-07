@@ -107,6 +107,8 @@ function ReservationManagePageInner() {
   const [editPhone, setEditPhone] = useState("");
   // 電話番号が未登録の予約で、今後の手続き用に登録してもらう番号
   const [editNewPhone, setEditNewPhone] = useState("");
+  // 共有端末での肩越し閲覧を避けるため既定は伏せ字。入庫時に必要なので開ける。
+  const [pinRevealed, setPinRevealed] = useState(false);
 
   async function loadReservation() {
     if (!token) {
@@ -417,10 +419,30 @@ function ReservationManagePageInner() {
                   fontWeight: 900,
                   letterSpacing: "0.15em",
                   fontVariantNumeric: "tabular-nums",
+                  color: pinRevealed ? undefined : "#9ca3af",
                 }}
               >
-                {reservation.pin}
+                {pinRevealed ? reservation.pin : "••••"}
               </div>
+
+              <button
+                type="button"
+                onClick={() => setPinRevealed((v) => !v)}
+                style={{
+                  marginTop: 10,
+                  padding: "8px 18px",
+                  borderRadius: 999,
+                  border: "1px solid #d1d5db",
+                  background: "#fff",
+                  color: "#1d4ed8",
+                  fontWeight: 700,
+                  fontSize: 13,
+                  cursor: "pointer",
+                }}
+              >
+                {pinRevealed ? "隠す" : "表示する"}
+              </button>
+
               <div style={{ fontSize: 12, color: "#888", marginTop: 6 }}>
                 入庫時にこの番号を入力してください
               </div>

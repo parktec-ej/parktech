@@ -5,6 +5,12 @@ import {
   sendManageLinkResendMail,
   sendNoReservationFoundMail,
 } from "@/lib/mail";
+import {
+  checkVerificationRateLimit,
+  getClientIp,
+  hashIp,
+  recordVerificationAttempt,
+} from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 export const preferredRegion = "hnd1";
@@ -12,6 +18,8 @@ export const preferredRegion = "hnd1";
 const APP_URL = (
   process.env.NEXT_PUBLIC_APP_URL || "https://reserve.parktec-ej.com"
 ).trim().replace(/\/$/, "");
+
+const SUPPORT_TEL = "050-1793-4785";
 
 const RESPONSE_MESSAGE =
   "ご入力のメールアドレス宛に、予約内容の確認・変更リンクをお送りしました。";
@@ -22,6 +30,31 @@ function todayJst() {
 
 export async function POST(req: NextRequest) {
   try {
+    // 送信元IP単位で件数を制限する。この導線は常に同じ応答を返すため
+    // 「失敗」が定義できないので、成否を問わず件数で数える。
+    const ipHash = hashIp(getClientIp(req), "lookup");
+    const limit = await checkVerificationRateLimit(ipHash, { countAll: true });
+
+    if (!limit.allowed) {
+      const minutes = Math.ceil(limit.retryAfterSeconds / 60);
+
+      // ロックされた事実は伝えるが、入力アドレスに予約があるかは示さない。
+      // 文言も通常時（送信しました）とは明確に変える。
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "rate_limited",
+          message:
+            `送信のお手続きが続いたため、${minutes}分ほどお待ちいただく必要があります。` +
+            `お急ぎの場合は ${SUPPORT_TEL} までお電話ください。`,
+        },
+        {
+          status: 429,
+          headers: { "Retry-After": String(limit.retryAfterSeconds) },
+        }
+      );
+    }
+
     const body = await req.json().catch(() => null);
     const email = String(body?.email ?? "").trim().toLowerCase();
 
@@ -117,6 +150,9 @@ export async function POST(req: NextRequest) {
         await sendNoReservationFoundMail({ to: email });
       }
     }
+
+    // 予約の有無で記録を変えると件数の差から推測されうるので、常に同じ形で記録する
+    await recordVerificationAttempt(ipHash, true);
 
     // 件数・存在有無は返さない（レスポンスの差から登録有無を判定されないようにするため）
     return NextResponse.json({

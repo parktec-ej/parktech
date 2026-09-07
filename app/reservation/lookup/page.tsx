@@ -233,6 +233,7 @@ export default function ReservationLookupPage() {
       const json = await res.json().catch(() => null);
 
       if (!res.ok || !json?.ok) {
+        // ロック時も「送信しました」の成功表示に落とさず、待ち時間を伝える
         setMailErr(
           json?.message ?? "送信に失敗しました。時間をおいてお試しください。"
         );

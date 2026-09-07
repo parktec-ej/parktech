@@ -19,7 +19,10 @@ export const ATTEMPT_RETENTION_DAYS = 30;
  * scope を変えると別カウンタになる。入口の照会（verify）で失敗が続いた人が、
  * manage 内の操作（selfupdate）まで巻き添えでロックされるのを避けるため。
  */
-export function hashIp(ip: string, scope: "verify" | "selfupdate" = "verify") {
+export function hashIp(
+  ip: string,
+  scope: "verify" | "selfupdate" | "lookup" = "verify"
+) {
   return crypto.createHash("sha256").update(`${scope}:${ip}`).digest("hex");
 }
 
@@ -36,16 +39,22 @@ export type RateLimitResult = {
   retryAfterSeconds: number;
 };
 
-/** 直近の時間窓での失敗回数を数える。上限に達していたら allowed=false。 */
+/**
+ * 直近の時間窓での回数を数える。上限に達していたら allowed=false。
+ *
+ * countAll は「失敗」の概念が無い導線（lookup は常に同じ成功応答を返す）用。
+ * true にすると成否を問わず件数で数える。既定は失敗のみを数える。
+ */
 export async function checkVerificationRateLimit(
-  ipHash: string
+  ipHash: string,
+  options?: { countAll?: boolean }
 ): Promise<RateLimitResult> {
   const since = new Date(Date.now() - WINDOW_MINUTES * 60 * 1000);
 
   const failures = await prisma.verificationAttempt.findMany({
     where: {
       ipHash,
-      succeeded: false,
+      ...(options?.countAll ? {} : { succeeded: false }),
       createdAt: { gte: since },
     },
     select: { createdAt: true },
