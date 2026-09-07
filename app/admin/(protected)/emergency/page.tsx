@@ -5,6 +5,7 @@ import ReservationCard, {
   type ReservationCardItem,
   type ReservationCardStatus,
 } from "../_components/ReservationCard";
+import EditReservationFieldModal from "../_components/EditReservationFieldModal";
 
 type Place = { id: string; slug: string; name: string };
 type Spot = { id: string; code: string; label: string | null };
@@ -143,6 +144,13 @@ function EmergencyPageInner() {
   const [busy, setBusy] = useState<string | null>(null);
   const [places, setPlaces] = useState<Place[]>([]);
   const [showCreate, setShowCreate] = useState(false);
+  const [editTarget, setEditTarget] = useState<{
+    field: "email" | "plate";
+    item: ReservationCardItem;
+  } | null>(null);
+  const [changeDateId, setChangeDateId] = useState<string | null>(null);
+  const [changeDateValue, setChangeDateValue] = useState("");
+  const [changeDateReason, setChangeDateReason] = useState("");
 
   // Manual reservation form state
   const [cName, setCName] = useState("");
@@ -236,6 +244,47 @@ function EmergencyPageInner() {
         return;
       }
       setMsg(`${label} OK`);
+      if (qDebounced) runSearch(qDebounced);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function doAdminDateChange(reservationId: string) {
+    if (!changeDateValue) {
+      setErr("日付を入力してください");
+      return;
+    }
+    if (!confirm(`日付を ${changeDateValue} に変更しますか？`)) return;
+
+    setBusy(`日付変更-${reservationId}`);
+    setErr("");
+    setMsg("");
+
+    try {
+      const res = await fetch("/api/admin/reservations/change-date", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          reservationId,
+          newDate: changeDateValue,
+          reason: changeDateReason || "管理者による代理変更",
+        }),
+      });
+
+      const json = await res.json().catch(() => null);
+
+      if (!res.ok || !json?.ok) {
+        setErr(json?.message ?? json?.error ?? "日付変更に失敗しました");
+        return;
+      }
+
+      setMsg(`日付を ${json.newDate} に変更しました（区画: ${json.newSpotLabel ?? "-"}）`);
+      setChangeDateId(null);
+      setChangeDateValue("");
+      setChangeDateReason("");
       if (qDebounced) runSearch(qDebounced);
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
@@ -389,10 +438,31 @@ function EmergencyPageInner() {
                     busy={
                       busy === `PIN再送-${r.id}` ||
                       busy === `GATE URL送信-${r.id}` ||
+                      busy === `日付変更-${r.id}` ||
                       (r.activeSession
                         ? busy === `強制出庫-${r.activeSession.id}`
                         : false)
                     }
+                    onEditEmail={(item) => setEditTarget({ field: "email", item })}
+                    onEditPlate={(item) => setEditTarget({ field: "plate", item })}
+                    dateChange={{
+                      openId: changeDateId,
+                      value: changeDateValue,
+                      reason: changeDateReason,
+                      onOpen: (id) => {
+                        setChangeDateId(id);
+                        setChangeDateValue("");
+                        setChangeDateReason("");
+                      },
+                      onClose: () => {
+                        setChangeDateId(null);
+                        setChangeDateValue("");
+                        setChangeDateReason("");
+                      },
+                      onChangeValue: setChangeDateValue,
+                      onChangeReason: setChangeDateReason,
+                      onSubmit: doAdminDateChange,
+                    }}
                     extraActions={
                       <>
                         <button
@@ -657,6 +727,24 @@ function EmergencyPageInner() {
       </section>
 
       <div style={{ height: 40 }} />
+
+      {editTarget && (
+        <EditReservationFieldModal
+          field={editTarget.field}
+          reservationId={editTarget.item.id}
+          currentValue={
+            editTarget.field === "email"
+              ? editTarget.item.email
+              : editTarget.item.plate
+          }
+          onClose={() => setEditTarget(null)}
+          onUpdated={(message) => {
+            setMsg(message);
+            setErr("");
+            if (qDebounced) runSearch(qDebounced);
+          }}
+        />
+      )}
     </main>
   );
 }
