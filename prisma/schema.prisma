@@ -603,6 +603,19 @@ model BusPartner {
   @@index([isActive])
 }
 
+// 予約照会（/reservation/verify）の試行記録。
+// 同一IPからの総当たりを抑えるためのレート制限用で、30日で掃除する。
+// IPは生値を残さず SHA-256 ハッシュで保存する。
+model VerificationAttempt {
+  id        String   @id @default(uuid())
+  ipHash    String
+  succeeded Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([ipHash, createdAt])
+  @@index([createdAt])
+}
+
 model ReservationChangeLog {
   id            String      @id @default(uuid())
   reservationId String
