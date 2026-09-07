@@ -64,7 +64,7 @@ type PlacesApiResponse = {
   message?: string;
 };
 
-// 「未定」等が入ると、この予約の持ち主は照会導線（/reservation/verify）を使えなくなる。
+// 「未定」等が入ると、この予約の持ち主は照会導線（/reservation/lookup）を使えなくなる。
 // 予約自体は取りこぼしたくないので弾かず、入力を促す案内だけ出す。
 const VAGUE_PLATES = ["未定", "未登録", "なし", "不明"];
 

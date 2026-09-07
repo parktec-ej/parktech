@@ -75,7 +75,12 @@ export async function sendReservationPinMail(params: {
             ? `
           <p style="margin-top:20px">
             <strong>予約管理（予約確認・日付変更・キャンセル）</strong><br />
-            <a href="${manageUrl}" target="_blank" rel="noopener noreferrer">${manageUrl}</a>
+            <a href="${manageUrl}" target="_blank" rel="noopener noreferrer">${manageUrl}</a><br />
+            <span style="font-size:12px;color:#555">
+              リンクが開けない場合は
+              <a href="${APP_URL}/reservation/lookup" target="_blank" rel="noopener noreferrer" style="color:#2563eb">${APP_URL}/reservation/lookup</a>
+              からもご照会いただけます（ご利用日・PINコード・車両ナンバーを入力）。
+            </span>
           </p>
 
           <div style="margin-top:16px;padding:12px 16px;border:1px solid #ddd;border-radius:8px;background:#fafafa;font-size:12px;color:#555;line-height:1.7">
@@ -117,6 +122,7 @@ PINコード: ${safe(pin)}
 ※ 領収書の発行は出庫後にメールでご案内いたします。
 ${googleMapUrl ? `Google Map: ${googleMapUrl}` : ""}
 ${manageUrl ? `予約管理（予約確認・日付変更・キャンセル）: ${manageUrl}
+リンクが開けない場合は ${APP_URL}/reservation/lookup からもご照会いただけます（ご利用日・PINコード・車両ナンバーを入力）。
 
 キャンセルポリシー:
 ・利用日の48時間前まで: 手数料320円でキャンセル可能

@@ -244,6 +244,16 @@ function ReservationManagePageInner() {
       return;
     }
 
+    // ナンバーは照会（ご本人確認）のキーそのものなので、変更の影響を明示する
+    if (editField === "plate") {
+      const confirmed = window.confirm(
+        `車両ナンバーを「${next}」に変更します。\n\n` +
+          "次回のご照会からは新しいナンバーでの入力が必要になります。\n\n" +
+          "よろしいですか？"
+      );
+      if (!confirmed) return;
+    }
+
     setEditSaving(true);
     setEditErr("");
 
@@ -620,6 +630,12 @@ function ReservationManagePageInner() {
                       fontSize: 16,
                     }}
                   />
+
+                  {editField === "plate" && (
+                    <p style={{ margin: "8px 0 0", fontSize: 12, color: "#92400e", lineHeight: 1.7, background: "#fef3c7", padding: "8px 10px", borderRadius: 8 }}>
+                      次回のご照会からは新しいナンバーでの入力が必要になります。
+                    </p>
+                  )}
 
                   {editField === "email" && (
                     <>

@@ -848,7 +848,7 @@ export async function POST(req: NextRequest) {
       await sendSlackNotification(
         [
           "⚠️ 車両ナンバーが未定のまま予約されました",
-          "※ この予約はWeb照会（/reservation/verify）を利用できません",
+          "※ この予約はWeb照会（/reservation/lookup）を利用できません",
           `予約ID：${created.id}`,
           `駐車場：${place.name}`,
           `利用日：${date}`,
