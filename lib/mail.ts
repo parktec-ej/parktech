@@ -1597,3 +1597,128 @@ ParkTec
     `.trim(),
   });
 }
+
+/**
+ * メールアドレス変更の通知（旧アドレス宛）。
+ * 乗っ取り時に攻撃者のアドレスを本人へ晒さないよう、新しいアドレスは本文に書かない。
+ */
+export async function sendEmailChangedNoticeMail(params: {
+  to: string;
+  placeName: string;
+  date: string;
+}) {
+  const { to, placeName, date } = params;
+
+  return getResend().emails.send({
+    from: MAIL_FROM,
+    to,
+    subject: "【ParkTec】ご登録のメールアドレスが変更されました",
+    html: `
+      <div style="font-family:Arial,sans-serif;line-height:1.8;color:#111">
+        <h2>ご登録のメールアドレスが変更されました</h2>
+        <p>下記のご予約について、ご登録のメールアドレスが変更されました。</p>
+
+        <div style="margin-top:12px;background:#eff6ff;border-radius:12px;padding:14px 16px">
+          <div><strong>駐車場:</strong> ${safe(placeName)}</div>
+          <div><strong>利用日:</strong> ${safe(date)}</div>
+        </div>
+
+        <p style="margin-top:20px">
+          この変更にお心当たりがない場合は、お手数ですが下記までご連絡ください。
+        </p>
+
+        <div style="margin-top:12px;padding:14px 16px;border:1px solid #fecaca;border-radius:12px;background:#fef2f2;color:#991b1b">
+          <strong>TEL: 050-1793-4785</strong>
+        </div>
+
+        <hr style="margin:24px 0" />
+        <div style="font-size:13px;color:#555;line-height:1.8">
+          <strong>お困りのときは</strong><br />
+          サポート・よくある質問：<a href="https://parktec-ej.com/help" target="_blank" rel="noopener noreferrer" style="color:#2563eb">https://parktec-ej.com/help</a><br />
+          TEL: 050-1793-4785（1番を押してください）
+        </div>
+        <p style="margin-top:16px">ParkTec</p>
+      </div>
+    `,
+    text: `
+ご登録のメールアドレスが変更されました
+
+下記のご予約について、ご登録のメールアドレスが変更されました。
+
+駐車場: ${safe(placeName)}
+利用日: ${safe(date)}
+
+この変更にお心当たりがない場合は、お手数ですが下記までご連絡ください。
+TEL: 050-1793-4785
+
+お困りのときは
+サポート・よくある質問: https://parktec-ej.com/help
+TEL: 050-1793-4785（1番を押してください）
+
+ParkTec
+    `.trim(),
+  });
+}
+
+/** 車両ナンバー変更の完了通知 */
+export async function sendPlateChangedMail(params: {
+  to: string;
+  placeName: string;
+  date: string;
+  oldPlate: string;
+  newPlate: string;
+}) {
+  const { to, placeName, date, oldPlate, newPlate } = params;
+
+  return getResend().emails.send({
+    from: MAIL_FROM,
+    to,
+    subject: "【ParkTec】車両ナンバーを変更しました",
+    html: `
+      <div style="font-family:Arial,sans-serif;line-height:1.8;color:#111">
+        <h2>車両ナンバーを変更しました</h2>
+        <p>下記のとおり、ご予約の車両ナンバーを変更いたしました。</p>
+
+        <div style="margin-top:12px;background:#eff6ff;border-radius:12px;padding:14px 16px">
+          <div><strong>駐車場:</strong> ${safe(placeName)}</div>
+          <div><strong>利用日:</strong> ${safe(date)}</div>
+          <div style="margin-top:8px">
+            <strong>車両ナンバー:</strong>
+            <span style="text-decoration:line-through;color:#999">${safe(oldPlate)}</span>
+            &rarr;
+            <strong>${safe(newPlate)}</strong>
+          </div>
+        </div>
+
+        <p style="margin-top:20px;font-size:13px;color:#555">
+          この変更にお心当たりがない場合は、050-1793-4785 までご連絡ください。
+        </p>
+
+        <hr style="margin:24px 0" />
+        <div style="font-size:13px;color:#555;line-height:1.8">
+          <strong>お困りのときは</strong><br />
+          サポート・よくある質問：<a href="https://parktec-ej.com/help" target="_blank" rel="noopener noreferrer" style="color:#2563eb">https://parktec-ej.com/help</a><br />
+          TEL: 050-1793-4785（1番を押してください）
+        </div>
+        <p style="margin-top:16px">ParkTec</p>
+      </div>
+    `,
+    text: `
+車両ナンバーを変更しました
+
+下記のとおり、ご予約の車両ナンバーを変更いたしました。
+
+駐車場: ${safe(placeName)}
+利用日: ${safe(date)}
+車両ナンバー: ${safe(oldPlate)} → ${safe(newPlate)}
+
+この変更にお心当たりがない場合は、050-1793-4785 までご連絡ください。
+
+お困りのときは
+サポート・よくある質問: https://parktec-ej.com/help
+TEL: 050-1793-4785（1番を押してください）
+
+ParkTec
+    `.trim(),
+  });
+}

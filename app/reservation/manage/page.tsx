@@ -41,6 +41,18 @@ type DateChangeView = {
   dateChangeCount: number;
 };
 
+const selfEditBtnStyle: React.CSSProperties = {
+  padding: "4px 10px",
+  borderRadius: 999,
+  border: "1px solid #93c5fd",
+  background: "#fff",
+  color: "#1d4ed8",
+  fontWeight: 700,
+  fontSize: 12,
+  cursor: "pointer",
+  whiteSpace: "nowrap",
+};
+
 function StatusBadge({ status }: { status: string }) {
   const map: Record<string, { bg: string; color: string; label: string }> = {
     CONFIRMED: { bg: "#dcfce7", color: "#166534", label: "確定済み" },
@@ -84,6 +96,12 @@ function ReservationManagePageInner() {
   const [newDate, setNewDate] = useState("");
   const [changingDate, setChangingDate] = useState(false);
   const [receiptLoading, setReceiptLoading] = useState(false);
+
+  // お客様ご自身によるメールアドレス／車両ナンバーの変更
+  const [editField, setEditField] = useState<"email" | "plate" | null>(null);
+  const [editValue, setEditValue] = useState("");
+  const [editErr, setEditErr] = useState("");
+  const [editSaving, setEditSaving] = useState(false);
 
   async function loadReservation() {
     if (!token) {
@@ -207,6 +225,53 @@ function ReservationManagePageInner() {
     }
   }
 
+  async function handleSelfUpdate() {
+    if (!editField) return;
+
+    const next = editValue.trim();
+
+    if (!next) {
+      setEditErr(
+        editField === "email"
+          ? "メールアドレスを入力してください"
+          : "車両ナンバーを入力してください"
+      );
+      return;
+    }
+
+    setEditSaving(true);
+    setEditErr("");
+
+    try {
+      const res = await fetch("/api/reservations/self-update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token, field: editField, value: next }),
+      });
+
+      const json = await res.json().catch(() => null);
+
+      if (!res.ok || !json?.ok) {
+        setEditErr(json?.message ?? "変更に失敗しました");
+        return;
+      }
+
+      window.alert(
+        json.mailSent === false
+          ? `${json.message}。確認メールの送信に失敗しました。お手数ですが 050-1793-4785 までご連絡ください。`
+          : json.message
+      );
+
+      setEditField(null);
+      setEditValue("");
+      await loadReservation();
+    } catch (e) {
+      setEditErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setEditSaving(false);
+    }
+  }
+
   async function openReceipt() {
     if (!reservation) return;
 
@@ -243,6 +308,12 @@ function ReservationManagePageInner() {
 
   const isCanceled = reservation?.status === "CANCELED";
   const isBus = reservation?.reservationType === "bus";
+
+  // 出庫済み・キャンセル済みの予約は変更させない（サーバ側でも同じ条件で弾く）
+  const canSelfEdit =
+    !!reservation &&
+    reservation.status !== "CANCELED" &&
+    !reservation.checkedOutAt;
 
   const vehicleTypeLabel =
     reservation?.vehicleType === "bus"
@@ -434,18 +505,161 @@ function ReservationManagePageInner() {
               )}
               {!isBus && (
                 <div
-                  style={{ display: "flex", justifyContent: "space-between" }}
+                  style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}
                 >
                   <span>車両ナンバー</span>
+                  <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <span
+                      style={{
+                        fontWeight: 600,
+                        letterSpacing: "0.08em",
+                        fontVariantNumeric: "tabular-nums",
+                      }}
+                    >
+                      {reservation.plate}
+                    </span>
+                    {canSelfEdit && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditField("plate");
+                          setEditValue(reservation.plate);
+                          setEditErr("");
+                        }}
+                        style={selfEditBtnStyle}
+                      >
+                        変更
+                      </button>
+                    )}
+                  </span>
+                </div>
+              )}
+              <div
+                style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}
+              >
+                <span>メールアドレス</span>
+                <span style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
                   <span
                     style={{
                       fontWeight: 600,
-                      letterSpacing: "0.08em",
-                      fontVariantNumeric: "tabular-nums",
+                      wordBreak: "break-all",
+                      textAlign: "right",
                     }}
                   >
-                    {reservation.plate}
+                    {reservation.email || "未登録"}
                   </span>
+                  {canSelfEdit && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditField("email");
+                        setEditValue(reservation.email ?? "");
+                        setEditErr("");
+                      }}
+                      style={selfEditBtnStyle}
+                    >
+                      変更
+                    </button>
+                  )}
+                </span>
+              </div>
+
+              {editField && (
+                <div
+                  style={{
+                    marginTop: 4,
+                    padding: 14,
+                    border: "1px solid #d1d5db",
+                    borderRadius: 12,
+                    background: "#f9fafb",
+                  }}
+                >
+                  <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>
+                    {editField === "email"
+                      ? "メールアドレスの変更"
+                      : "車両ナンバーの変更"}
+                  </div>
+
+                  <input
+                    type={editField === "email" ? "email" : "text"}
+                    inputMode={editField === "email" ? "email" : "text"}
+                    autoComplete={editField === "email" ? "email" : "off"}
+                    value={editValue}
+                    onChange={(e) => {
+                      setEditValue(e.target.value);
+                      setEditErr("");
+                    }}
+                    placeholder={
+                      editField === "email"
+                        ? "name@example.com"
+                        : "例: 宮城300 あ 1234"
+                    }
+                    style={{
+                      width: "100%",
+                      boxSizing: "border-box",
+                      padding: 10,
+                      borderRadius: 8,
+                      border: "1px solid #d1d5db",
+                      fontSize: 16,
+                    }}
+                  />
+
+                  {editField === "email" && (
+                    <p style={{ margin: "8px 0 0", fontSize: 12, color: "#6b7280", lineHeight: 1.7 }}>
+                      新しいアドレスに、PINコードを含むご予約内容をお送りします。
+                      変更前のアドレスにも変更のお知らせが届きます。
+                    </p>
+                  )}
+
+                  {editErr && (
+                    <p style={{ margin: "8px 0 0", fontSize: 13, color: "#dc2626" }}>
+                      {editErr}
+                    </p>
+                  )}
+
+                  <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+                    <button
+                      type="button"
+                      onClick={handleSelfUpdate}
+                      disabled={editSaving || !editValue.trim()}
+                      style={{
+                        flex: 1,
+                        padding: "10px 14px",
+                        borderRadius: 8,
+                        border: "none",
+                        background:
+                          editSaving || !editValue.trim() ? "#d1d5db" : "#1d4ed8",
+                        color: "#fff",
+                        fontWeight: 700,
+                        fontSize: 14,
+                        cursor:
+                          editSaving || !editValue.trim()
+                            ? "not-allowed"
+                            : "pointer",
+                      }}
+                    >
+                      {editSaving ? "変更中..." : "変更する"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditField(null);
+                        setEditValue("");
+                        setEditErr("");
+                      }}
+                      style={{
+                        padding: "10px 14px",
+                        borderRadius: 8,
+                        border: "1px solid #d1d5db",
+                        background: "#fff",
+                        fontWeight: 700,
+                        fontSize: 14,
+                        cursor: "pointer",
+                      }}
+                    >
+                      キャンセル
+                    </button>
+                  </div>
                 </div>
               )}
               <div style={{ display: "flex", justifyContent: "space-between" }}>
