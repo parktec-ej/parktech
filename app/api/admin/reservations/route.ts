@@ -44,6 +44,9 @@ type ReservationRow = {
     id: string;
     oldDate: string;
     newDate: string;
+    field: string;
+    oldValue: string | null;
+    newValue: string | null;
     changedAt: Date;
     changedBy: string;
     reason: string | null;
@@ -81,6 +84,9 @@ type ReservationItem = {
     id: string;
     oldDate: string;
     newDate: string;
+    field: string;
+    oldValue: string | null;
+    newValue: string | null;
     changedAt: Date;
     changedBy: string;
     reason: string | null;
@@ -222,6 +228,9 @@ export async function GET(req: Request) {
             id: true,
             oldDate: true,
             newDate: true,
+            field: true,
+            oldValue: true,
+            newValue: true,
             changedAt: true,
             changedBy: true,
             reason: true,

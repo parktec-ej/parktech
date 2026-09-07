@@ -25,6 +25,9 @@ async function createChangeLog(reservation: { id: string; date: string }, newDat
         reservationId: reservation.id,
         oldDate: reservation.date,
         newDate,
+        field: "date",
+        oldValue: reservation.date,
+        newValue: newDate,
         changedBy: "customer",
       },
     });
