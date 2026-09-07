@@ -1,6 +1,10 @@
 "use client";
 
 import { Suspense, useEffect, useMemo, useState } from "react";
+import ReservationCard, {
+  type ReservationCardItem,
+  type ReservationCardStatus,
+} from "../_components/ReservationCard";
 
 type Place = { id: string; slug: string; name: string };
 type Spot = { id: string; code: string; label: string | null };
@@ -23,7 +27,47 @@ type ReservationRow = {
   place: Place | null;
   spot: Spot | null;
   activeSession: { id: string } | null;
+  // 検索APIは include で全カラムを返すので、一覧と同じ項目も受け取れる
+  price?: number | null;
+  createdAt?: string | null;
+  selfCheckedOut?: boolean | null;
+  unexitNoticeSentAt?: string | null;
+  unexitAckAt?: string | null;
 };
+
+// 予約一覧（/admin/reservations）と同じ規則でステータスを算出する
+function toCardStatus(r: ReservationRow): ReservationCardStatus {
+  if (r.status === "CANCELED") return "CANCELED";
+  if (r.checkedOutAt) return "CHECKED_OUT";
+  if (r.checkedIn) return "CHECKED_IN";
+  if (r.paid) return "RESERVED";
+  return "UNPAID";
+}
+
+function toCardItem(r: ReservationRow): ReservationCardItem {
+  return {
+    id: r.id,
+    date: r.date,
+    slot: r.slot,
+    customerName: r.name,
+    plate: r.plate,
+    email: r.email,
+    phone: r.phone,
+    price: r.price ?? null,
+    pin: r.pin,
+    paid: r.paid,
+    checkedIn: r.checkedIn,
+    checkedInAt: r.checkedInAt,
+    checkedOutAt: r.checkedOutAt,
+    unexitNoticeSentAt: r.unexitNoticeSentAt ?? null,
+    unexitAckAt: r.unexitAckAt ?? null,
+    selfCheckedOut: r.selfCheckedOut ?? null,
+    createdAt: r.createdAt ?? null,
+    status: toCardStatus(r),
+    spot: r.spot ? { id: r.spot.id, code: r.spot.code, label: r.spot.label } : null,
+    // 検索APIは changeLogs を返さないので undefined のまま（カード側で非表示）
+  };
+}
 
 type SessionRow = {
   id: string;
@@ -339,59 +383,47 @@ function EmergencyPageInner() {
                 <span style={{ fontWeight: 800 }}>予約 ({data.reservations.length})</span>
               </div>
               {data.reservations.map((r) => (
-                <div key={r.id} style={cardStyle}>
-                  <div style={cardTopRow}>
-                    <div style={{ fontWeight: 800 }}>{r.name}</div>
-                    <div style={pillStyle(r.status === "CANCELED" ? "#dc2626" : r.checkedIn ? "#0369a1" : "#16a34a")}>
-                      {r.status === "CANCELED"
-                        ? "キャンセル済み"
-                        : r.checkedOutAt
-                        ? "出庫済"
-                        : r.checkedIn
-                        ? "入庫中"
-                        : r.paid
-                        ? "決済済"
-                        : "未決済"}
-                    </div>
-                  </div>
-                  <div style={metaRow}>
-                    <Meta k="駐車場" v={r.place?.name ?? "-"} />
-                    <Meta k="slot" v={r.spot?.label ?? r.spot?.code ?? r.slot} />
-                    <Meta k="日付" v={r.date} />
-                    <Meta k="車両" v={r.plate} />
-                    <Meta k="email" v={r.email ?? "-"} />
-                    <Meta k="phone" v={r.phone ?? "-"} />
-                    <Meta k="PIN" v={r.pin} mono />
-                    <Meta k="paymentRef" v={r.paymentRef ?? "-"} mono />
-                  </div>
-                  <div style={actionsRow}>
-                    <button
-                      type="button"
-                      disabled={busy === `PIN再送-${r.id}` || !r.email}
-                      onClick={() => doResendPin(r)}
-                      style={primaryBtn}
-                    >
-                      📧 PIN再送
-                    </button>
-                    <button
-                      type="button"
-                      disabled={busy === `GATE URL送信-${r.id}` || !r.email}
-                      onClick={() => doSendGateUrl(r)}
-                      style={primaryBtn}
-                    >
-                      🚪 GATE URL送信
-                    </button>
-                    {r.activeSession ? (
-                      <button
-                        type="button"
-                        disabled={busy === `強制出庫-${r.activeSession.id}`}
-                        onClick={() => doForceCheckoutForReservation(r)}
-                        style={dangerBtn}
-                      >
-                        🚗 強制出庫
-                      </button>
-                    ) : null}
-                  </div>
+                <div key={r.id} style={{ marginBottom: 12 }}>
+                  <ReservationCard
+                    item={toCardItem(r)}
+                    busy={
+                      busy === `PIN再送-${r.id}` ||
+                      busy === `GATE URL送信-${r.id}` ||
+                      (r.activeSession
+                        ? busy === `強制出庫-${r.activeSession.id}`
+                        : false)
+                    }
+                    extraActions={
+                      <>
+                        <button
+                          type="button"
+                          disabled={busy === `PIN再送-${r.id}` || !r.email}
+                          onClick={() => doResendPin(r)}
+                          style={primaryBtn}
+                        >
+                          📧 PIN再送
+                        </button>
+                        <button
+                          type="button"
+                          disabled={busy === `GATE URL送信-${r.id}` || !r.email}
+                          onClick={() => doSendGateUrl(r)}
+                          style={primaryBtn}
+                        >
+                          🚪 GATE URL送信
+                        </button>
+                        {r.activeSession ? (
+                          <button
+                            type="button"
+                            disabled={busy === `強制出庫-${r.activeSession.id}`}
+                            onClick={() => doForceCheckoutForReservation(r)}
+                            style={dangerBtn}
+                          >
+                            🚗 強制出庫
+                          </button>
+                        ) : null}
+                      </>
+                    }
+                  />
                 </div>
               ))}
             </section>
