@@ -1,4 +1,5 @@
 import { Resend } from "resend";
+import { isPlaceholderPlate } from "@/lib/plate";
 
 function getResend() {
   return new Resend(process.env.RESEND_API_KEY);
@@ -37,6 +38,10 @@ export async function sendReservationPinMail(params: {
     manageUrl,
   } = params;
 
+  // 「未定」等のまま予約された場合は、判明後に変更してもらう必要がある。
+  // この予約は PIN + ナンバーでの照会が使えないので、案内先は manageUrl（トークン付きリンク）に限る。
+  const plateUnregistered = isPlaceholderPlate(plate) && !!manageUrl;
+
   return getResend().emails.send({
     from: MAIL_FROM,
     to,
@@ -52,6 +57,13 @@ export async function sendReservationPinMail(params: {
           <div><strong>区画:</strong> ${safe(spotLabel)}</div>
           <div><strong>利用日:</strong> ${safe(date)}</div>
           <div><strong>車両ナンバー:</strong> ${safe(plate)}</div>
+          ${
+            plateUnregistered
+              ? `<div style="margin-top:8px;padding:10px 12px;border-radius:8px;background:#fef3c7;color:#92400e;font-size:13px;line-height:1.7">
+                  車両ナンバーが未登録です。ナンバーが分かりましたら、下記の「予約管理」リンクからご変更ください。
+                </div>`
+              : ""
+          }
           ${phone ? `<div><strong>電話番号:</strong> ${safe(phone)}</div>` : ""}
           <div><strong>お支払い金額:</strong> ${safe(price)} 円</div>
         </div>
@@ -111,6 +123,7 @@ ParkTecをご利用いただきありがとうございます。
 区画: ${safe(spotLabel)}
 利用日: ${safe(date)}
 車両ナンバー: ${safe(plate)}
+${plateUnregistered ? "※ 車両ナンバーが未登録です。ナンバーが分かりましたら、下記の「予約管理」リンクからご変更ください。" : ""}
 ${phone ? `電話番号: ${safe(phone)}` : ""}
 お支払い金額: ${safe(price)} 円
 

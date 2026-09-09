@@ -626,6 +626,11 @@ function ReservePageInner() {
             placeholder="例: 宮城300 あ 1234"
             style={styles.input}
           />
+          <p style={styles.fieldNote}>
+            レンタカー・代車などで当日までナンバーが分からない場合は
+            「未定」とご入力ください。ナンバーが分かり次第、ご予約完了メールに記載の
+            「予約管理」リンク（予約内容の確認・変更）からご登録をお願いいたします。
+          </p>
           {isVaguePlate(plate) && (
             <p
               style={{
@@ -638,8 +643,15 @@ function ReservePageInner() {
                 lineHeight: 1.8,
               }}
             >
-              車両ナンバーが未定の場合も、後から変更できます。
-              現時点で分かる範囲でご入力ください。
+              このままご予約いただけます。ナンバーが分かり次第、ご予約完了メールの
+              「予約管理」リンクから登録をお願いいたします。
+              <br />
+              ※「未定」のままでは、ご利用日・PINコード・車両ナンバーによる予約照会はご利用いただけません。
+              PINコードが分からない場合は、
+              <Link href="/reservation/lookup" style={{ color: "#92400e", fontWeight: 700 }}>
+                予約内容の確認・変更
+              </Link>
+              の「PINコードが分からない方はこちら」からメールで変更用リンクをお送りします。
             </p>
           )}
         </section>
@@ -851,6 +863,13 @@ const styles: Record<string, React.CSSProperties> = {
   legend: {
     fontSize: 13,
     color: "#666",
+  },
+
+  fieldNote: {
+    margin: "8px 0 0",
+    fontSize: 13,
+    lineHeight: 1.8,
+    color: "#6b7280",
   },
 
   input: {

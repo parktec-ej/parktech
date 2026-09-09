@@ -1,4 +1,8 @@
 import { prisma } from "@/lib/db";
+import { isPlaceholderPlate, normalizePlate, toHalfWidth } from "@/lib/plate";
+
+// 既存の import 元を変えずに済むよう、ナンバー系のユーティリティはここからも公開する。
+export { isPlaceholderPlate, normalizePlate };
 
 /**
  * メールアドレスに依存しない本人確認。
@@ -8,40 +12,9 @@ import { prisma } from "@/lib/db";
  * 一律必須にするとその持ち主が導線に入れなくなるため。
  */
 
-/** ナンバーとして意味を成さない値。これらは本人確認の材料にならないので導線の対象外にする。 */
-const PLACEHOLDER_PLATES = new Set(["未登録", "未定", "なし", "不明", "-", ""]);
-
-/** 全角英数を半角に落とす（ナンバーの「３００」と「300」を同一視するため） */
-function toHalfWidth(value: string) {
-  return value.replace(/[Ａ-Ｚａ-ｚ０-９]/g, (c) =>
-    String.fromCharCode(c.charCodeAt(0) - 0xfee0)
-  );
-}
-
-/**
- * ナンバーの表記ゆれを吸収する。
- * 実データには「秋田330 ひ　5600」「長野301　た　7726」「仙台502ワ4045」のように
- * 全角スペース・半角スペース・スペース無しが混在している。
- */
-export function normalizePlate(value: string | null | undefined) {
-  return toHalfWidth(String(value ?? ""))
-    .replace(/[\s　]/g, "")
-    .replace(/[-－ー‐-‒–—―]/g, "")
-    .toUpperCase();
-}
-
 /** 電話番号は数字のみで比較する（090-1234-5678 と 09012345678 を同一視） */
 export function normalizePhone(value: string | null | undefined) {
   return toHalfWidth(String(value ?? "")).replace(/\D/g, "");
-}
-
-/** ナンバーが実質未登録かどうか。true の予約はこの導線では扱わない。 */
-export function isPlaceholderPlate(value: string | null | undefined) {
-  const normalized = normalizePlate(value);
-  if (!normalized) return true;
-  // 正規化するとスペースが消えるので、元の値でも照合しておく
-  if (PLACEHOLDER_PLATES.has(String(value ?? "").trim())) return true;
-  return PLACEHOLDER_PLATES.has(normalized);
 }
 
 export type VerifyInput = {
