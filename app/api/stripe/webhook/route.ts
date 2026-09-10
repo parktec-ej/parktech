@@ -7,7 +7,7 @@ import bcrypt from "bcryptjs";
 import { calcSplitAmounts, calcTax } from "@/lib/settlement-math";
 import { buildSettlementSnapshot } from "@/lib/settlement-snapshot";
 import { fetchStripeFee } from "@/lib/stripe-fee";
-import { sendSlackNotification } from "@/lib/slack";
+import { sendSlackNotification, sendSlackAlert } from "@/lib/slack";
 import crypto from "crypto";
 
 export const runtime = "nodejs";
@@ -29,6 +29,89 @@ function getRecognizedMonthFromDate(d: Date) {
   return d.toLocaleDateString("sv-SE", {
     timeZone: "Asia/Tokyo",
   }).slice(0, 7);
+}
+
+/**
+ * Invoice からサブスクリプションIDを取り出す。
+ *
+ * Stripe API 2025-09-30 以降、Invoice の `subscription` は削除され
+ * `parent.subscription_details.subscription` に移動した。
+ * エンドポイントの API バージョン次第で新旧どちらの形も届きうるので、
+ * 両方を順に見る。ここが null になると contractId が解決できず、
+ * ハンドラが黙って素通りする（実際に2026年7月以降それが起きていた）。
+ */
+function getInvoiceSubscriptionId(inv: any): string | null {
+  const candidates = [
+    inv?.subscription,
+    inv?.parent?.subscription_details?.subscription,
+    inv?.lines?.data?.[0]?.parent?.subscription_item_details?.subscription,
+  ];
+
+  for (const c of candidates) {
+    if (typeof c === "string" && c) return c;
+    if (c && typeof c === "object" && typeof c.id === "string") return c.id;
+  }
+
+  return null;
+}
+
+/**
+ * Invoice に埋め込まれた metadata から contractId を取り出す。
+ * サブスク本体を retrieve できなかったときのフォールバック。
+ */
+function getInvoiceContractId(inv: any): string {
+  const candidates = [
+    inv?.parent?.subscription_details?.metadata?.contractId,
+    inv?.subscription_details?.metadata?.contractId,
+    inv?.lines?.data?.[0]?.metadata?.contractId,
+  ];
+
+  for (const c of candidates) {
+    if (typeof c === "string" && c) return c;
+  }
+
+  return "";
+}
+
+/**
+ * Invoice から PaymentIntent ID を取り出す。
+ *
+ * `payment_intent` も同じバージョンで削除され `payments` 配列経由になった。
+ * webhook のペイロードに payments が含まれないことがあるため、
+ * 見つからなければ expand 付きで取り直す。
+ * 取得できないと Stripe手数料が 0 で記録されるだけなので、失敗しても致命ではない。
+ */
+async function getInvoicePaymentIntentId(inv: any): Promise<string | null> {
+  const direct = inv?.payment_intent;
+
+  if (typeof direct === "string" && direct) return direct;
+  if (direct && typeof direct === "object" && typeof direct.id === "string") {
+    return direct.id;
+  }
+
+  const pickFromPayments = (payments: any): string | null => {
+    for (const p of payments?.data ?? []) {
+      const pi = p?.payment?.payment_intent;
+      if (typeof pi === "string" && pi) return pi;
+      if (pi && typeof pi === "object" && typeof pi.id === "string") return pi.id;
+    }
+    return null;
+  };
+
+  const embedded = pickFromPayments(inv?.payments);
+  if (embedded) return embedded;
+
+  if (!inv?.id) return null;
+
+  try {
+    const full = await stripe.invoices.retrieve(inv.id, {
+      expand: ["payments"],
+    });
+    return pickFromPayments((full as any).payments);
+  } catch (e) {
+    console.error("[getInvoicePaymentIntentId] retrieve failed:", inv.id, e);
+    return null;
+  }
 }
 
 function genPin4() {
@@ -1891,10 +1974,7 @@ export async function POST(req: Request) {
 
         if (!dup) {
           // subscription metadata から contractId を解決
-          const subId =
-            typeof inv.subscription === "string"
-              ? inv.subscription
-              : inv.subscription?.id ?? null;
+          const subId = getInvoiceSubscriptionId(inv);
           let contractId = "";
           if (subId) {
             try {
@@ -1904,8 +1984,28 @@ export async function POST(req: Request) {
               console.error("subscription retrieve failed:", e);
             }
           }
-          if (!contractId && inv.subscription_details?.metadata?.contractId) {
-            contractId = inv.subscription_details.metadata.contractId;
+          if (!contractId) {
+            contractId = getInvoiceContractId(inv);
+          }
+
+          // ここが空のまま抜けると売上も領収書も作られず、しかも 200 を返すため
+          // Stripe 側は成功扱いになる。気づけないので必ずアラートを出す。
+          if (!contractId) {
+            console.error(
+              "[invoice.payment_succeeded] contractId を解決できません:",
+              invoiceId,
+              JSON.stringify({ subId, parent: inv?.parent ?? null })
+            );
+            try {
+              await sendSlackAlert(
+                [
+                  "🚨 月極課金を記録できませんでした（contractId 未解決）",
+                  `invoice: ${invoiceId ?? "-"}`,
+                  `subscription: ${subId ?? "-"}`,
+                  "手動での確認が必要です",
+                ].join("\n")
+              );
+            } catch {}
           }
 
           const contract = contractId
@@ -1926,10 +2026,7 @@ export async function POST(req: Request) {
             const amountYen = inv.amount_paid ?? contract.baseFeeYen;
             const paidUnix = inv.status_transitions?.paid_at ?? null;
             const paidAt = paidUnix ? new Date(paidUnix * 1000) : new Date();
-            const paymentIntentId =
-              typeof inv.payment_intent === "string"
-                ? inv.payment_intent
-                : inv.payment_intent?.id ?? null;
+            const paymentIntentId = await getInvoicePaymentIntentId(inv);
 
             const year = paidAt
               .toLocaleDateString("sv-SE", { timeZone: "Asia/Tokyo" })
@@ -2081,10 +2178,7 @@ export async function POST(req: Request) {
     if (event.type === "invoice.payment_failed") {
       const invoice = event.data.object as Stripe.Invoice;
       const inv = invoice as any;
-      const subId =
-        typeof inv.subscription === "string"
-          ? inv.subscription
-          : inv.subscription?.id ?? null;
+      const subId = getInvoiceSubscriptionId(inv);
       let contractId = "";
       if (subId) {
         try {
@@ -2093,6 +2187,9 @@ export async function POST(req: Request) {
         } catch (e) {
           console.error("subscription retrieve failed:", e);
         }
+      }
+      if (!contractId) {
+        contractId = getInvoiceContractId(inv);
       }
       const contract = contractId
         ? await prisma.monthlyContract.findUnique({
